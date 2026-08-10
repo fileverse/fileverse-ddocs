@@ -1,4 +1,5 @@
 import { Editor } from '@tiptap/core';
+import { isUndoRedoSelection } from '../../extensions/undo-selection';
 
 // Mobile selection handles can blur the editor while the native selection
 // still belongs to the editor content. Detect that case from the DOM selection.
@@ -20,6 +21,13 @@ export const isSelectionInsideEditor = (editor: Editor) => {
 
 const shouldShowBubbleMenu = (editor: Editor, ignoreFocus = false) => {
   if (!ignoreFocus && !editor.isFocused) {
+    return false;
+  }
+
+  // Undo/redo re-selects the range it just changed so you can see what moved.
+  // That is not a selection gesture, so it must not summon the toolbar; the
+  // next click or keystroke clears the flag.
+  if (isUndoRedoSelection(editor.state)) {
     return false;
   }
 

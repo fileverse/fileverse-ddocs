@@ -55,6 +55,7 @@ import { createDBlockExtension } from './d-block';
 import { FlatHeadingCollapse } from './d-block/dblock-collapse';
 import { FlatMediaConversion } from './d-block/dblock-media-plugin';
 import { BlockId } from './block-id';
+import { UndoSelection } from './undo-selection';
 import { AiWriterSpaceTrigger } from './ai-writer/ai-writer-space-trigger';
 import { SuperchargedTableExtensions } from './supercharged-table';
 import { Document, FlatDocument } from './document';
@@ -434,6 +435,8 @@ export const defaultExtensions = ({
     fetchV1ImageFn,
   }),
   Gapcursor,
+  // Both schemas: Yjs restores a stale selection after undo/redo.
+  UndoSelection,
   // Schema fork. v1: every block wrapped in a dBlock (TrailingNode's position
   // math assumes the wrapper, so it is v1-only until re-homed in M2).
   // v2: flat top node, stock Tiptap structure.
