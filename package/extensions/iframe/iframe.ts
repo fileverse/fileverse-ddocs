@@ -116,9 +116,21 @@ export const Iframe = Node.create<IframeOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
+    if (!isAllowedEmbedSrc(HTMLAttributes.src)) {
+      return [
+        'div',
+        { class: 'iframe-blocked' },
+        'Embed blocked: unsupported or disallowed source',
+      ];
+    }
+
     return [
       'iframe',
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        sandbox:
+          'allow-scripts allow-same-origin allow-presentation allow-popups',
+        referrerpolicy: 'no-referrer',
+      }),
     ];
   },
 

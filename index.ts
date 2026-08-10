@@ -19,6 +19,11 @@ export type {
   CssDiagnostic,
   CssValidationResult,
 } from './package/utils/sanitize-css';
+export {
+  isAllowedEmbedSrc,
+  recommendedEmbedFrameSrcCsp,
+  ALLOWED_EMBED_FRAME_ORIGINS,
+} from './package/utils/is-allowed-embed-src';
 export { buildVersionDiffSnapshot } from './package/components/tabs/utils/version-diff-snapshot';
 export type {
   DdocExportModalProps,

@@ -9,6 +9,8 @@ import ToolbarButton from '../../common/toolbar-button';
 import { SecureImage } from '../../components/secure-image.tsx';
 import { SecureImageV2 } from '../../components/secure-image-v2.tsx';
 import { IpfsImageFetchPayload } from '../../types.ts';
+import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
+
 interface WidthAndHeight {
   width: number;
   height: number;
@@ -36,8 +38,11 @@ export const getResizableMediaNodeView =
 
     const isImageType = mediaType === 'img' || mediaType === 'secure-img';
 
+    const isSafeIframe =
+      mediaType === 'iframe' && isAllowedEmbedSrc(node.attrs.src);
+
     const isSoundcloudIframe =
-      mediaType === 'iframe' &&
+      isSafeIframe &&
       URL.canParse(node.attrs.src) &&
       new URL(node.attrs.src).hostname === 'w.soundcloud.com';
 
@@ -523,19 +528,31 @@ export const getResizableMediaNodeView =
               </video>
             )}
 
-            {mediaType === 'iframe' && (
-              <>
-                <iframe
-                  ref={resizableImgRef as LegacyRef<HTMLIFrameElement>}
-                  className={cn(
-                    'rounded-lg max-w-full',
-                    isMouseDown && 'pointer-events-none',
-                  )}
-                  src={node.attrs.src}
-                  width={node.attrs.width}
-                  height={node.attrs.height}
-                />
-              </>
+            {mediaType === 'iframe' && isSafeIframe && (
+              <iframe
+                ref={resizableImgRef as LegacyRef<HTMLIFrameElement>}
+                className={cn(
+                  'rounded-lg max-w-full',
+                  isMouseDown && 'pointer-events-none',
+                )}
+                src={node.attrs.src}
+                width={node.attrs.width}
+                height={node.attrs.height}
+                sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+                referrerPolicy="no-referrer"
+              />
+            )}
+
+            {mediaType === 'iframe' && !isSafeIframe && (
+              <div
+                className="rounded-lg border color-border-default color-bg-secondary color-text-secondary text-sm p-4 max-w-full"
+                style={{
+                  width: node.attrs.width || 640,
+                  minHeight: node.attrs.height || 120,
+                }}
+              >
+                Embed blocked: unsupported or disallowed source
+              </div>
             )}
 
             {!isPreviewMode && !isImageType && (

@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { getDBlockRuntimeState } from './dblock-runtime';
+import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
 
 const DBLOCK_MEDIA_CONVERSION_META = 'dblock-media-conversion';
 
@@ -194,6 +195,13 @@ export const createDBlockMediaConversionPlugin = (
         candidates
           .sort((a, b) => b.from - a.from)
           .forEach((candidate) => {
+            if (
+              candidate.type === 'iframe' &&
+              !isAllowedEmbedSrc(candidate.src)
+            ) {
+              return;
+            }
+
             const node =
               candidate.type === 'img'
                 ? view.state.schema.nodes.resizableMedia?.create({
