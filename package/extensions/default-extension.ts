@@ -434,7 +434,19 @@ export const defaultExtensions = ({
     ipfsImageFetchFn,
     fetchV1ImageFn,
   }),
-  Gapcursor,
+  // v1 keeps the gap cursor it has always shipped with. v2 drops it
+  // entirely (TEC-2679): the flat schema exposes gap positions at every
+  // image→table / table→table / before-embed boundary, where the cursor
+  // renders as a stray dash glued to the following block's border — while
+  // mouse clicks in the gap don't even reach it (browser caret-from-point
+  // snaps into the nearest table cell) and vertical arrows hop table→table
+  // past it. Tiptap's Notion-like template ships the extension too, but the
+  // state is equally unreachable through normal input there (verified live:
+  // mid-gap clicks land in a cell, arrows skip the boundary) — the real
+  // insert-between-blocks affordance is the block handle's plus button,
+  // which we match. Removing the state beats restyling an artifact users
+  // can neither aim for nor understand.
+  ...(schemaVersion >= 2 ? [] : [Gapcursor]),
   // Both schemas: Yjs restores a stale selection after undo/redo.
   UndoSelection,
   // Schema fork. v1: every block wrapped in a dBlock (TrailingNode's position
