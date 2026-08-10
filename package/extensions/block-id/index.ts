@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -64,6 +65,14 @@ export const BlockId = Extension.create({
             return null;
           }
 
+          // A remote peer running this same extension already gave its blocks
+          // ids before the update was sent, so re-deriving them here would
+          // only race that peer — and would put a write triggered by someone
+          // else's edit on OUR undo stack.
+          if (transactions.some(isChangeOrigin)) {
+            return null;
+          }
+
           // Shallow pass over top-level blocks only: assign missing ids and
           // re-id duplicates (paste copies ids along with content).
           let tr: typeof newState.tr | null = null;
@@ -91,11 +100,15 @@ export const BlockId = Extension.create({
             );
           });
 
-          // Id bookkeeping is not a user edit and must not be undoable on
-          // its own.
-          if (tr) {
-            (tr as typeof newState.tr).setMeta('addToHistory', false);
-          }
+          // Deliberately NOT marked `addToHistory: false`. Undo here is Yjs's
+          // UndoManager, not prosemirror-history, and the y-sync binding
+          // writes ONE Yjs transaction per dispatch, stamped with the meta of
+          // the LAST transaction in the chain — which is this one. Setting the
+          // flag therefore excludes the user's own edit from the undo stack
+          // (and calls stopCapturing), so anything that creates a new block —
+          // Enter, paste, select-all-then-delete — became unrecoverable. The
+          // ids ride along in the same Yjs transaction as the edit that needed
+          // them, which is exactly where they belong.
           return tr;
         },
       }),
