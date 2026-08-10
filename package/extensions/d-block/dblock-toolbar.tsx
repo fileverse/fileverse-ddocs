@@ -25,6 +25,7 @@ export const getTemplateTarget = (
 ): DBlockTemplateTarget | null => {
   if (
     !editor ||
+    editor.isDestroyed ||
     runtimeState.isPreviewMode ||
     runtimeState.isCollaboratorsDoc ||
     // Split View renders the doc read-only on the right — no template picker.
@@ -142,7 +143,13 @@ const DBlockTemplateOverlay = ({
     });
   }, [moreTemplates.length]);
 
-  const panel = editor?.view.dom.closest('[data-ddoc-editor-panel]');
+  // Same hazard #553 fixed on the old toolbar: the tab-editor cache destroys
+  // and recreates editors inside pre-paint layout effects, so this can render
+  // with an already-destroyed editor, whose `view` access throws on tiptap v3.
+  const panel =
+    editor && !editor.isDestroyed
+      ? editor.view.dom.closest('[data-ddoc-editor-panel]')
+      : null;
 
   if (!target || isFocusMode || !panel) {
     return null;
@@ -189,7 +196,9 @@ export const DBlockToolbarProvider = ({
   return (
     <>
       {children}
-      {editor ? (
+      {/* The drag-handle plugin reads editor.view, so a destroyed editor
+          would throw here too — see the note in DBlockTemplateOverlay. */}
+      {editor && !editor.isDestroyed ? (
         <DBlockDragHandle editor={editor} runtimeState={runtimeState} />
       ) : null}
       <DBlockTemplateOverlay editor={editor} runtimeState={runtimeState} />
