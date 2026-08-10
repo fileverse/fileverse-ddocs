@@ -95,6 +95,44 @@ describe.each([
     expect(isUndoRedoSelection(editor.state)).toBe(false);
   });
 
+  // An undo can empty the Yjs fragment outright (undoing an edit that
+  // replaced the initial paragraph — a heading insert does). ProseMirror
+  // still renders its mandatory empty paragraph, and the next dispatch made
+  // the y-sync binding write it back as a fresh TRACKED change, which the
+  // UndoManager captured — wiping the redo stack. Redo was dead for any
+  // heading-bearing insert, in both schemas.
+  it('keeps redo alive when undo empties the document', async () => {
+    editor = makeEditor(schemaVersion);
+    editor
+      .chain()
+      .focus()
+      .insertContent([
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{ type: 'text', text: 'Only heading' }],
+        },
+      ])
+      .run();
+    await settle();
+    const inserted = editor.getText().trim();
+    expect(inserted).toBe('Only heading');
+
+    editor.commands.undo();
+    await settle();
+    expect(editor.getText().trim()).toBe('');
+
+    // In the app SOMETHING always dispatches between undo and redo (the TOC
+    // debounce, a caret move); that dispatch is what made the binding write
+    // the phantom paragraph back as a tracked change. Reproduce it.
+    editor.view.dispatch(editor.state.tr);
+    await settle(150);
+
+    editor.commands.redo();
+    await settle();
+    expect(editor.getText().trim()).toBe(inserted);
+  });
+
   it('leaves a plain edit untouched', async () => {
     editor = makeEditor(schemaVersion);
     editor.commands.setContent('<p>alpha</p>');

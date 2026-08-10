@@ -48,10 +48,48 @@ export const undoSelectionKey = new PluginKey<boolean>('undoSelection');
 export const isUndoRedoSelection = (state: EditorState): boolean =>
   undoSelectionKey.getState(state) === true;
 
+// The y-sync plugin's state, read by the key NAME rather than the key
+// instance for the same reason as `isUndoRedo` above. `type` is the
+// Y.XmlFragment this editor binds to.
+const getYSyncFragment = (state: EditorState): { length: number } | null => {
+  const ystate = (state as unknown as Record<string, unknown>)['y-sync$'] as
+    | { type?: { length: number } }
+    | undefined;
+  return ystate?.type ?? null;
+};
+
 export const UndoSelection = Extension.create({
   name: 'undoSelection',
 
   addProseMirrorPlugins() {
+    const { editor } = this;
+
+    // Redo dies whenever an undo empties the Yjs fragment outright (which
+    // happens when the undone edit had replaced the initial paragraph — a
+    // heading insert does). ProseMirror cannot render an empty document, so
+    // the view shows its mandatory empty paragraph, and on the NEXT dispatch
+    // (the TOC debounce, a caret move, anything) the y-sync binding writes
+    // that paragraph back to Yjs as a fresh tracked change — which the
+    // UndoManager captures, wiping the redo stack. Force that reconciliation
+    // to happen right now instead, under `addToHistory: false`, so it is
+    // never captured and redo survives.
+    const reconcileEmptiedFragment = (state: EditorState) => {
+      const fragment = getYSyncFragment(state);
+      if (!fragment || fragment.length !== 0) {
+        return;
+      }
+      queueMicrotask(() => {
+        if (editor.isDestroyed) {
+          return;
+        }
+        const current = getYSyncFragment(editor.state);
+        if (!current || current.length !== 0) {
+          return;
+        }
+        editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false));
+      });
+    };
+
     return [
       new Plugin<boolean>({
         key: undoSelectionKey,
@@ -73,6 +111,8 @@ export const UndoSelection = Extension.create({
           if (!undoRedo) {
             return null;
           }
+
+          reconcileEmptiedFragment(newState);
 
           const from = oldState.doc.content.findDiffStart(newState.doc.content);
           if (from === null || from === undefined) {
