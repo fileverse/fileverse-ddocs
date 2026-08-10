@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DragHandle } from '@tiptap/extension-drag-handle-react';
+import { NodeRangeSelection } from '@tiptap/extension-node-range';
 import { Editor } from '@tiptap/react';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { useMediaQuery } from 'usehooks-ts';
@@ -64,6 +65,64 @@ export const resolveTopLevelBlock = (
   const node = $pos.nodeAfter;
   if (!node) return null;
   return { editor, node, pos };
+};
+
+// Rescue path for dragging CHILDLESS top-level blocks (captionless media,
+// iframe/tweet embeds, page breaks, empty paragraphs). The upstream
+// DragHandle re-resolves its drag target from the drag event's coordinates:
+// `posAtDOM(blockDom, 0)` lands INSIDE the block, and for a childless node
+// `doc.nodeAt(insidePos)` is null, so `getDragHandleRanges` returns [] and
+// `dragHandler` bails without ever setting `view.dragging` — the drop then
+// silently does nothing ("cannot move the image", TEC-2679). A caption (or
+// any child) makes `nodeAt` non-null, which is why captioned images drag
+// fine; v1 was immune because the dBlock wrapper always supplied a child.
+// We know the hovered block reliably from onNodeChange, so for exactly the
+// childless case we build the drag state ourselves (same shape as the
+// upstream dragHandler) and stop the event from reaching the broken path.
+export const rescueLeafBlockDragStart = (
+  editor: Editor,
+  pos: number,
+  node: ProseMirrorNode,
+  event: DragEvent,
+): boolean => {
+  if (node.childCount > 0) return false;
+  if (!event.dataTransfer) return false;
+
+  const { view } = editor;
+  const selection = NodeRangeSelection.create(
+    view.state.doc,
+    pos,
+    pos + node.nodeSize,
+  );
+  const slice = selection.content();
+
+  const dom = view.nodeDOM(pos);
+  if (dom instanceof HTMLElement) {
+    const ghost = document.createElement('div');
+    ghost.append(dom.cloneNode(true));
+    ghost.style.position = 'absolute';
+    ghost.style.top = '-10000px';
+    document.body.append(ghost);
+    event.dataTransfer.clearData();
+    event.dataTransfer.setDragImage(ghost, 0, 0);
+    const cleanup = () => ghost.remove();
+    document.addEventListener('drop', cleanup, { once: true });
+    document.addEventListener('dragend', cleanup, { once: true });
+  }
+
+  view.dragging = { slice, move: true };
+  view.dispatch(view.state.tr.setSelection(selection));
+
+  // Mirror the upstream handler: the floating handle sits under the cursor
+  // at drag start and would swallow the first dragover events. Upstream's
+  // own dragend listener restores pointer-events (we only stop dragSTART
+  // propagation, never dragend).
+  setTimeout(() => {
+    const handleEl = document.querySelector<HTMLElement>('.drag-handle');
+    if (handleEl) handleEl.style.pointerEvents = 'none';
+  }, 0);
+
+  return true;
 };
 
 // Stable identity: DragHandle's internal useEffect depends on
@@ -137,6 +196,37 @@ export const DBlockDragHandle = ({
   useEffect(() => {
     setMenuOpen(false);
   }, [hovered?.pos]);
+
+  // Native (not React-synthetic) listener: the DragHandle plugin physically
+  // relocates our rendered element outside the React root, so synthetic
+  // event delegation cannot be relied on here. Bubbling from the grip
+  // reaches the cluster div BEFORE the plugin's own listener on its parent
+  // element, which lets us take over exactly the childless-block case —
+  // see rescueLeafBlockDragStart above.
+  const resolveBlockRef = useRef(resolveBlock);
+  resolveBlockRef.current = resolveBlock;
+  useEffect(() => {
+    const cluster = clusterRef.current;
+    if (!cluster) return;
+
+    const onDragStart = (event: DragEvent) => {
+      const current = resolveBlockRef.current();
+      if (!current) return;
+      if (
+        rescueLeafBlockDragStart(
+          current.editor,
+          current.pos,
+          current.node,
+          event,
+        )
+      ) {
+        event.stopPropagation();
+      }
+    };
+
+    cluster.addEventListener('dragstart', onDragStart);
+    return () => cluster.removeEventListener('dragstart', onDragStart);
+  }, []);
 
   if (runtimeState.isPresentationMode && runtimeState.isPreviewMode) {
     return null;

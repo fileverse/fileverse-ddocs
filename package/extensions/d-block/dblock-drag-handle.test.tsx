@@ -2,8 +2,20 @@ import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import { makeEditor } from '../../utils/make-editor';
-import { DBlockDragHandle, resolveTopLevelBlock } from './dblock-drag-handle';
+import {
+  DBlockDragHandle,
+  rescueLeafBlockDragStart,
+  resolveTopLevelBlock,
+} from './dblock-drag-handle';
 import { DEFAULT_DBLOCK_RUNTIME_STATE } from './dblock-runtime';
+
+const makeFakeDragEvent = () =>
+  ({
+    dataTransfer: {
+      clearData: () => {},
+      setDragImage: () => {},
+    },
+  }) as unknown as DragEvent;
 
 beforeAll(() => {
   // floating-ui in jsdom
@@ -54,6 +66,65 @@ describe('resolveTopLevelBlock', () => {
     expect(
       resolveTopLevelBlock(editor, editor.state.doc.content.size + 5),
     ).toBeNull();
+  });
+});
+
+describe('rescueLeafBlockDragStart', () => {
+  let editor: Editor;
+  afterEach(() => editor?.destroy());
+
+  it('declines blocks that have children (the upstream path works for those)', () => {
+    editor = makeEditor('<p>hello</p>');
+    const block = resolveTopLevelBlock(editor, 0)!;
+    expect(block.node.childCount).toBeGreaterThan(0);
+
+    const handled = rescueLeafBlockDragStart(
+      editor,
+      block.pos,
+      block.node,
+      makeFakeDragEvent(),
+    );
+
+    expect(handled).toBe(false);
+    expect(editor.view.dragging).toBeFalsy();
+  });
+
+  it('arms view.dragging for a childless top-level block', () => {
+    // pageBreak is the headless schema's childless leaf — the same class as
+    // captionless media and embeds, where the upstream handler's
+    // nodeAt(posAtDOM(...)) resolution returns null and the drag dies.
+    editor = makeEditor('<p>hello</p>');
+    document.body.appendChild(editor.view.dom);
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: 'pageBreak',
+    });
+    let pageBreakPos = -1;
+    let pageBreakNode: Editor['state']['doc'] | null = null;
+    editor.state.doc.forEach((node, pos) => {
+      if (node.type.name === 'pageBreak') {
+        pageBreakPos = pos;
+        pageBreakNode = node as never;
+      }
+    });
+    expect(pageBreakPos).toBeGreaterThan(-1);
+
+    const handled = rescueLeafBlockDragStart(
+      editor,
+      pageBreakPos,
+      pageBreakNode!,
+      makeFakeDragEvent(),
+    );
+
+    expect(handled).toBe(true);
+    expect(editor.view.dragging).toBeTruthy();
+    expect(editor.view.dragging!.move).toBe(true);
+    const sliceTypes: string[] = [];
+    editor.view.dragging!.slice.content.forEach((node) =>
+      sliceTypes.push(node.type.name),
+    );
+    expect(sliceTypes).toEqual(['pageBreak']);
+    // the selection now covers the dragged block, like the upstream handler
+    expect(editor.state.selection.from).toBe(pageBreakPos);
   });
 });
 
