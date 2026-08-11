@@ -63,6 +63,11 @@
     }
   }
 
+  ul {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
   /* Flat v2 rhythm: match v1's effective uniform 24px block gap. prose-lg
      gives headings 48px margins; v1 never shows them (margins collapse
      through the wrapper rows), so v2 pins headings to the same 1.5rem as
@@ -78,7 +83,6 @@
       margin-bottom: 1.5rem;
     }
   }
-
 
   & > p {
     margin-top: 1.5rem;
@@ -338,12 +342,10 @@
 
   ul {
     padding: 0;
-    margin: 0;
   }
 
   ol {
     padding: 0;
-    margin: 0;
   }
 
   li {
