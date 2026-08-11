@@ -55,6 +55,7 @@ import { createDBlockExtension } from './d-block';
 import { FlatHeadingCollapse } from './d-block/dblock-collapse';
 import { FlatMediaConversion } from './d-block/dblock-media-plugin';
 import { BlockId } from './block-id';
+import { ListNormalization } from './list-normalization';
 import { UndoSelection } from './undo-selection';
 import { AiWriterSpaceTrigger } from './ai-writer/ai-writer-space-trigger';
 import { SuperchargedTableExtensions } from './supercharged-table';
@@ -466,6 +467,10 @@ export const defaultExtensions = ({
             : undefined,
         }),
         BlockId,
+        // Notion-template parity: Backspace on an empty block between two
+        // same-type lists joins them (TEC-2679). v1's lists live inside
+        // dBlock wrappers where this is the custom keymap's territory.
+        ListNormalization,
         // Same hasAvailableModels gate as v1's in-dBlock space trigger.
         ...(hasAvailableModels ? [AiWriterSpaceTrigger] : []),
       ]
