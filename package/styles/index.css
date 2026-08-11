@@ -365,8 +365,33 @@ li > ol > li > ol > li:before {
   word-break: break-word;
 }
 
+/* Collapse-hidden blocks stay IN layout at zero height rather than
+   display:none. The floating drag-handle clamps every hover into the span
+   between the first and last DOM children's rects; a display:none last child
+   has a [0,0] rect, which clamped every hover off-screen — so ending the
+   document with a collapsed section killed the block chrome for the whole
+   document. Zero-height keeps the rect at the right y. overflow:hidden
+   contains child margins; the margin/padding zeroing kills the block-rhythm
+   gap the elements would otherwise leave behind. */
 .d-block-hidden {
-  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+}
+
+/* The zero-height boxes above block margin-collapsing between the blocks
+   around them. In v2 the block after a hidden run is always a heading (a
+   collapse region ends at the next same-or-higher heading), and v2 headings
+   carry margins on both sides — so the pair that normally collapses to one
+   24px gap stacked to 48px. Drop the follower's top margin; the preceding
+   heading's bottom margin supplies the rhythm. v1 wraps blocks differently
+   and measures correctly without this. */
+[data-schema-version='2'] .d-block-hidden + * {
+  margin-top: 0 !important;
 }
 
 .invalid-content {
