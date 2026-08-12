@@ -208,7 +208,7 @@ const PreviewDdocEditorContent = forwardRef(
 
         {!editor || isContentLoading || isLoading
           ? fadeInTransition(
-              <div className={cn(`${!isMobile ? 'mx-20' : 'mx-10 mt-10'}`)}>
+              <div className={cn('pt-20', !isMobile ? 'mx-20' : 'mx-10 mt-10')}>
                 <Skeleton
                   className={`${isPreviewMode ? 'w-full' : isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4`}
                 />

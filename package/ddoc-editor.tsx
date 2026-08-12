@@ -1108,7 +1108,7 @@ const DdocEditor = forwardRef(
                                     <PreviewContentLoader />
                                   ) : (
                                     <Skeleton
-                                      className={`${isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4`}
+                                      className={`${isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4 pt-20`}
                                     />
                                   )}
                                 </div>,
