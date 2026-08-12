@@ -3,7 +3,7 @@ import { motion, MotionConfig } from 'framer-motion';
 
 export const PreviewContentLoader = () => {
   return (
-    <div className="flex flex-col gap-8 pt-20">
+    <div className="flex flex-col gap-8 p-20">
       <MotionConfig
         transition={{
           duration: 4,
