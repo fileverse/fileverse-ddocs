@@ -43,6 +43,7 @@ const ExtendedTextStyle = TextStyle.extend({
     };
   },
 });
+import { CommonMarkBold, CommonMarkItalic } from './commonmark-emphasis';
 import HorizontalRule from './horizontal-rule';
 import ColumnExtension from './multi-column';
 import CustomKeymap from './custom-keymap';
@@ -283,16 +284,10 @@ export const defaultExtensions = ({
         class: 'select-text pointer-events-auto',
       },
     },
-    bold: {
-      HTMLAttributes: {
-        class: 'select-text pointer-events-auto',
-      },
-    },
-    italic: {
-      HTMLAttributes: {
-        class: 'select-text pointer-events-auto',
-      },
-    },
+    // Replaced by CommonMarkBold/CommonMarkItalic below: upstream input/paste
+    // rules italicize spaced `* x *`, eating multiplication (TEC-2634).
+    bold: false,
+    italic: false,
     underline: {
       HTMLAttributes: {
         class: 'select-text pointer-events-auto',
@@ -333,6 +328,16 @@ export const defaultExtensions = ({
     listItem: false,
     codeBlock: false,
     trailingNode: false,
+  }),
+  CommonMarkBold.configure({
+    HTMLAttributes: {
+      class: 'select-text pointer-events-auto',
+    },
+  }),
+  CommonMarkItalic.configure({
+    HTMLAttributes: {
+      class: 'select-text pointer-events-auto',
+    },
   }),
   CollapsibleHeading.configure({
     HTMLAttributes: {
