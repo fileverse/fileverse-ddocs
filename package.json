@@ -2,7 +2,7 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "4.3.9",
+  "version": "4.3.10-patch-4",
   "main": "dist/index.es.js",
   "module": "dist/index.es.js",
   "exports": {
@@ -78,6 +78,8 @@
     "@tiptap/markdown": "^3.11.0",
     "@tiptap/pm": "3.11.0",
     "@tiptap/react": "3.11.0",
+    "@tiptap/extension-bold": "^3.11.0",
+    "@tiptap/extension-italic": "^3.11.0",
     "@tiptap/starter-kit": "^3.11.0",
     "@tiptap/suggestion": "^3.11.0",
     "@types/uuid": "^10.0.0",
