@@ -7,6 +7,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { createDBlockCollapsePlugin } from './dblock-collapse';
 import { createDBlockMediaConversionPlugin } from './dblock-media-plugin';
+import { createDBlockPasteNormalizerPlugin } from './dblock-paste-normalizer';
 
 export interface DBlockOptions {
   HTMLAttributes: Record<string, any>;
@@ -1016,6 +1017,7 @@ export const DBlock = Node.create<DBlockOptions>({
     const plugins = [
       createDBlockCollapsePlugin(),
       createDBlockMediaConversionPlugin(this.options.getRuntimeState),
+      createDBlockPasteNormalizerPlugin(),
     ];
 
     if (!this.options.hasAvailableModels) {
