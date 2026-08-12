@@ -8,6 +8,11 @@ import * as Y from 'yjs';
 import { isJSONString } from '../utils/isJsonString';
 import { fromUint8Array, toUint8Array } from 'js-base64';
 import { sanitizeContent } from '../utils/sanitize-content';
+import { unwrapDBlocksInJSON } from '../utils/block-schema';
+import {
+  DDOC_META_ROOT_KEY,
+  SCHEMA_VERSION_META_KEY,
+} from '../utils/schema-version';
 import { handleMarkdownContent } from '../extensions/mardown-paste-handler';
 import { IpfsImageUploadResponse } from '../types';
 import mammoth from 'mammoth';
@@ -57,12 +62,26 @@ export const getHeadlessExtensions = (options?: {
 };
 
 export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
-  const getEditor = () => {
+  const getEditor = (options?: { schemaVersion?: number }) => {
     const ydoc = new Y.Doc();
+
+    // Blobs produced headlessly (templates, imports) already have content
+    // when the real editor first mounts them, so useDocSchemaVersion will
+    // never stamp them — the stamp must be born inside the blob here, or
+    // the doc is treated as legacy v1 forever. 'self' origin, same as the
+    // mount-time stamping: bootstrapping metadata is not a user edit.
+    if ((options?.schemaVersion ?? 1) >= 2) {
+      ydoc.transact(() => {
+        ydoc
+          .getMap(DDOC_META_ROOT_KEY)
+          .set(SCHEMA_VERSION_META_KEY, options?.schemaVersion);
+      }, 'self');
+    }
 
     const extensions = getHeadlessExtensions({
       ydoc,
       optionalExtensions: props?.optionalExtensions,
+      schemaVersion: options?.schemaVersion,
     });
 
     const editor = new Editor({
@@ -104,17 +123,22 @@ export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
         Y.applyUpdate(ydoc, toUint8Array(initialContent as string));
       }
     } else {
+      const hasDBlock = Boolean(editor.schema.nodes.dBlock);
       editor.commands.setContent(
         sanitizeContent({
-          data: initialContent as JSONContent,
-          wrapInDBlock: Boolean(editor.schema.nodes.dBlock),
+          // v1-shaped JSON (templates, legacy exports) cannot load into the
+          // flat schema; hoist the real blocks out of their dBlock wrappers.
+          data: hasDBlock
+            ? (initialContent as JSONContent)
+            : unwrapDBlocksInJSON(initialContent as JSONContent),
+          wrapInDBlock: hasDBlock,
         }),
       );
     }
   };
 
-  const getYjsConvertor = () => {
-    const { editor, ydoc } = getEditor();
+  const getYjsConvertor = (options?: { schemaVersion?: number }) => {
+    const { editor, ydoc } = getEditor(options);
     return {
       convertJSONContentToYjsEncodedString: (content: JSONContent) => {
         setContent(content, editor, ydoc);

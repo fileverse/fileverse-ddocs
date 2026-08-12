@@ -70,12 +70,20 @@ the next newborn is stamped with. Consequences worth internalizing:
 4. **Version-history diff** (`utils/diff/node-diff-renderer.ts:272`) — add a
    flat branch next to the dBlock branch. Cross-schema diff cannot occur (a
    doc never changes schema), so it is deferred until migration exists.
-5. **Templates** (`use-create-page.tsx`) — the app inserts its own template
-   JSON at creation. Call the package's `unwrapDBlocksInJSON` on it when the
-   doc is v2. Never hand-rewrite `template-utils.ts` (144 dBlock nodes); the
-   v1-shaped JSON stays the source of truth. Since ddocs.new picks the
-   template *before* doc creation, the fork is trivial: create as v2, insert
-   unwrapped.
+5. **Templates** (`use-create-page.tsx`) — the app converts its template
+   JSON to a Yjs blob headlessly, before any editor mounts. Pass
+   `{ schemaVersion: 2 }` to the package's `getYjsConvertor()` when the flag
+   says v2; the package builds the flat editor, unwraps the dBlock wrappers,
+   and stamps the marker inside the blob itself. The stamp must be born
+   there: a headless blob already has content at first real mount, so the
+   mount-time stamping refuses it, and an unstamped blob is legacy v1
+   forever. Never hand-rewrite `template-utils.ts` (144 dBlock nodes); the
+   v1-shaped JSON stays the source of truth. Note the in-editor template
+   overlay needs nothing — it already unwraps at insert time against the
+   live schema. The `.md`/`.docx` import paths (`getYjsContentFromMarkdown`
+   / `getYjsContentFromDocx`) still build v1 blobs — safe (imported docs
+   simply stay v1), thread the same option through them when imports should
+   produce v2 docs.
 6. **E2E selectors** (`tests/utils/selectors.ts:13`) couple to v1 node-view
    DOM; add v2 variants.
 

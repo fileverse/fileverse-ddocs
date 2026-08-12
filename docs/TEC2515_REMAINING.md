@@ -87,7 +87,10 @@ already audited and located.
   behind a `NEXT_PUBLIC_*` flag (follow the `useTeamWorkspacesEnabled` pattern
   in `utils/feature-flags.ts`). **This is the switch that creates the first v2
   document.**
-- `use-create-page.tsx` — apply the template unwrap at creation.
+- `use-create-page.tsx` — pass `{ schemaVersion: 2 }` to the package's
+  `getYjsConvertor()` when creating as v2; the package unwraps the template
+  JSON and stamps the marker inside the blob (headless support landed
+  package-side with the M3 prep).
 - Keep the `yjs` / `y-indexeddb` / `y-protocols` overrides in lockstep with the
   package's peers.
 - `tests/utils/selectors.ts:13` — E2E selectors couple to node-view DOM.
