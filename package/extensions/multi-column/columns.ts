@@ -48,6 +48,13 @@ export const Columns = Node.create({
     return {
       layout: {
         default: ColumnLayout.AlignCenter,
+        // renderHTML emits layout only as a `layout-*` class; styles-mode
+        // markdown carries it as data-layout (survives DOMPurify). Read both
+        // so a Split View round-trip doesn't reset the layout.
+        parseHTML: (element) =>
+          element.getAttribute('data-layout') ||
+          /layout-([\w-]+)/.exec(element.className || '')?.[1] ||
+          ColumnLayout.AlignCenter,
       },
     };
   },

@@ -26,6 +26,7 @@ import {
 import { markdownHtmlGuardPlugin } from './mark-down-html-guard-plugin';
 import { parseHeadingLink } from '../../utils/heading-link';
 import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
+import { shieldMathRegions } from '../../utils/math-region-shield';
 import { TWITTER_REGEX } from '../../constants/twitter';
 import {
   escapeOutsideMath,
@@ -121,7 +122,7 @@ turndownService.addRule('pageBreak', {
     );
   },
   replacement: function () {
-    return '\n\n===\n\n';
+    return omitPageBreaks ? '' : '\n\n===\n\n';
   },
 });
 
@@ -361,9 +362,17 @@ turndownService.addRule('inlineMathNode', {
     const esc = (v: string) =>
       v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const evaluate = el.getAttribute('data-evaluate');
+    // The inner $…$ body must be ENTITY-FREE: pandoc keeps entities verbatim
+    // inside tex_math_dollars and its HTML writer re-escapes the `&`, so an
+    // `&lt;` here reaches MathJax as literal `&lt;` — the `&` reads as a TeX
+    // alignment char ("Misplaced &", TEC-2634). `<` becomes \lt (same glyph,
+    // no tag-open ambiguity; trailing space so a following letter can't
+    // extend the macro); `&`/`>` stay raw — markdown-it re-encodes them
+    // correctly on import, and the editor restores from data-latex anyway.
+    const body = latex.replace(/</g, '\\lt ');
     return `<span data-type="inlineMath" data-latex="${esc(latex)}"${
       display ? ` data-display="${esc(display)}"` : ''
-    }${evaluate ? ` data-evaluate="${esc(evaluate)}"` : ''}>${delim}${esc(latex)}${delim}</span>`;
+    }${evaluate ? ` data-evaluate="${esc(evaluate)}"` : ''}>${delim}${body}${delim}</span>`;
   },
 });
 
@@ -463,6 +472,95 @@ turndownService.addRule('secureImageRef', {
   },
 });
 
+// Media wrapper → <figure> (styles mode). Alignment, resize width, and the
+// caption are node-view-only presentation in the editor; the figure carries
+// them through markdown so the published blog and a Split View re-import show
+// the same image the editor does (TEC-2634 P0: alignment + captions). Plain
+// .md export keeps the portable ![alt](src) form via the rules above.
+const MEDIA_FIGURE_SKIP_ATTRS = new Set([
+  'style',
+  'class',
+  'draggable',
+  'controls',
+  'dataalign',
+  'datafloat',
+  'data-type',
+]);
+turndownService.addRule('mediaFigure', {
+  filter: (node) =>
+    emitInlineStyles &&
+    node.nodeName === 'DIV' &&
+    (node as HTMLElement).getAttribute('data-type') === 'resizable-media',
+  replacement: function (_content, node) {
+    const el = node as HTMLElement;
+    const media = el.querySelector('img, video');
+    if (!media) return '';
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const isDefaultSize = (name: string, value: string) =>
+      (name === 'width' && value === '100%') ||
+      (name === 'height' && value === 'auto');
+    const attrs = Array.from(media.attributes)
+      .filter(
+        (a) =>
+          a.value &&
+          !MEDIA_FIGURE_SKIP_ATTRS.has(a.name) &&
+          !isDefaultSize(a.name, a.value),
+      )
+      .map((a) => `${a.name}="${esc(a.value)}"`)
+      .join(' ');
+    const mediaHtml =
+      media.nodeName === 'VIDEO'
+        ? `<video ${attrs}>\n</video>`
+        : `<img ${attrs} />`;
+    const align =
+      el.getAttribute('dataalign') ||
+      media.getAttribute('dataalign') ||
+      'center';
+    const float =
+      el.getAttribute('datafloat') || media.getAttribute('datafloat');
+    const caption = el
+      .querySelector('[data-type="media-caption"], .media-caption')
+      ?.innerHTML.trim();
+    const figAttrs =
+      ` data-align="${esc(align)}"` +
+      (float ? ` data-float="${esc(float)}"` : '');
+    const captionHtml = caption ? `<figcaption>${caption}</figcaption>\n` : '';
+    // No blank lines inside: the figure must stay ONE html block for both
+    // markdown-it (import) and pandoc (publish) so nothing inside is
+    // re-parsed as markdown.
+    return `\n\n<figure data-type="resizable-media"${figAttrs}>\n${mediaHtml}\n${captionHtml}</figure>\n\n`;
+  },
+});
+
+// Columns (styles mode): the div structure is the round-trip carrier — blank
+// lines INSIDE each column keep the inner content parsed as markdown by both
+// markdown-it (import) and pandoc (publish, markdown_in_html_blocks), while
+// the outer tags stay single HTML blocks. Grid styling ships in the blog
+// template CSS (TEC-2634 P0 item 7). Plain export keeps flattening.
+turndownService.addRule('columnsBlock', {
+  filter: (node) =>
+    emitInlineStyles &&
+    node.nodeName === 'DIV' &&
+    (node as HTMLElement).getAttribute('data-type') === 'columns',
+  replacement: function (content, node) {
+    const el = node as HTMLElement;
+    const layout = /layout-([\w-]+)/.exec(el.className || '')?.[1];
+    const layoutAttr = layout ? ` data-layout="${layout}"` : '';
+    return `\n\n<div data-type="columns"${layoutAttr}>\n${content.trim()}\n</div>\n\n`;
+  },
+});
+turndownService.addRule('columnItem', {
+  filter: (node) =>
+    emitInlineStyles &&
+    node.nodeName === 'DIV' &&
+    (node as HTMLElement).getAttribute('data-type') === 'column',
+  replacement: function (content, node) {
+    const position = (node as HTMLElement).getAttribute('data-position');
+    const posAttr = position ? ` data-position="${position}"` : '';
+    return `\n<div data-type="column"${posAttr}>\n\n${content.trim()}\n\n</div>\n`;
+  },
+});
+
 // Custom rules for strikethrough
 turndownService.addRule('strikethrough', {
   filter: 's',
@@ -492,6 +590,15 @@ export const setMarkdownInlineStyles = (enabled: boolean) => {
 let resolveColorVarsForExport = false;
 export const setResolveColorVars = (enabled: boolean) => {
   resolveColorVarsForExport = enabled;
+};
+
+// Blog publish opts out of page breaks: a pagination marker has no meaning on
+// a scrolling web page, and its `===` form rendered as literal text there
+// (TEC-2634 P0 item 5). Split View / .md download keep `===` — the import
+// lane restores it to a pageBreak node.
+let omitPageBreaks = false;
+export const setOmitPageBreaks = (enabled: boolean) => {
+  omitPageBreaks = enabled;
 };
 
 // Color / font-family / font-size live on a styled <span> (TextStyle marks).
@@ -603,6 +710,11 @@ declare module '@tiptap/core' {
          * images stay as attribute references and are never re-uploaded.
          */
         embedImages?: boolean;
+        /**
+         * Drop page breaks instead of emitting `===` — blog publish only,
+         * where a pagination marker would render as literal text.
+         */
+        omitPageBreaks?: boolean;
       }) => any;
     };
   }
@@ -785,6 +897,7 @@ const MarkdownPasteHandler = (
             metadata?: Record<string, string>;
             includeStyles?: boolean;
             embedImages?: boolean;
+            omitPageBreaks?: boolean;
           }) =>
           async ({ editor }: { editor: Editor }): Promise<string> => {
             const { showLoader, removeLoader } = inlineLoader(
@@ -828,10 +941,12 @@ const MarkdownPasteHandler = (
                 setResolveColorVars(
                   Boolean(props?.includeStyles) && props?.embedImages !== false,
                 );
+                setOmitPageBreaks(Boolean(props?.omitPageBreaks));
                 markdown = turndownService.turndown(inlineHtml);
               } finally {
                 setMarkdownInlineStyles(false);
                 setResolveColorVars(false);
+                setOmitPageBreaks(false);
               }
 
               // Enforce the invariant: exactly one <style> block, and only the
@@ -1165,6 +1280,12 @@ export async function handleMarkdownContent(
     '',
   );
 
+  // Shield $…$/$$…$$ regions from everything below (markdown-it escape
+  // stripping, the asterisk regexes, the sup/sub regexes) — restored verbatim
+  // just before sanitization, so imported TeX reaches pandoc untouched.
+  const mathShield = shieldMathRegions(cleanMarkdown);
+  cleanMarkdown = mathShield.shielded;
+
   // Protect formulas from being interpreted as markdown by escaping asterisks
   // Only escape asterisks that are clearly part of math expressions (e.g., 4*6, [1,2]*[3,4])
   // Use precise patterns to avoid breaking markdown formatting like **bold**, *italic*, or lists
@@ -1340,6 +1461,10 @@ export async function handleMarkdownContent(
     subscriptRegex,
     '<sub data-type="sub">$1</sub>',
   );
+
+  // Reinsert the shielded math regions (HTML-escaped) BEFORE sanitization so
+  // DOMPurify stays the last gate over the full document.
+  convertedHtml = mathShield.restore(convertedHtml);
 
   // Sanitize the converted HTML. iframe is allowed through here because the
   // Iframe extension's parseHTML drops any src that fails isAllowedEmbedSrc;
