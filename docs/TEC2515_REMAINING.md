@@ -81,8 +81,11 @@ already audited and located.
 - `utils/ddoc-title-manager.ts:120-180` — `extractTitleFromContent` assumes the
   wrapper level and fails silently on v2, leaving documents titled "Untitled".
   ~5 lines. **Must fix before any v2 doc exists.**
-- `utils/diff/node-diff-renderer.ts:272` — version-history diff needs a flat
-  branch. Cross-schema diff is deferrable: a document never changes schema.
+- `utils/diff/node-diff-renderer.ts:272` — RESOLVED, no code needed: the
+  diff pipeline is schema-agnostic (schema-less blob decode, LCS differ,
+  generic renderer; the dBlock branch is v1-only refinement). Locked by
+  characterization tests in the app repo
+  (`utils/diff/__tests__/node-diff-flat.test.ts`).
 - `components/ddoc-editor/ddoc-editor.tsx:864` — pass `preferredSchemaVersion`
   behind a `NEXT_PUBLIC_*` flag (follow the `useTeamWorkspacesEnabled` pattern
   in `utils/feature-flags.ts`). **This is the switch that creates the first v2

@@ -67,9 +67,17 @@ the next newborn is stamped with. Consequences worth internalizing:
    every doc stays "Untitled" (doc list, export filenames). The package fixed
    its identical copy in `package/utils/extract-title-from-content.tsx`;
    reuse that shape. **Must land before any v2 doc exists.**
-4. **Version-history diff** (`utils/diff/node-diff-renderer.ts:272`) — add a
-   flat branch next to the dBlock branch. Cross-schema diff cannot occur (a
-   doc never changes schema), so it is deferred until migration exists.
+4. **Version-history diff** — verified to need NO code change. The pipeline
+   is schema-agnostic end to end: `buildVersionDiffSnapshot` decodes blobs
+   via `yDocToProsemirrorJSON` (no schema involved), the LCS differ compares
+   whatever block types it is given, and the renderer's dBlock branch at
+   `utils/diff/node-diff-renderer.ts:272` is a v1-only refinement that flat
+   content simply never enters. v2 diffs actually align better than v1:
+   persistent blockId attrs give the LCS block identity, where v1's
+   attr-less dBlock wrappers are interchangeable. Characterization tests
+   lock the flat path (`utils/diff/__tests__/node-diff-flat.test.ts` in the
+   app repo). Cross-schema diff still cannot occur (a doc never changes
+   schema).
 5. **Templates** (`use-create-page.tsx`) — the app converts its template
    JSON to a Yjs blob headlessly, before any editor mounts. Pass
    `{ schemaVersion: 2 }` to the package's `getYjsConvertor()` when the flag
