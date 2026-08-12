@@ -63,9 +63,8 @@
     }
   }
 
-  ul {
+  ul + ul {
     margin-top: 1.5rem;
-    margin-bottom: 1.5rem;
   }
 
   /* Flat v2 rhythm: match v1's effective uniform 24px block gap. prose-lg
