@@ -27,6 +27,10 @@ import { markdownHtmlGuardPlugin } from './mark-down-html-guard-plugin';
 import { parseHeadingLink } from '../../utils/heading-link';
 import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
 import { TWITTER_REGEX } from '../../constants/twitter';
+import {
+  escapeOutsideMath,
+  hasMathRegions,
+} from '../../utils/math-aware-escape';
 
 // Initialize MarkdownIt for converting Markdown back to HTML with footnote support.
 const markdownIt = new MarkdownIt({ html: true })
@@ -341,7 +345,8 @@ turndownService.addRule('mathExpression', {
 // data-latex="...">. In styles mode (Split View seed / "Markdown with CSS")
 // keep that span as raw HTML so the node round-trips losslessly — the
 // MathExtension's parseHTML reads it back via data-latex. Plain .md export
-// stays $latex$ text (no import-side reparse; markdown purity wins there).
+// stays $latex$/$$latex$$ text (no import-side reparse; markdown purity
+// wins there) — delimiter count follows data-display, see below.
 turndownService.addRule('inlineMathNode', {
   filter: (node) =>
     node.nodeName === 'SPAN' &&
@@ -350,14 +355,15 @@ turndownService.addRule('inlineMathNode', {
     const el = node as HTMLElement;
     const latex = el.getAttribute('data-latex') || '';
     if (!latex) return '';
-    if (!emitInlineStyles) return `$${latex}$`;
+    const display = el.getAttribute('data-display');
+    const delim = display === 'yes' ? '$$' : '$';
+    if (!emitInlineStyles) return `${delim}${latex}${delim}`;
     const esc = (v: string) =>
       v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    const display = el.getAttribute('data-display');
     const evaluate = el.getAttribute('data-evaluate');
     return `<span data-type="inlineMath" data-latex="${esc(latex)}"${
       display ? ` data-display="${esc(display)}"` : ''
-    }${evaluate ? ` data-evaluate="${esc(evaluate)}"` : ''}>$${esc(latex)}$</span>`;
+    }${evaluate ? ` data-evaluate="${esc(evaluate)}"` : ''}>${delim}${esc(latex)}${delim}</span>`;
   },
 });
 
@@ -377,13 +383,11 @@ function looksLikeFormula(text: string): boolean {
   return hasBrackets && (hasNumbers || hasOperators) && !isMarkdownLink;
 }
 
-// Override escape function to handle formula-like content
+// Escape override: math regions verbatim, prose escaped (incl. `^` for
+// pandoc's +superscript). See utils/math-aware-escape.ts.
 turndownService.escape = (function (originalEscape) {
-  return function (this: any, text: string) {
-    if (looksLikeFormula(text)) {
-      return text;
-    }
-    return originalEscape.call(this, text);
+  return function (this: unknown, text: string) {
+    return escapeOutsideMath(text, (s) => originalEscape.call(this, s));
   };
 })(turndownService.escape);
 
@@ -860,6 +864,14 @@ const MarkdownPasteHandler = (
                 date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
                 ...props?.metadata,
               };
+              // Known false-positive: custom CSS with `$=` selectors can trigger hasMathRegions, but harmless (metadata-only).
+              if (
+                props?.metadataFormat === 'reference-links' &&
+                !metadataEntries.pandoc &&
+                hasMathRegions(markdown)
+              ) {
+                metadataEntries.pandoc = '--mathjax';
+              }
 
               let markdownWithMeta: string;
 

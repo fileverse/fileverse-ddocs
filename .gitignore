@@ -30,3 +30,6 @@ dist-ssr
 # graphify (generated knowledge graph — local only)
 graphify-out/
 
+# blog-math-harness dev-tool output (regenerated per run, never shipped)
+scripts/blog-math-harness-out/
+
