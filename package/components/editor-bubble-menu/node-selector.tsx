@@ -166,9 +166,11 @@ export const convertListToParagraphs = ({
 
   if (!listContent || listPos === -1) return false;
 
+  const hasDBlock = Boolean(state.schema.nodes.dBlock);
+
   // Avoid dBlocks inside tables and skip indent attrs inside callouts.
   const newContent = processListContent(listContent.toJSON(), {
-    wrapInDBlock: !isInsideCallout && !tableCellRange,
+    wrapInDBlock: hasDBlock && !isInsideCallout && !tableCellRange,
     includeIndent: !isInsideCallout,
   });
 
@@ -190,6 +192,9 @@ export const convertListToParagraphs = ({
       state.schema.nodeFromJSON(json),
     );
 
+    tr.replaceWith(listPos, listPos + listContent.nodeSize, paragraphNodes);
+  } else if (!hasDBlock) {
+    // Flat schema: the list is a top-level node, swap it for the paragraphs.
     tr.replaceWith(listPos, listPos + listContent.nodeSize, paragraphNodes);
   } else {
     // Replace the whole dBlock with paragraphs
@@ -380,6 +385,16 @@ export const convertToList = ({
     ]);
 
     tr.replaceWith(firstDBlockPos, lastDBlockPos, newDblock);
+  }
+
+  // ✅ Case 3: FLAT SCHEMA (no dBlock in the doc) — replace the top-level
+  // blocks in the selection with the list directly.
+  else if (firstBlockPos !== -1 && lastBlockPos !== -1) {
+    tr.replaceWith(
+      firstBlockPos,
+      lastBlockPos,
+      state.schema.nodeFromJSON(newListContent),
+    );
   }
 
   return true;

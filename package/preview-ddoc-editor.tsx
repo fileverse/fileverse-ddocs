@@ -163,6 +163,23 @@ const PreviewDdocEditorContent = forwardRef(
 
     const isMobile = useMediaQuery('(max-width: 768px)');
 
+    // Newer-schema docs never bind an editor in this build (schema guard in
+    // useDdocEditor); show a refresh prompt instead of the preview surface.
+    if (rest.isSchemaUnsupported) {
+      return (
+        <div className="flex flex-col items-center gap-3 text-center p-10">
+          <p className="text-heading-sm color-text-default">
+            Update needed to open this document
+          </p>
+          <p className="text-body-sm color-text-secondary">
+            This document was created with a newer version of the app. Refresh
+            the page to update and open it.
+          </p>
+          <Button onClick={() => window.location.reload()}>Refresh</Button>
+        </div>
+      );
+    }
+
     return (
       <>
         {editor && rest.tabs.length > 0 && (
@@ -191,7 +208,7 @@ const PreviewDdocEditorContent = forwardRef(
 
         {!editor || isContentLoading || isLoading
           ? fadeInTransition(
-              <div className={cn(`${!isMobile ? 'mx-20' : 'mx-10 mt-10'}`)}>
+              <div className={cn('pt-20', !isMobile ? 'mx-20' : 'mx-10 mt-10')}>
                 <Skeleton
                   className={`${isPreviewMode ? 'w-full' : isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4`}
                 />
@@ -271,6 +288,7 @@ const PreviewDdocEditorContent = forwardRef(
                     <DBlockToolbarProvider
                       editor={editor}
                       runtimeState={dBlockRuntimeState}
+                      isPreviewEditor
                     >
                       <EditorContent
                         editor={editor}

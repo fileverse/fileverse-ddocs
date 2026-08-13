@@ -14,6 +14,7 @@ import { ensureLoaded } from '../utils/font-loader';
 import type { FontDescriptor } from '../types';
 import { IEditorTool, useEditorToolVisiibility } from '../hooks/use-visibility';
 import { Editor, JSONContent } from '@tiptap/react';
+import type { EditorProps } from '@tiptap/pm/view';
 import { useEditorCommands } from '../hooks/use-editor-commands';
 import { startImageUpload } from '../utils/upload-images';
 import cn from 'classnames';
@@ -149,6 +150,30 @@ export const IMG_UPLOAD_SETTINGS = {
   },
 };
 
+/**
+ * `Editor#setOptions({ editorProps })` replaces the whole `editorProps`
+ * object rather than merging it — tiptap merges top-level options but
+ * swaps nested objects like `editorProps` wholesale. Calling
+ * `editor.setOptions({ editorProps: { handleKeyDown } })` directly would
+ * silently discard everything else already configured on `editorProps`:
+ * `attributes` (including classes set at construction time, e.g.
+ * `main-doc-editor` from `DdocEditorProps`), `clipboardTextSerializer`,
+ * and the `handleDOMEvents` wired in `use-tab-editor.tsx`. Always patch
+ * `editorProps` through this helper instead of calling
+ * `editor.setOptions({ editorProps: ... })` directly.
+ */
+export const mergeEditorProps = (
+  editor: Editor,
+  patch: Partial<EditorProps>,
+) => {
+  editor.setOptions({
+    editorProps: {
+      ...editor.options.editorProps,
+      ...patch,
+    },
+  });
+};
+
 export const useEditorToolbar = ({
   editor,
   onError,
@@ -207,126 +232,107 @@ export const useEditorToolbar = ({
     if (!editor) return;
 
     // Add keyboard shortcuts to the editor's keymap
-    editor.setOptions({
-      editorProps: {
-        handleKeyDown: (_, event) => {
-          // Strikethrough shortcut (Ctrl + Shift + X for Windows/Linux | Cmd + Shift + X for Mac)
-          if (
-            (event.ctrlKey && event.shiftKey && event.code === 'KeyX') ||
-            (event.metaKey && event.shiftKey && event.code === 'KeyX')
-          ) {
-            event.preventDefault();
-            editor.chain().focus().toggleStrike().run();
-            return true;
-          }
+    mergeEditorProps(editor, {
+      handleKeyDown: (_, event) => {
+        // Strikethrough shortcut (Ctrl + Shift + X for Windows/Linux | Cmd + Shift + X for Mac)
+        if (
+          (event.ctrlKey && event.shiftKey && event.code === 'KeyX') ||
+          (event.metaKey && event.shiftKey && event.code === 'KeyX')
+        ) {
+          event.preventDefault();
+          editor.chain().focus().toggleStrike().run();
+          return true;
+        }
 
-          // Open link popup (Alt/Option + Enter)
-          if ((event.altKey || event.metaKey) && event.key === 'Enter') {
-            event.preventDefault();
-            setToolVisibility(IEditorTool.LINK_POPUP);
-            return true;
-          }
+        // Open link popup (Alt/Option + Enter)
+        if ((event.altKey || event.metaKey) && event.key === 'Enter') {
+          event.preventDefault();
+          setToolVisibility(IEditorTool.LINK_POPUP);
+          return true;
+        }
 
-          // Inline comment shortcut (Shift + Cmd + M for Mac, Ctrl + Alt + m for others)
-          if (
-            (navigator.platform.includes('Mac')
-              ? event.shiftKey && event.metaKey
-              : (event.ctrlKey || event.metaKey) && event.altKey) &&
-            event.key.toLowerCase() === 'm'
-          ) {
-            event.preventDefault();
+        // Inline comment shortcut (Shift + Cmd + M for Mac, Ctrl + Alt + m for others)
+        if (
+          (navigator.platform.includes('Mac')
+            ? event.shiftKey && event.metaKey
+            : (event.ctrlKey || event.metaKey) && event.altKey) &&
+          event.key.toLowerCase() === 'm'
+        ) {
+          event.preventDefault();
 
-            // First check if there's text selected
-            const { state } = editor;
-            const { from, to } = state.selection;
-            const selectedText = state.doc.textBetween(from, to, ' ');
+          // First check if there's text selected
+          const { state } = editor;
+          const { from, to } = state.selection;
+          const selectedText = state.doc.textBetween(from, to, ' ');
 
-            if (selectedText) {
-              editor
-                .chain()
-                .setHighlight({
-                  color: 'var(--color-inline-comment)',
-                })
-                .run();
+          if (selectedText) {
+            editor
+              .chain()
+              .setHighlight({
+                color: 'var(--color-inline-comment)',
+              })
+              .run();
 
-              if (buttonRef.current) {
-                buttonRef.current.click();
-              }
+            if (buttonRef.current) {
+              buttonRef.current.click();
             }
-            return true;
           }
+          return true;
+        }
 
-          // Line height increase shortcut (Alt + Shift + ↑)
-          if (event.altKey && event.shiftKey && event.key === 'ArrowUp') {
-            event.preventDefault();
-            const lineHeights = [
-              '120%',
-              '138%',
-              '180%',
-              '240%',
-              '300%',
-              '360%',
-            ];
+        // Line height increase shortcut (Alt + Shift + ↑)
+        if (event.altKey && event.shiftKey && event.key === 'ArrowUp') {
+          event.preventDefault();
+          const lineHeights = ['120%', '138%', '180%', '240%', '300%', '360%'];
 
-            // Get line height from current block node
-            let currentLineHeight =
-              editor.getAttributes('paragraph')?.lineHeight;
-            if (!currentLineHeight && editor.isActive('heading')) {
-              currentLineHeight = editor.getAttributes('heading')?.lineHeight;
-            }
-            if (!currentLineHeight && editor.isActive('listItem')) {
-              currentLineHeight = editor.getAttributes('listItem')?.lineHeight;
-            }
-            currentLineHeight = currentLineHeight || '138%';
-
-            const currentIndex = lineHeights.indexOf(currentLineHeight);
-            const nextIndex = Math.min(
-              currentIndex + 1,
-              lineHeights.length - 1,
-            );
-            editor.chain().setLineHeight(lineHeights[nextIndex]).run();
-            return true;
+          // Get line height from current block node
+          let currentLineHeight = editor.getAttributes('paragraph')?.lineHeight;
+          if (!currentLineHeight && editor.isActive('heading')) {
+            currentLineHeight = editor.getAttributes('heading')?.lineHeight;
           }
-
-          // Line height decrease shortcut (Alt + Shift + ↓)
-          if (event.altKey && event.shiftKey && event.key === 'ArrowDown') {
-            event.preventDefault();
-            const lineHeights = [
-              '120%',
-              '138%',
-              '180%',
-              '240%',
-              '300%',
-              '360%',
-            ];
-
-            // Get line height from current block node
-            let currentLineHeight =
-              editor.getAttributes('paragraph')?.lineHeight;
-            if (!currentLineHeight && editor.isActive('heading')) {
-              currentLineHeight = editor.getAttributes('heading')?.lineHeight;
-            }
-            if (!currentLineHeight && editor.isActive('listItem')) {
-              currentLineHeight = editor.getAttributes('listItem')?.lineHeight;
-            }
-            currentLineHeight = currentLineHeight || '138%';
-
-            const currentIndex = lineHeights.indexOf(currentLineHeight);
-            const prevIndex = Math.max(currentIndex - 1, 0);
-            editor.chain().setLineHeight(lineHeights[prevIndex]).run();
-            return true;
+          if (!currentLineHeight && editor.isActive('listItem')) {
+            currentLineHeight = editor.getAttributes('listItem')?.lineHeight;
           }
-          return false;
-        },
+          currentLineHeight = currentLineHeight || '138%';
+
+          const currentIndex = lineHeights.indexOf(currentLineHeight);
+          const nextIndex = Math.min(currentIndex + 1, lineHeights.length - 1);
+          editor.chain().setLineHeight(lineHeights[nextIndex]).run();
+          return true;
+        }
+
+        // Line height decrease shortcut (Alt + Shift + ↓)
+        if (event.altKey && event.shiftKey && event.key === 'ArrowDown') {
+          event.preventDefault();
+          const lineHeights = ['120%', '138%', '180%', '240%', '300%', '360%'];
+
+          // Get line height from current block node
+          let currentLineHeight = editor.getAttributes('paragraph')?.lineHeight;
+          if (!currentLineHeight && editor.isActive('heading')) {
+            currentLineHeight = editor.getAttributes('heading')?.lineHeight;
+          }
+          if (!currentLineHeight && editor.isActive('listItem')) {
+            currentLineHeight = editor.getAttributes('listItem')?.lineHeight;
+          }
+          currentLineHeight = currentLineHeight || '138%';
+
+          const currentIndex = lineHeights.indexOf(currentLineHeight);
+          const prevIndex = Math.max(currentIndex - 1, 0);
+          editor.chain().setLineHeight(lineHeights[prevIndex]).run();
+          return true;
+        }
+        return false;
       },
     });
 
     return () => {
-      // Clean up by resetting editor props when component unmounts
+      // Clean up by removing just the handleKeyDown patch added above.
+      // Merge (not replace) so attributes/clipboardTextSerializer/
+      // handleDOMEvents configured elsewhere on editorProps survive —
+      // setting `handleKeyDown` to undefined is equivalent to omitting it
+      // (ProseMirror only calls it when defined).
       if (editor) {
-        editor.setOptions({
-          editorProps: {},
-        });
+        mergeEditorProps(editor, { handleKeyDown: undefined });
       }
     };
   }, [editor, setToolVisibility, buttonRef]);
@@ -2543,46 +2549,64 @@ export const checkActiveListsAndDBlocks = (editor: Editor) => {
 
   const activeDBlocks: number[] = [];
   const activeListDBlocks: number[] = [];
+  const hasDBlock = Boolean(state.schema.nodes.dBlock);
 
-  // First pass: collect all dBlocks in selection
+  // First pass: collect the top-level containers in the selection.
+  // v1: the dBlock wrappers. Flat v2: the top-level blocks themselves.
   state.doc.nodesBetween(from, to, (node, pos) => {
-    if (node.type.name === 'dBlock') {
-      activeDBlocks.push(pos);
-      let containsList = false;
-      node.content.forEach((child) => {
-        if (
-          ['bulletList', 'orderedList', 'taskList'].includes(child.type.name)
-        ) {
-          containsList = true;
+    if (hasDBlock) {
+      if (node.type.name === 'dBlock') {
+        activeDBlocks.push(pos);
+        let containsList = false;
+        node.content.forEach((child) => {
+          if (
+            ['bulletList', 'orderedList', 'taskList'].includes(child.type.name)
+          ) {
+            containsList = true;
+          }
+        });
+        if (containsList) {
+          activeListDBlocks.push(pos);
         }
-      });
-      if (containsList) {
+      }
+      return;
+    }
+
+    if (state.doc.resolve(pos).depth === 0) {
+      activeDBlocks.push(pos);
+      if (['bulletList', 'orderedList', 'taskList'].includes(node.type.name)) {
         activeListDBlocks.push(pos);
       }
     }
   });
 
-  // Check if there are multiple dBlocks with different content types
-  const hasMultipleContentTypes =
-    activeDBlocks.length > 1 &&
-    activeDBlocks.some((pos) => {
-      const node = state.doc.nodeAt(pos);
-      if (!node) return false;
+  // Check if there are multiple dBlocks with different content types.
+  // Flat schema: mixed means the selection spans both list and non-list
+  // top-level blocks.
+  const hasMultipleContentTypes = !hasDBlock
+    ? activeListDBlocks.length > 0 &&
+      activeListDBlocks.length < activeDBlocks.length
+    : activeDBlocks.length > 1 &&
+      activeDBlocks.some((pos) => {
+        const node = state.doc.nodeAt(pos);
+        if (!node) return false;
 
-      // Check if this dBlock has a different content type than others
-      const hasListContent = node.content.content.some((child) =>
-        ['bulletList', 'orderedList', 'taskList'].includes(child.type.name),
-      );
-      const hasNonListContent = node.content.content.some(
-        (child) =>
-          !['bulletList', 'orderedList', 'taskList'].includes(child.type.name),
-      );
+        // Check if this dBlock has a different content type than others
+        const hasListContent = node.content.content.some((child) =>
+          ['bulletList', 'orderedList', 'taskList'].includes(child.type.name),
+        );
+        const hasNonListContent = node.content.content.some(
+          (child) =>
+            !['bulletList', 'orderedList', 'taskList'].includes(
+              child.type.name,
+            ),
+        );
 
-      return (
-        (hasListContent && hasNonListContent) || // Mixed content in same dBlock
-        (hasListContent && activeListDBlocks.length < activeDBlocks.length)
-      ); // Some dBlocks don't have lists
-    });
+        return (
+          (hasListContent && hasNonListContent) || // Mixed content in same dBlock
+          (hasListContent && activeListDBlocks.length < activeDBlocks.length)
+        ); // Some dBlocks don't have lists
+      });
 
   return {
     activeListTypes,

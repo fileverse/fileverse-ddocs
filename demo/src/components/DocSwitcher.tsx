@@ -16,7 +16,7 @@ interface DocSwitcherProps {
 export function DocSwitcher({ currentDocId, currentTitle }: DocSwitcherProps) {
   const [docs] = useState(() => docStore.getDocList());
 
-  const handleNewDoc = () => {
+  const handleNewDoc = (schemaVersion?: 2) => {
     const newId = generateDocId();
     docStore.addDoc({
       id: newId,
@@ -25,7 +25,9 @@ export function DocSwitcher({ currentDocId, currentTitle }: DocSwitcherProps) {
       lastModifiedAt: Date.now(),
     });
     docStore.setCurrentDocId(newId);
-    window.location.href = `${window.location.pathname}?doc=${newId}`;
+    // v2 only matters at creation; once the doc is stamped, the marker rules.
+    const v2Param = schemaVersion === 2 ? '&v2=1' : '';
+    window.location.href = `${window.location.pathname}?doc=${newId}${v2Param}`;
   };
 
   const handleSwitchDoc = (docId: string) => {
@@ -123,10 +125,18 @@ export function DocSwitcher({ currentDocId, currentTitle }: DocSwitcherProps) {
           <Button
             variant="ghost"
             className="flex items-center gap-2 justify-start w-full"
-            onClick={handleNewDoc}
+            onClick={() => handleNewDoc()}
           >
             <LucideIcon name="Plus" size="sm" />
             New Document
+          </Button>
+          <Button
+            variant="ghost"
+            className="flex items-center gap-2 justify-start w-full"
+            onClick={() => handleNewDoc(2)}
+          >
+            <LucideIcon name="FlaskConical" size="sm" />
+            New Document (flat schema v2)
           </Button>
         </div>
       }

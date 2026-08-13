@@ -30,7 +30,13 @@ interface UseTabEditorCacheArgs {
   destroyEditor: (editor: Editor) => void;
 }
 
-const PREVIOUS_TAB_CACHE_LIMIT = 2;
+// Editors for the N most recently visited tabs stay warm; anything beyond is
+// destroyed and rebuilt on revisit. At 2, a user rotating through 3+ tabs got
+// a full editor teardown+rebuild on EVERY switch — on 10k-word tabs that is
+// the dominant source of transient garbage (measured: ~43k detached DOM
+// nodes per 4-tab rotation, vs ~23k with all tabs warm, while 4 warm
+// 10k-word editors cost only ~1MB heap / ~3k live nodes over 2).
+const PREVIOUS_TAB_CACHE_LIMIT = 4;
 
 const setInactiveEditorDOMState = (editor: Editor, isInactive: boolean) => {
   const dom = editor.view?.dom;

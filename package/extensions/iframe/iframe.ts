@@ -4,6 +4,7 @@ import { ReactNodeViewRenderer } from '@tiptap/react';
 import { getResizableMediaNodeView } from '../resizable-media/resizable-media-node-view';
 import { IpfsImageFetchPayload } from '../../types';
 import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
+import { replaceSelectionWithBlockNode } from '../../utils/block-insert';
 
 export interface IframeOptions {
   allowFullscreen: boolean;
@@ -128,11 +129,13 @@ export const Iframe = Node.create<IframeOptions>({
         (options: { src: string; width?: number; height?: number }) =>
         ({ tr, dispatch }) => {
           if (!isAllowedEmbedSrc(options.src)) return false;
-          const { selection } = tr;
           const node = this.type.create(options);
 
           if (dispatch) {
-            tr.replaceRangeWith(selection.from - 1, selection.to, node);
+            // Replaces the old `selection.from - 1` magic offset, which
+            // assumed the action-button flow's exact post-delete selection
+            // and stranded the caret at the dBlock boundary afterwards.
+            replaceSelectionWithBlockNode(tr, node);
           }
 
           return true;

@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { schemaHasDBlock, wrapBlockNode } from '../../utils/block-schema';
 
 export const MediaCaption = Node.create({
   name: 'mediaCaption',
@@ -71,14 +72,17 @@ export const MediaCaption = Node.create({
         })();
 
         if (parentDBlockDepth === -1) {
-          // resizableMedia is not inside a dBlock — insert a dBlock after it
+          // No dBlock ancestor: the flat v2 schema, or v1 edge cases.
+          // Caret lands inside the new paragraph: +1 into it, +1 more when a
+          // dBlock wrapper is added around it.
+          const caretOffset = schemaHasDBlock(editor.schema) ? 2 : 1;
           return editor
             .chain()
-            .insertContentAt(afterMedia, {
-              type: 'dBlock',
-              content: [{ type: 'paragraph' }],
-            })
-            .focus(afterMedia + 2)
+            .insertContentAt(
+              afterMedia,
+              wrapBlockNode(editor.schema, { type: 'paragraph' }),
+            )
+            .focus(afterMedia + caretOffset)
             .run();
         }
 

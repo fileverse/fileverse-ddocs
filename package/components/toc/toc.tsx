@@ -255,6 +255,13 @@ export const ToC = memo(
               return false; // Stop searching
             }
           }
+          // Flat v2 schema: headings are top-level, match them directly.
+          // (In v1 the dBlock branch above wins first, since parents are
+          // visited before children.)
+          if (node.type.name === 'heading' && node.attrs.id === headingId) {
+            headingPos = pos;
+            return false;
+          }
         });
 
         if (headingPos !== -1) {

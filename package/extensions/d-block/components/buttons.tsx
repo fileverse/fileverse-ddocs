@@ -1,5 +1,5 @@
 import React, { forwardRef } from 'react';
-import { Button, LucideIcon, PopoverClose, cn } from '@fileverse/ui';
+import { Button, IconButton, LucideIcon, PopoverClose } from '@fileverse/ui';
 
 // Memoized button components to prevent unnecessary re-renders
 export const ActionButton = React.memo(
@@ -31,13 +31,16 @@ ActionButton.displayName = 'ActionButton';
 
 export const GripButton = React.memo(
   forwardRef<
-    HTMLDivElement,
+    HTMLButtonElement,
     {
-      onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
       className: string;
     }
   >(({ onClick, className, ...props }, ref) => (
-    <div
+    <IconButton
+      icon={'GripVertical'}
+      variant={'ghost'}
+      size="sm"
       ref={ref}
       className={className}
       contentEditable={false}
@@ -45,9 +48,7 @@ export const GripButton = React.memo(
       data-drag-handle
       {...props}
       onClick={onClick}
-    >
-      <LucideIcon name="GripVertical" size="sm" />
-    </div>
+    />
   )),
 );
 
@@ -55,21 +56,21 @@ GripButton.displayName = 'GripButton';
 
 export const PlusButton = React.memo(
   forwardRef<
-    HTMLDivElement,
+    HTMLButtonElement,
     {
-      onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
       className: string;
     }
   >(({ onClick, className, ...props }, ref) => (
-    <div
+    <IconButton
+      icon={'Plus'}
+      variant={'ghost'}
+      size="sm"
       ref={ref}
       className={className}
-      contentEditable={false}
       {...props}
       onClick={onClick}
-    >
-      <LucideIcon name="Plus" size="sm" />
-    </div>
+    />
   )),
 );
 
@@ -77,46 +78,24 @@ PlusButton.displayName = 'PlusButton';
 
 export const CollapseButton = React.memo(
   forwardRef<
-    HTMLDivElement,
+    HTMLButtonElement,
     {
       isCollapsed: boolean;
       onToggle: () => void;
       className: string;
     }
   >(({ isCollapsed, onToggle, className, ...props }, ref) => (
-    <div
+    <IconButton
+      variant={'ghost'}
+      icon={isCollapsed ? 'ChevronRight' : 'ChevronDown'}
+      size="sm"
       ref={ref}
       className={className}
-      contentEditable={false}
       data-test="collapse-button"
       {...props}
       onClick={onToggle}
-    >
-      <LucideIcon
-        name={isCollapsed ? 'ChevronRight' : 'ChevronDown'}
-        size="sm"
-      />
-    </div>
+    />
   )),
 );
 
 CollapseButton.displayName = 'CollapseButton';
-
-export const CopyLinkButton = React.memo(
-  forwardRef<HTMLDivElement, { onClick: () => void; className: string }>(
-    ({ onClick, className, ...props }, ref) => (
-      <div
-        ref={ref}
-        className={cn(className)}
-        contentEditable={false}
-        data-test="copy-heading-link-button"
-        {...props}
-        onClick={onClick}
-      >
-        <LucideIcon name="Link" size="sm" />
-      </div>
-    ),
-  ),
-);
-
-CopyLinkButton.displayName = 'CopyLinkButton';

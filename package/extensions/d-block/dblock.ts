@@ -7,13 +7,16 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { createDBlockCollapsePlugin } from './dblock-collapse';
 import { createDBlockMediaConversionPlugin } from './dblock-media-plugin';
+import { createDBlockPasteNormalizerPlugin } from './dblock-paste-normalizer';
 
 export interface DBlockOptions {
   HTMLAttributes: Record<string, any>;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
-  onCopyHeadingLink?: (link: string) => void;
   hasAvailableModels: boolean;
   getRuntimeState?: () => DBlockRuntimeState;
+  // Consumed by the node view's read-only-preview heading chrome; the
+  // editing-mode equivalent lives in the floating drag-handle cluster.
+  onCopyHeadingLink?: (link: string) => void;
 }
 
 declare module '@tiptap/core' {
@@ -58,9 +61,9 @@ export const DBlock = Node.create<DBlockOptions>({
   addOptions() {
     return {
       HTMLAttributes: {},
-      onCopyHeadingLink: undefined,
       hasAvailableModels: false,
       getRuntimeState: undefined,
+      onCopyHeadingLink: undefined,
     };
   },
 
@@ -1014,6 +1017,7 @@ export const DBlock = Node.create<DBlockOptions>({
     const plugins = [
       createDBlockCollapsePlugin(),
       createDBlockMediaConversionPlugin(this.options.getRuntimeState),
+      createDBlockPasteNormalizerPlugin(),
     ];
 
     if (!this.options.hasAvailableModels) {

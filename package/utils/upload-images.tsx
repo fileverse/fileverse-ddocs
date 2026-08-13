@@ -4,6 +4,7 @@
 
 import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { IMG_UPLOAD_SETTINGS } from '../components/editor-utils';
 import { arrayBufferToBase64, decryptImage, fetchImage } from './security';
 import { toByteArray } from 'base64-js';
@@ -61,6 +62,43 @@ function findPlaceholder(state: EditorState, id: any) {
   return found.length ? found[0].from : null;
 }
 
+/**
+ * Insert the finished media node at the placeholder's CURRENT (mapped)
+ * position and drop the placeholder, in one transaction. The decoration set
+ * maps the placeholder through every edit made while the upload was in
+ * flight, so this stays correct under concurrent typing — unlike the
+ * pre-upload `pos`, which goes stale the moment the doc changes above it.
+ * Returns false if the placeholder no longer exists (host content deleted
+ * during upload) — the upload result is dropped in that case.
+ */
+function replacePlaceholderWithMedia(
+  view: EditorView,
+  id: object,
+  node: ProseMirrorNode,
+): boolean {
+  const placeholderPos = findPlaceholder(view.state, id);
+  if (placeholderPos == null) return false;
+
+  const tr = view.state.tr;
+  const $pos = view.state.doc.resolve(placeholderPos);
+  const host = $pos.parent;
+
+  if (host.isTextblock && host.content.size === 0) {
+    // Typical flow: the upload was started from an (already emptied)
+    // paragraph — the media takes the paragraph's place inside its block.
+    tr.replaceWith($pos.before(), $pos.after(), node);
+  } else {
+    // Host gained content while uploading — fit the media in at the
+    // placeholder without destroying anything (replaceRange* applies
+    // schema-aware structure fitting).
+    tr.replaceRangeWith(placeholderPos, placeholderPos, node);
+  }
+
+  tr.setMeta(uploadKey, { remove: { id } });
+  view.dispatch(tr);
+  return true;
+}
+
 export async function startImageUpload(
   file: File,
   view: EditorView,
@@ -92,7 +130,7 @@ export async function startImageUpload(
 
     const { schema } = view.state;
     const placeholder = findPlaceholder(view.state, id);
-    if (!placeholder) return;
+    if (placeholder == null) return;
 
     if (ipfsImageUploadFn) {
       const { ipfsUrl, encryptionKey, nonce, ipfsHash, authTag } =
@@ -111,26 +149,18 @@ export async function startImageUpload(
         height: 'auto',
       });
 
-      const transaction = view.state.tr
-        .replaceWith(pos - 2, pos + node.nodeSize, node)
-        .setMeta(uploadKey, { remove: { id } });
-      view.dispatch(transaction);
+      replacePlaceholderWithMedia(view, id, node);
     } else {
       const fileReader = new FileReader();
       fileReader.readAsDataURL(file);
       fileReader.onloadend = () => {
         const { schema } = view.state;
-        const pos = findPlaceholder(view.state, id);
-        if (!pos) return;
         const src = fileReader.result as string;
         const node = schema.nodes.resizableMedia.create({
           src: src,
           'media-type': 'img',
         });
-        const transaction = view.state.tr
-          .replaceWith(pos - 2, pos + node.nodeSize, node)
-          .setMeta(uploadKey, { remove: { id } });
-        view.dispatch(transaction);
+        replacePlaceholderWithMedia(view, id, node);
       };
     }
   } catch (error) {

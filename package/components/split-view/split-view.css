@@ -2,20 +2,9 @@
    Render the read-only doc cleanly like the Figma: no DBlock drag/insert
    gutter, no centered max-width rails — just the document at 48px side padding. */
 
-[data-split-view-preview] [data-dblock-gutter] {
-  display: none !important;
-}
-
-/* Each dBlock is a flex row [gutter][content-shell] sized to the page width.
-   In Split View make it a plain full-width block so the content fills the pane. */
-[data-split-view-preview] [data-dblock-node-view] {
-  display: block !important;
-  width: 100% !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-[data-split-view-preview] [data-dblock-content-shell],
+/* dBlock no longer renders a drag/insert gutter or flex content-shell (see
+   dblock-node-view.ts) — each d-block is already a plain full-width block,
+   so no override is needed to neutralize a gutter layout here anymore. */
 [data-split-view-preview] [data-node-view-content],
 [data-split-view-preview] .ProseMirror > * {
   width: 100% !important;
@@ -69,6 +58,14 @@
   margin: 0 !important;
 }
 
-[data-split-view-preview] .ProseMirror {
-  padding: 8px 48px 64px 48px;
+/* .main-doc-editor pinned explicitly so this beats the base
+   .ProseMirror.main-doc-editor container-padding rule (editor.css) on
+   specificity regardless of stylesheet import order — both are two-class
+   selectors otherwise. */
+[data-split-view-preview] .ProseMirror.main-doc-editor {
+  --padding-t: 8px;
+  --padding-r: 48px;
+  --padding-b: 64px;
+  --padding-l: var(--padding-r);
+  padding: var(--padding-t) var(--padding-r) var(--padding-b) var(--padding-l);
 }

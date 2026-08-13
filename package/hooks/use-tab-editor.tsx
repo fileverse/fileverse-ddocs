@@ -75,6 +75,20 @@ import {
 import { destroyEditorWithYSyncCleanup } from '../utils/y-prosemirror-cleanup';
 import { clearTableOfContentsStorage } from '../extensions/table-of-contents';
 import { useTabEditorCache } from './use-tab-editor-cache';
+
+// The single source of truth for the tab editor's construction-time
+// `editorProps.attributes` (the `main-doc-editor`/prose classes,
+// `spellcheck`, `suppressContentEditableWarning`). Extracted to a named,
+// independently-testable constant so a future local `attributes:` key
+// added inline at the `new Editor({ editorProps: { ... } })` call site
+// below can't silently collide with — and replace — the spread of
+// `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
+// key in the same object literal overwrites the earlier one from
+// `...DdocEditorProps`, rather than merging).
+export const TAB_EDITOR_ATTRIBUTES: Record<string, string> = {
+  ...(DdocEditorProps.attributes as Record<string, string>),
+};
+
 const usercolors = [
   '#30bced',
   '#6eeb83',
@@ -266,6 +280,7 @@ interface UseTabEditorArgs {
   editorRef?: MutableRefObject<Editor | null>;
   initialCommentAnchors?: SerializedCommentAnchor[];
   dBlockRuntimeStateRef?: DBlockRuntimeStateRef;
+  docSchemaVersion?: number;
 }
 
 export const useTabEditor = ({
@@ -316,6 +331,7 @@ export const useTabEditor = ({
   editorRef,
   initialCommentAnchors,
   dBlockRuntimeStateRef,
+  docSchemaVersion = 1,
 }: UseTabEditorArgs) => {
   const collabEnabled = collaboration?.enabled === true;
   const connection = collabEnabled ? collaboration.connection : null;
@@ -382,6 +398,7 @@ export const useTabEditor = ({
     initialCommentAnchors,
     isSuggestionMode,
     dBlockRuntimeStateRef: resolvedDBlockRuntimeStateRef,
+    docSchemaVersion,
   });
 
   const { handleCommentInteraction, handleCommentClick } =
@@ -590,8 +607,16 @@ export const useTabEditor = ({
 
             return false;
           },
+          // `...DdocEditorProps` above already sets `attributes` as ONE key
+          // inside this same object literal — a later `attributes:` key
+          // replaces the earlier one wholesale rather than merging, so this
+          // must build on the same merged value (TAB_EDITOR_ATTRIBUTES, see
+          // above) instead of introducing a colliding fresh literal.
+          // data-schema-version lets CSS target one schema (v1 keeps the
+          // dBlock-era compensation rules, v2 gets its own rhythm).
           attributes: {
-            spellCheck: 'true',
+            ...TAB_EDITOR_ATTRIBUTES,
+            'data-schema-version': String(docSchemaVersion),
           },
         },
         textDirection: 'auto',
@@ -606,6 +631,7 @@ export const useTabEditor = ({
       focusSubmittedSuggestionFromEditorEvent,
       handleCommentClick,
       handleCommentInteraction,
+      docSchemaVersion,
     ],
   );
 
@@ -861,6 +887,7 @@ export const useTabEditor = ({
               data: initialContent as JSONContent,
               ignoreCorruptedData,
               onInvalidContentError,
+              wrapInDBlock: Boolean(editor.schema.nodes.dBlock),
             }),
           );
         }
@@ -1537,6 +1564,7 @@ interface UseExtensionStackArgs {
   initialCommentAnchors?: SerializedCommentAnchor[];
   isSuggestionMode?: boolean;
   dBlockRuntimeStateRef: DBlockRuntimeStateRef;
+  docSchemaVersion?: number;
 }
 
 const useEditorExtension = ({
@@ -1560,6 +1588,7 @@ const useEditorExtension = ({
   initialCommentAnchors,
   isSuggestionMode = false,
   dBlockRuntimeStateRef,
+  docSchemaVersion = 1,
 }: UseExtensionStackArgs) => {
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
@@ -1650,6 +1679,7 @@ const useEditorExtension = ({
             onTocUpdateForTab(tabId, data, isCreate),
           hasAvailableModels,
           dBlockRuntimeStateRef,
+          schemaVersion: docSchemaVersion,
         }),
         createSlashCommand(),
         customTextInputRules,
@@ -1722,12 +1752,17 @@ const useEditorExtension = ({
           tone: 'neutral',
         }),
         AIWriter,
-        createDBlockExtension({
-          hasAvailableModels,
-          ipfsImageUploadFn,
-          onCopyHeadingLink: handleCopyHeadingLink,
-          getRuntimeState: () => dBlockRuntimeStateRef.current,
-        }),
+        // v2 has no dBlock: the filter above removed nothing, re-add nothing.
+        ...(docSchemaVersion >= 2
+          ? []
+          : [
+              createDBlockExtension({
+                hasAvailableModels,
+                ipfsImageUploadFn,
+                onCopyHeadingLink: handleCopyHeadingLink,
+                getRuntimeState: () => dBlockRuntimeStateRef.current,
+              }),
+            ]),
         createSlashCommand(),
       ] as AnyExtension[];
     },
@@ -1747,6 +1782,7 @@ const useEditorExtension = ({
       activeModel,
       maxTokens,
       onCommentActivated,
+      docSchemaVersion,
     ],
   );
 

@@ -65,11 +65,3 @@ export const CollapseTooltip = React.memo(
     </ButtonTooltip>
   ),
 );
-
-export const CopyLinkTooltip = React.memo(
-  ({ children }: { children: React.ReactNode }) => (
-    <ButtonTooltip text="Copy link to heading" position="bottom">
-      {children}
-    </ButtonTooltip>
-  ),
-);

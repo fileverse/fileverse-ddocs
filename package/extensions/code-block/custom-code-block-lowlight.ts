@@ -244,31 +244,42 @@ export const CustomCodeBlockLowlight =
               })
               .command(({ tr, state, dispatch }) => {
                 const { $from } = state.selection;
-                // Find the enclosing dBlock (codeBlock's parent).
-                let dBlockDepth = -1;
+                const dBlockType = state.schema.nodes.dBlock;
+                const paragraphType = state.schema.nodes.paragraph;
+                if (!paragraphType) return false;
+
+                // Find the block to escape past: the enclosing dBlock in v1,
+                // the codeBlock itself in the flat v2 schema. The loop walks
+                // deepest-first, so in v1 the (deeper) codeBlock is skipped
+                // and the dBlock still wins.
+                let boundaryDepth = -1;
                 for (let d = $from.depth; d >= 0; d--) {
-                  if ($from.node(d).type.name === 'dBlock') {
-                    dBlockDepth = d;
+                  const name = $from.node(d).type.name;
+                  if (
+                    name === 'dBlock' ||
+                    (!dBlockType && name === 'codeBlock')
+                  ) {
+                    boundaryDepth = d;
                     break;
                   }
                 }
-                if (dBlockDepth === -1) return false;
+                if (boundaryDepth === -1) return false;
 
-                const dBlockEnd = $from.after(dBlockDepth);
-                const dBlockType = state.schema.nodes.dBlock;
-                const paragraphType = state.schema.nodes.paragraph;
-                if (!dBlockType || !paragraphType) return false;
-
-                const newDBlock = dBlockType.create(
-                  null,
-                  paragraphType.create(),
-                );
+                const boundaryEnd = $from.after(boundaryDepth);
+                const newBlock = dBlockType
+                  ? dBlockType.create(null, paragraphType.create())
+                  : paragraphType.create();
 
                 if (dispatch) {
-                  tr.insert(dBlockEnd, newDBlock);
-                  // Cursor at start of the new paragraph (dBlockEnd + 2:
-                  // +1 enters dBlock, +1 enters paragraph).
-                  tr.setSelection(TextSelection.create(tr.doc, dBlockEnd + 2));
+                  tr.insert(boundaryEnd, newBlock);
+                  // Cursor at start of the new paragraph: +1 into the
+                  // paragraph, +1 more when a dBlock wraps it.
+                  tr.setSelection(
+                    TextSelection.create(
+                      tr.doc,
+                      boundaryEnd + (dBlockType ? 2 : 1),
+                    ),
+                  );
                 }
                 return true;
               })

@@ -1,15 +1,16 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Decoration, NodeView, ViewMutationRecord } from '@tiptap/pm/view';
-import { v4 as uuidv4 } from 'uuid';
 import {
   DBLOCK_HIDDEN_CLASS,
   getDBlockRenderMeta,
-  getHeadingAlignmentClass,
+  getHeadingLinkSlug,
+  toggleHeadingCollapse,
 } from './dblock-collapse';
+import type { DBlockRenderMeta } from './dblock-collapse';
+import { CHEVRON_SVG, LINK_SVG } from './heading-chrome-icons';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { getDBlockRuntimeState } from './dblock-runtime';
-import { registerDBlockView } from './dblock-view-registry';
 
 interface DBlockNodeViewOptions {
   editor: Editor;
@@ -39,36 +40,22 @@ const setAttributes = (
   attributes: Record<string, unknown>,
 ) => {
   Object.entries(attributes).forEach(([key, value]) => {
-    if (key === 'class' || value === undefined || value === null) {
-      return;
-    }
-
+    if (key === 'class' || value === undefined || value === null) return;
     element.setAttribute(key, String(value));
   });
 };
 
 export class DBlockNodeView implements NodeView {
   node: ProseMirrorNode;
-
   editor: Editor;
-
   getPos: () => number;
-
   dom: HTMLDivElement;
-
-  gutterElement: HTMLElement;
-
-  contentElement: HTMLDivElement;
-
   contentDOM: HTMLDivElement;
-
-  private id: string;
-
   private decorations: readonly Decoration[];
-
   private getRuntimeState?: () => DBlockRuntimeState;
-
-  private unregister: () => void;
+  private onCopyHeadingLink?: (link: string) => void;
+  private previewControls: HTMLDivElement | null = null;
+  private collapseButton: HTMLButtonElement | null = null;
 
   constructor({
     editor,
@@ -84,50 +71,21 @@ export class DBlockNodeView implements NodeView {
     this.getPos = getPos;
     this.decorations = decorations;
     this.getRuntimeState = getRuntimeState;
-    this.id = uuidv4();
+    this.onCopyHeadingLink = onCopyHeadingLink;
 
     this.dom = document.createElement('div');
     this.dom.dataset.type = 'd-block';
-    this.dom.dataset.dblockNodeView = 'true';
-    this.dom.dataset.nodeViewWrapper = 'true';
-    this.dom.setAttribute('data-dblock-id', this.id);
     setAttributes(this.dom, HTMLAttributes);
-
-    this.gutterElement = document.createElement('section');
-    this.gutterElement.className =
-      'flex h-0 lg:h-6 shrink-0 items-center gap-[2px] min-w-5 lg:min-w-16 justify-end';
-    this.gutterElement.setAttribute('aria-label', 'left-menu');
-    this.gutterElement.setAttribute('contenteditable', 'false');
-    this.gutterElement.dataset.dblockGutter = 'true';
-
-    this.contentElement = document.createElement('div');
-    this.contentElement.dataset.dblockContentShell = 'true';
 
     this.contentDOM = document.createElement('div');
     this.contentDOM.dataset.nodeViewContent = 'true';
-
-    this.contentElement.appendChild(this.contentDOM);
-    this.dom.append(this.gutterElement, this.contentElement);
-
-    this.unregister = registerDBlockView({
-      id: this.id,
-      dom: this.dom,
-      gutterElement: this.gutterElement,
-      contentElement: this.contentElement,
-      getPos: this.getPos,
-      getNode: () => this.node,
-      refresh: () => this.syncDOM(),
-      onCopyHeadingLink,
-    });
+    this.dom.appendChild(this.contentDOM);
 
     this.syncDOM();
   }
 
   update(node: ProseMirrorNode, decorations: readonly Decoration[]) {
-    if (node.type !== this.node.type) {
-      return false;
-    }
-
+    if (node.type !== this.node.type) return false;
     this.node = node;
     this.decorations = decorations;
     this.syncDOM();
@@ -135,39 +93,8 @@ export class DBlockNodeView implements NodeView {
   }
 
   ignoreMutation(mutation: ViewMutationRecord) {
-    if (mutation.type === 'selection') {
-      return false;
-    }
-
+    if (mutation.type === 'selection') return false;
     return !this.contentDOM.contains(mutation.target);
-  }
-
-  stopEvent(event: Event) {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return false;
-    }
-
-    const gutterTarget = target.closest('[data-dblock-gutter]');
-    if (!gutterTarget) {
-      return false;
-    }
-
-    const isDragHandle = Boolean(target.closest('[data-drag-handle]'));
-    if (
-      isDragHandle &&
-      (event.type.startsWith('drag') ||
-        event.type === 'mousedown' ||
-        event.type === 'pointerdown')
-    ) {
-      return false;
-    }
-
-    return true;
-  }
-
-  destroy() {
-    this.unregister();
   }
 
   private syncDOM() {
@@ -179,43 +106,114 @@ export class DBlockNodeView implements NodeView {
     const shouldHide =
       !isPresentationPreview && hasHiddenDecoration(this.decorations);
 
-    this.dom.className = isPresentationPreview
-      ? joinClasses(
-          'flex px-4 md:px-[80px] gap-2 group w-full relative justify-center items-start',
-          meta.isTable && 'pointer-events-auto',
-        )
-      : joinClasses(
-          'flex px-4 pl-2 md:pr-8 lg:pr-[80px] lg:pl-[8px] gap-2 group w-full relative justify-center items-center',
-          meta.isTable && 'pointer-events-auto',
-          shouldHide && DBLOCK_HIDDEN_CLASS,
-        );
+    this.dom.className = joinClasses(
+      'd-block w-full relative',
+      meta.isTable && 'is-table pointer-events-auto',
+      this.node.attrs?.isCorrupted && 'invalid-content',
+      isPresentationPreview && 'pointer-events-none',
+      shouldHide && DBLOCK_HIDDEN_CLASS,
+    );
 
-    this.contentElement.className = isPresentationPreview
-      ? joinClasses(
-          'node-view-content w-full relative',
-          meta.isTable && 'is-table',
-          this.node.attrs?.isCorrupted && 'invalid-content',
-          runtime.isPreviewMode && 'pointer-events-none',
-        )
-      : joinClasses(
-          'node-view-content w-full relative self-center group/collision',
-          meta.isTable && 'is-table max-w-full lg:max-w-[90%]',
-          this.node.attrs?.isCorrupted && 'invalid-content',
-          meta.isHeading &&
-            runtime.isPreviewMode &&
-            'flex flex-row-reverse gap-2 items-center',
-          meta.isHeading &&
-            runtime.isPreviewMode &&
-            getHeadingAlignmentClass(meta.headingAlignment),
-        );
+    this.syncPreviewControls(runtime, meta);
+  }
 
-    this.gutterElement.hidden = isPresentationPreview;
+  // Read-only preview never shows the floating DragHandle cluster — the
+  // upstream plugin hard-hides its element whenever `!editor.isEditable`
+  // (`showHandle()` bails into `hideHandle()`). Heading affordances viewers
+  // need (expand a collapsed heading, copy its link) therefore live INSIDE
+  // the node view, shown via CSS :hover — no floating positioning involved.
+  //
+  // The controls are rendered for headings in EVERY mode and gated by CSS
+  // on `.ProseMirror[contenteditable='false']` (the exact condition under
+  // which the cluster cannot appear). Gating on runtime.isPreviewMode here
+  // would freeze the initial mode: switching owner → view-only flips
+  // editable/runtime state but dispatches no transaction, so vanilla node
+  // views never re-run syncDOM and would keep the stale decision.
+  // Presentation and split-view are separate editor instances whose runtime
+  // flags are fixed at construction, so excluding them here is safe.
+  private shouldShowPreviewControls(
+    runtime: DBlockRuntimeState,
+    meta: DBlockRenderMeta,
+  ) {
+    return (
+      !runtime.isPresentationMode && !runtime.isSplitView && meta.isHeading
+    );
+  }
 
-    if (position !== null) {
-      this.dom.dataset.dblockPos = String(position);
-    } else {
-      delete this.dom.dataset.dblockPos;
+  private syncPreviewControls(
+    runtime: DBlockRuntimeState,
+    meta: DBlockRenderMeta,
+  ) {
+    if (!this.shouldShowPreviewControls(runtime, meta)) {
+      if (this.previewControls) {
+        this.previewControls.remove();
+        this.previewControls = null;
+        this.collapseButton = null;
+      }
+      return;
     }
+
+    if (!this.previewControls) {
+      this.previewControls = this.buildPreviewControls();
+      this.dom.appendChild(this.previewControls);
+    }
+
+    const isCollapsed = Boolean(meta.isThisHeadingCollapsed);
+    this.previewControls.classList.toggle('is-collapsed', isCollapsed);
+    if (this.collapseButton) {
+      this.collapseButton.classList.toggle('is-collapsed', isCollapsed);
+      this.collapseButton.setAttribute(
+        'aria-label',
+        isCollapsed ? 'Expand heading' : 'Collapse heading',
+      );
+    }
+  }
+
+  private buildPreviewControls(): HTMLDivElement {
+    const controls = document.createElement('div');
+    controls.className = 'd-block-preview-controls';
+    controls.contentEditable = 'false';
+    controls.dataset.previewControls = 'true';
+
+    const collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className =
+      'd-block-button d-block-preview-button color-text-default hover:color-bg-default-hover';
+    collapse.dataset.test = 'preview-collapse-button';
+    collapse.innerHTML = CHEVRON_SVG;
+    collapse.addEventListener('mousedown', (event) => event.preventDefault());
+    collapse.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const position = this.safeGetPos();
+      if (position != null) toggleHeadingCollapse(this.editor, position);
+    });
+    this.collapseButton = collapse;
+    controls.appendChild(collapse);
+
+    if (this.onCopyHeadingLink) {
+      const copyLink = document.createElement('button');
+      copyLink.type = 'button';
+      copyLink.className =
+        'd-block-button d-block-preview-button d-block-preview-copy-link color-text-default hover:color-bg-default-hover';
+      copyLink.dataset.test = 'preview-copy-link-button';
+      copyLink.setAttribute('aria-label', 'Copy heading link');
+      copyLink.innerHTML = LINK_SVG;
+      copyLink.addEventListener('mousedown', (event) =>
+        event.preventDefault(),
+      );
+      copyLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const position = this.safeGetPos();
+        if (position == null) return;
+        const link = getHeadingLinkSlug(this.node, position);
+        if (link) this.onCopyHeadingLink?.(link);
+      });
+      controls.appendChild(copyLink);
+    }
+
+    return controls;
   }
 
   private safeGetPos() {

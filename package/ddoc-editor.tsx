@@ -303,6 +303,7 @@ const DdocEditor = forwardRef(
       draftAnchorsRef,
       storeApiRef,
       dBlockRuntimeState,
+      isSchemaUnsupported,
     } = useDdocEditor({
       documentStyling,
       ipfsImageFetchFn,
@@ -342,9 +343,9 @@ const DdocEditor = forwardRef(
       isPresentationMode,
       metadataProxyUrl,
       extensions,
+      onCopyHeadingLink,
       disableInlineComment,
       isFocusMode,
-      onCopyHeadingLink,
       isConnected,
       activeModel,
       maxTokens,
@@ -984,11 +985,11 @@ const DdocEditor = forwardRef(
                             !isPreviewMode &&
                             !isFocusMode &&
                             (isNavbarVisible
-                              ? '-mt-[1.5rem] md:!mt-[0.8rem] pt-0 md:pt-[5rem]'
-                              : 'pt-0 md:pt-[1.5rem]'),
+                              ? '-mt-[1.5rem] md:!mt-[0.8rem]'
+                              : null),
                           !isSplitViewActive &&
                             isPreviewMode &&
-                            'md:!mt-[1rem] pt-0 md:!pt-[5rem]',
+                            'md:!mt-[1rem]',
                           {
                             'md:!mt-[0.7rem]':
                               !isSplitViewActive &&
@@ -1002,7 +1003,7 @@ const DdocEditor = forwardRef(
                               !isPreviewMode,
                           },
                           // Split View: no full-screen top spacing.
-                          isSplitViewActive && 'mt-0 pt-0',
+                          isSplitViewActive && 'mt-0',
                           isFocusMode && 'mt-[48px]',
                         )}
                         style={{
@@ -1097,11 +1098,10 @@ const DdocEditor = forwardRef(
                               />
                             )}
                           </div>
-
                           {!editor || isContentLoading
                             ? fadeInTransition(
                                 <div
-                                  className={`${!isMobile ? 'mx-20' : 'mx-10 mt-10'}`}
+                                  className={`${!isMobile ? 'p-20' : 'px-9 pt-6'}`}
                                 >
                                   {isPreviewMode ? (
                                     <PreviewContentLoader />
@@ -1278,8 +1278,7 @@ const DdocEditor = forwardRef(
                                               }
                                               className={cn(
                                                 'w-full h-auto',
-                                                isPreviewMode &&
-                                                  'preview-mode max-sm:!pb-40',
+                                                isPreviewMode && 'preview-mode',
                                                 activeModel !== undefined &&
                                                   isAIAgentEnabled &&
                                                   'has-available-models',
@@ -1403,6 +1402,29 @@ const DdocEditor = forwardRef(
         </AnimatePresence>
       );
     };
+
+    // A doc created on a newer schema must never bind editors in this build;
+    // useDdocEditor already blocks editor creation via the schema guard, this
+    // branch replaces the editor surface with a refresh prompt.
+    if (isSchemaUnsupported) {
+      return (
+        <div className="w-full h-[100dvh] color-bg-secondary flex items-center justify-center p-6">
+          <div className="flex flex-col items-center gap-4 text-center max-w-[24rem]">
+            <LucideIcon name="RefreshCw" size="md" />
+            <div className="flex flex-col gap-2">
+              <p className="text-heading-sm color-text-default">
+                Update needed to open this document
+              </p>
+              <p className="text-body-sm color-text-secondary">
+                This document was created with a newer version of the app.
+                Refresh the page to update and open it.
+              </p>
+            </div>
+            <Button onClick={() => window.location.reload()}>Refresh</Button>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <EditorProvider

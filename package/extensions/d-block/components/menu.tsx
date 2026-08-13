@@ -17,7 +17,14 @@ interface MenuProps {
 }
 
 const MenuTrigger = forwardRef<HTMLDivElement, { children: React.ReactNode }>(
-  (props, ref) => <div ref={ref}>{props.children}</div>,
+  // flex kills the inherited line-box height (24px) that otherwise makes
+  // this wrapper taller than the 20px grip button and top-aligns it 2px
+  // above its sibling buttons in the cluster row.
+  (props, ref) => (
+    <div ref={ref} className="flex items-center">
+      {props.children}
+    </div>
+  ),
 );
 
 MenuTrigger.displayName = 'MenuTrigger';

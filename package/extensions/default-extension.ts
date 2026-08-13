@@ -46,14 +46,21 @@ const ExtendedTextStyle = TextStyle.extend({
 import { CommonMarkBold, CommonMarkItalic } from './commonmark-emphasis';
 import HorizontalRule from './horizontal-rule';
 import ColumnExtension from './multi-column';
+import { FlatColumn } from './multi-column/column';
 import CustomKeymap from './custom-keymap';
 import { CollapsibleHeading } from './collapsible-heading';
 import { Color } from '@tiptap/extension-color';
 import { Iframe } from './iframe';
 import { EmbeddedTweet } from './twitter-embed';
 import { createDBlockExtension } from './d-block';
+import { FlatHeadingCollapse } from './d-block/dblock-collapse';
+import { FlatMediaConversion } from './d-block/dblock-media-plugin';
+import { BlockId } from './block-id';
+import { ListNormalization } from './list-normalization';
+import { UndoSelection } from './undo-selection';
+import { AiWriterSpaceTrigger } from './ai-writer/ai-writer-space-trigger';
 import { SuperchargedTableExtensions } from './supercharged-table';
-import { Document } from './document';
+import { Document, FlatDocument } from './document';
 import { TrailingNode } from './trailing-node';
 import { type NodeType } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
@@ -262,6 +269,7 @@ export const defaultExtensions = ({
   onTocUpdate,
   dBlockRuntimeStateRef,
   hasAvailableModels = false,
+  schemaVersion = 1,
 }: {
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
@@ -274,6 +282,7 @@ export const defaultExtensions = ({
   onTocUpdate?: (data: ToCItemType[], isCreate?: boolean) => void;
   dBlockRuntimeStateRef?: DBlockRuntimeStateRef;
   hasAvailableModels?: boolean;
+  schemaVersion?: number;
 }) => [
   FontFamily,
   FontFamilyPersistence,
@@ -327,7 +336,9 @@ export const defaultExtensions = ({
     bulletList: false,
     listItem: false,
     codeBlock: false,
-    trailingNode: false,
+    // v1 uses the custom dBlock-aware TrailingNode registered below; the
+    // flat v2 schema uses StarterKit's stock one (schema-agnostic).
+    trailingNode: schemaVersion >= 2 ? undefined : false,
   }),
   CommonMarkBold.configure({
     HTMLAttributes: {
@@ -429,17 +440,57 @@ export const defaultExtensions = ({
     ipfsImageFetchFn,
     fetchV1ImageFn,
   }),
-  Gapcursor,
-  createDBlockExtension({
-    ipfsImageUploadFn,
-    onCopyHeadingLink,
-    hasAvailableModels,
-    getRuntimeState: dBlockRuntimeStateRef
-      ? () => dBlockRuntimeStateRef.current
-      : undefined,
-  }),
-  TrailingNode,
-  Document,
+  // v1 keeps the gap cursor it has always shipped with. v2 drops it
+  // entirely (TEC-2679): the flat schema exposes gap positions at every
+  // image→table / table→table / before-embed boundary, where the cursor
+  // renders as a stray dash glued to the following block's border — while
+  // mouse clicks in the gap don't even reach it (browser caret-from-point
+  // snaps into the nearest table cell) and vertical arrows hop table→table
+  // past it. Tiptap's Notion-like template ships the extension too, but the
+  // state is equally unreachable through normal input there (verified live:
+  // mid-gap clicks land in a cell, arrows skip the boundary) — the real
+  // insert-between-blocks affordance is the block handle's plus button,
+  // which we match. Removing the state beats restyling an artifact users
+  // can neither aim for nor understand.
+  ...(schemaVersion >= 2 ? [] : [Gapcursor]),
+  // Both schemas: Yjs restores a stale selection after undo/redo.
+  UndoSelection,
+  // Schema fork. v1: every block wrapped in a dBlock (TrailingNode's position
+  // math assumes the wrapper, so it is v1-only until re-homed in M2).
+  // v2: flat top node, stock Tiptap structure.
+  ...(schemaVersion >= 2
+    ? [
+        FlatDocument,
+        // Supplies the read-only-preview heading chrome that v1 renders from
+        // its node view (flat blocks have none).
+        FlatHeadingCollapse.configure({ onCopyHeadingLink }),
+        // Pasted image/video URLs convert to media in v1 through a plugin
+        // registered inside the dBlock extension; re-registered here for v2.
+        FlatMediaConversion.configure({
+          getRuntimeState: dBlockRuntimeStateRef
+            ? () => dBlockRuntimeStateRef.current
+            : undefined,
+        }),
+        BlockId,
+        // Notion-template parity: Backspace on an empty block between two
+        // same-type lists joins them (TEC-2679). v1's lists live inside
+        // dBlock wrappers where this is the custom keymap's territory.
+        ListNormalization,
+        // Same hasAvailableModels gate as v1's in-dBlock space trigger.
+        ...(hasAvailableModels ? [AiWriterSpaceTrigger] : []),
+      ]
+    : [
+        createDBlockExtension({
+          ipfsImageUploadFn,
+          onCopyHeadingLink,
+          hasAvailableModels,
+          getRuntimeState: dBlockRuntimeStateRef
+            ? () => dBlockRuntimeStateRef.current
+            : undefined,
+        }),
+        TrailingNode,
+        Document,
+      ]),
   ...SuperchargedTableExtensions,
   CustomKeymap,
   Iframe.configure({ ipfsImageFetchFn, fetchV1ImageFn }),
@@ -447,7 +498,10 @@ export const defaultExtensions = ({
   actionButton.configure({
     onError,
   }),
-  ColumnExtension,
+  // v2 swaps the column node for one whose content is bare blocks.
+  ...(schemaVersion >= 2
+    ? [ColumnExtension.configure({ column: false }), FlatColumn]
+    : [ColumnExtension]),
   DocxFileHandler.configure({
     ipfsImageUploadFn,
     onError,

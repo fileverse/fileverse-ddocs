@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NodeViewProps } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import { NodeViewWrapper } from '@tiptap/react';
 import { useEditingContext } from '../../hooks/use-editing-context';
 import { debounce } from '../../utils/debounce';
@@ -103,13 +104,16 @@ const ActionButtonNodeView = ({
     const pos = getPos();
 
     if (pos !== undefined) {
-      const to = pos + node.nodeSize;
 
       formattedUrl &&
         editor
           ?.chain()
-          .focus(pos)
-          .deleteRange({ from: pos, to })
+          .command(({ tr }) => {
+            // Select the action button itself so the insert replaces it
+            // in place (no empty-wrapper intermediate, no magic offsets).
+            tr.setSelection(NodeSelection.create(tr.doc, pos));
+            return true;
+          })
           .setIframe({ src: formattedUrl, width, height })
           .run();
     } else {
@@ -138,12 +142,13 @@ const ActionButtonNodeView = ({
 
     const pos = getPos();
     if (pos !== undefined) {
-      const to = pos + node.nodeSize;
       filteredTweetId &&
         editor
           ?.chain()
-          .focus(pos)
-          .deleteRange({ from: pos, to })
+          .command(({ tr }) => {
+            tr.setSelection(NodeSelection.create(tr.doc, pos));
+            return true;
+          })
           .setTweetEmbed({ tweetId: filteredTweetId })
           .run();
     } else {
@@ -174,13 +179,14 @@ const ActionButtonNodeView = ({
         const pos = getPos();
 
         if (pos !== undefined) {
-          const to = pos + node.nodeSize;
 
           sanitizedURL &&
             editor
               ?.chain()
-              .focus(pos)
-              .deleteRange({ from: pos, to })
+              .command(({ tr }) => {
+                tr.setSelection(NodeSelection.create(tr.doc, pos));
+                return true;
+              })
               .setIframe({ src: sanitizedURL, width, height })
               .run();
         } else {
@@ -251,9 +257,11 @@ const ActionButtonNodeView = ({
 
     const pos = getPos();
     if (pos !== undefined) {
-      const to = pos + node.nodeSize;
       if (formattedUrl) {
-        const chain = editor?.chain().focus(pos).deleteRange({ from: pos, to });
+        const chain = editor?.chain().command(({ tr }) => {
+          tr.setSelection(NodeSelection.create(tr.doc, pos));
+          return true;
+        });
         if (mediaType === 'twitter') {
           chain?.setTweetEmbed({ tweetId: formattedUrl });
         } else {
@@ -283,13 +291,29 @@ const ActionButtonNodeView = ({
     }
   };
 
-  const debouncedHandleSave = debounce(handleSave, 1000);
+  // One stable debounce for the component's lifetime. The previous code
+  // rebuilt the debounce on every render, so every keystroke armed its own
+  // independent 1s timer — each firing handleSave with a PARTIAL URL
+  // ("Please enter a valid URL" toast spam), and leaked timers kept firing
+  // after the node view unmounted. The ref keeps the latest closure without
+  // resetting the timer identity.
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  const debouncedHandleSave = useMemo(
+    () => debounce(() => handleSaveRef.current(), 1000),
+    [],
+  );
 
   useEffect(() => {
     if (inputValue) {
       debouncedHandleSave();
     }
-  }, [inputValue]);
+  }, [inputValue, debouncedHandleSave]);
+
+  useEffect(
+    () => () => debouncedHandleSave.cancel(),
+    [debouncedHandleSave],
+  );
 
   useEffect(() => {
     editor?.chain().focus();

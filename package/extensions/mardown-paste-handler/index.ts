@@ -7,6 +7,7 @@ import {
   Fragment,
   DOMParser as ProseMirrorDOMParser,
   Node as PMNode,
+  Slice,
 } from 'prosemirror-model';
 import markdownItFootnote from 'markdown-it-footnote';
 import TurndownService from 'turndown';
@@ -741,6 +742,46 @@ const MarkdownPasteHandler = (
       return [
         new Plugin({
           props: {
+            // Non-markdown clipboard HTML goes through ProseMirror's native
+            // paste, which faithfully keeps the stacks of empty <p> that
+            // sites like Wikipedia put between sections. Collapse interior
+            // runs of empty paragraphs to one; the first and last slice
+            // children are never touched (they can be open-ended and merge
+            // into surrounding blocks).
+            transformPasted: (slice) => {
+              const isEmptyParagraphChild = (node: PMNode) => {
+                if (node.type.name === 'paragraph')
+                  return node.childCount === 0;
+                return (
+                  node.type.name === 'dBlock' &&
+                  node.childCount === 1 &&
+                  node.firstChild!.type.name === 'paragraph' &&
+                  node.firstChild!.childCount === 0
+                );
+              };
+
+              const total = slice.content.childCount;
+              if (total < 3) return slice;
+
+              const kept: PMNode[] = [];
+              let previousWasEmpty = false;
+              slice.content.forEach((child, _offset, index) => {
+                const isEmpty = isEmptyParagraphChild(child);
+                const isEdge = index === 0 || index === total - 1;
+                if (!isEdge && isEmpty && previousWasEmpty) {
+                  return;
+                }
+                previousWasEmpty = isEmpty;
+                kept.push(child);
+              });
+
+              if (kept.length === total) return slice;
+              return new Slice(
+                Fragment.fromArray(kept),
+                slice.openStart,
+                slice.openEnd,
+              );
+            },
             handlePaste: (view, event) => {
               const clipboardData = event.clipboardData;
               if (!clipboardData) return false;
@@ -1133,12 +1174,18 @@ const MarkdownPasteHandler = (
           find: /===\s*$/m,
           handler: ({ state, range }) => {
             const { tr } = state;
-            const start = range.from - 2;
+            // v1: replace the dBlock around the paragraph (2 levels up).
+            // Flat v2: replace the paragraph itself (1 level up).
+            const hasDBlock = Boolean(state.schema.nodes.dBlock);
+            const start = range.from - (hasDBlock ? 2 : 1);
             const end = range.to;
 
-            const isDBlock = state.doc.nodeAt(start)?.type.name === 'dBlock';
+            const containerName = state.doc.nodeAt(start)?.type.name;
+            const isReplaceableContainer = hasDBlock
+              ? containerName === 'dBlock'
+              : containerName === 'paragraph';
             // Create a page break node
-            if (isDBlock) {
+            if (isReplaceableContainer) {
               tr.replaceWith(
                 start,
                 end,
@@ -1504,9 +1551,33 @@ export async function handleMarkdownContent(
     view.state.schema,
   ).parse(domContent);
 
-  // Post-process: replace dBlock nodes containing a "===" paragraph with pageBreak nodes
+  // Post-process: replace "===" paragraphs with pageBreak nodes (v1 wraps
+  // them in a dBlock; flat v2 has them top-level), and collapse runs of
+  // empty paragraphs — pasted HTML (Wikipedia and friends) carries stacks of
+  // empty <p> that render as huge gaps. A single empty paragraph is kept as
+  // possible intent; consecutive ones are junk.
+  const isEmptyParagraphBlock = (child: PMNode) => {
+    if (child.type.name === 'paragraph') return child.childCount === 0;
+    return (
+      child.type.name === 'dBlock' &&
+      child.childCount === 1 &&
+      child.firstChild!.type.name === 'paragraph' &&
+      child.firstChild!.childCount === 0
+    );
+  };
+
   const newChildren: PMNode[] = [];
+  let previousWasEmptyParagraph = false;
   proseMirrorNodes.forEach((child: PMNode) => {
+    if (isEmptyParagraphBlock(child)) {
+      if (!previousWasEmptyParagraph) {
+        newChildren.push(child);
+      }
+      previousWasEmptyParagraph = true;
+      return;
+    }
+    previousWasEmptyParagraph = false;
+
     if (child.type.name === 'dBlock' && child.childCount === 1) {
       const inner = child.firstChild!;
       if (
@@ -1516,6 +1587,10 @@ export async function handleMarkdownContent(
         newChildren.push(view.state.schema.nodes.pageBreak.create());
         return;
       }
+    }
+    if (child.type.name === 'paragraph' && child.textContent.trim() === '===') {
+      newChildren.push(view.state.schema.nodes.pageBreak.create());
+      return;
     }
     newChildren.push(child);
   });

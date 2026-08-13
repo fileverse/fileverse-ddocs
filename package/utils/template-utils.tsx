@@ -119,7 +119,7 @@ const renderTemplateButtons = (
     return null;
   }
   return (
-    <ButtonGroup className="template-buttons space-x-0 gap-2 absolute top-8 left-0 md:!left-[unset] md:-translate-y-1 md:!right-0 md:!top-0 z-40 group-has-[.is-editor-empty[dir='rtl']]/collision:md:!left-0 group-has-[.is-editor-empty[dir='rtl']]/collision:md:!right-[unset]">
+    <ButtonGroup className="template-buttons space-x-0 gap-2 group-has-[.is-editor-empty[dir='rtl']]/collision:md:!left-0 group-has-[.is-editor-empty[dir='rtl']]/collision:md:!right-[unset]">
       {templateButtons.map((button, index) => (
         <Button
           key={index}
