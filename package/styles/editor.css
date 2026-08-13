@@ -59,6 +59,10 @@
     }
   }
 
+  .katex-display > .katex > .katex-html {
+    white-space: normal;
+  }
+
   ul + ul {
     margin-top: 1.5rem;
   }
