@@ -14,7 +14,9 @@ export const MediaCaption = Node.create({
   selectable: false,
 
   parseHTML() {
-    return [{ tag: 'div[data-type="media-caption"]' }];
+    // figcaption is how styles-mode markdown serializes the caption (inside
+    // <figure data-type="resizable-media">) — see the mediaFigure rule.
+    return [{ tag: 'div[data-type="media-caption"]' }, { tag: 'figcaption' }];
   },
 
   renderHTML({ HTMLAttributes }) {

@@ -51,14 +51,12 @@ class TweetErrorBoundary extends Component<
   }
 }
 
-export const TweetComponentNodeView = ({ node, editor }: NodeViewProps) => {
+export const TweetComponentNodeView = ({ node }: NodeViewProps) => {
   const [tweetData, setTweetData] = useState<any>(null);
   const [error, setError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    editor?.chain().focus();
-
     const fetchTweetData = async () => {
       try {
         const response = await fetch(

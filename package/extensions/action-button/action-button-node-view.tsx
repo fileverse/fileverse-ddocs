@@ -315,10 +315,6 @@ const ActionButtonNodeView = ({
     [debouncedHandleSave],
   );
 
-  useEffect(() => {
-    editor?.chain().focus();
-  }, []);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

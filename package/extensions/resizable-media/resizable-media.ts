@@ -156,6 +156,57 @@ export const ResizableMedia = Node.create<MediaOptions>({
   parseHTML() {
     return [
       {
+        // Styles-mode markdown serializes media as
+        // <figure data-type="resizable-media"> (the mediaFigure turndown
+        // rule) — restore alignment/size/caption so a Split View round-trip
+        // is lossless. Identity/crypto/size attrs live on the inner
+        // <img>/<video>, not the figure, so per-attribute parseHTML (which
+        // only reads the matched element) misses them — copy explicitly.
+        tag: 'figure[data-type="resizable-media"]',
+        contentElement: (el) => {
+          const figcaption = (el as HTMLElement).querySelector('figcaption');
+          const holder = document.createElement('div');
+          if (figcaption) holder.appendChild(figcaption.cloneNode(true));
+          return holder;
+        },
+        getAttrs: (el) => {
+          const root = el as HTMLElement;
+          const img = root.querySelector('img');
+          const media = img || root.querySelector('video');
+          if (!media) return false;
+          const attrs: Record<string, string | null> = {
+            src: media.getAttribute('src'),
+            'media-type':
+              media.getAttribute('media-type') || (img ? 'img' : 'video'),
+            dataAlign: root.getAttribute('data-align') || 'center',
+          };
+          const float = root.getAttribute('data-float');
+          if (float) attrs.dataFloat = float;
+          if (img) attrs.backgroundColor = readBackgroundColor(img);
+          for (const name of [
+            'alt',
+            'title',
+            'width',
+            'height',
+            'ipfsHash',
+            'mimeType',
+            'encryptionKey',
+            'ipfsUrl',
+            'nonce',
+            'version',
+            'encryptedKey',
+            'url',
+            'iv',
+            'privateKey',
+            'authTag',
+          ]) {
+            const value = media.getAttribute(name);
+            if (value != null) attrs[name] = value;
+          }
+          return attrs;
+        },
+      },
+      {
         tag: 'div[data-type="resizable-media"]',
         // The wrapper's only ProseMirror content is the optional caption (see
         // renderHTML's media-caption-wrapper hole). Point the parser at that
