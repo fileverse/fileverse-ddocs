@@ -288,6 +288,7 @@ const PreviewDdocEditorContent = forwardRef(
                     <DBlockToolbarProvider
                       editor={editor}
                       runtimeState={dBlockRuntimeState}
+                      isPreviewEditor
                     >
                       <EditorContent
                         editor={editor}

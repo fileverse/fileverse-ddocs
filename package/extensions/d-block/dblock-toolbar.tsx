@@ -188,11 +188,25 @@ export const DBlockToolbarProvider = ({
   children,
   editor,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
+  isPreviewEditor = false,
 }: {
   children: React.ReactNode;
   editor: Editor | null;
   runtimeState?: DBlockRuntimeState;
+  // Statically read-only surfaces (PreviewDdocEditor: blog preview, version
+  // history) must never mount block chrome. The read-only heading
+  // affordances live inside the node view, and the upstream DragHandle
+  // plugin relocates its DOM element outside React's tree — so when a
+  // late-arriving blob flips the schema marker and the editor rebuilds,
+  // React re-commits EditorContent against that relocated `.drag-handle`
+  // anchor and insertBefore throws NotFoundError, killing the preview
+  // (TEC-2679 blog publish modal on v2 docs). Never mounted = never a
+  // stale anchor, and no relocated element leaked per version switch.
+  isPreviewEditor?: boolean;
 }) => {
+  if (isPreviewEditor) {
+    return <>{children}</>;
+  }
   return (
     <>
       {children}
