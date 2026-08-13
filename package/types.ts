@@ -22,7 +22,7 @@ export type {
 
 export const DdocEditorProps: EditorProps = {
   attributes: {
-    class: `prose-lg prose-headings:font-display prose prose-p:my-2 prose-h1:my-2 prose-h2:my-2 prose-h3:my-2 prose-ul:my-2 prose-ol:my-2 max-w-none focus:outline-none w-full`,
+    class: `prose-lg prose-headings:font-display prose prose-p:my-2 prose-h1:my-2 prose-h2:my-2 prose-h3:my-2 prose-ul:my-2 prose-ol:my-2 max-w-none focus:outline-none w-full main-doc-editor`,
     spellcheck: 'true',
     suppressContentEditableWarning: 'true',
   },
@@ -240,6 +240,12 @@ export interface DdocProps extends CommentAccountProps {
   enableIndexeddbSync?: boolean;
   ddocId?: string;
   initialContent?: JSONContent | string | string[] | null;
+  /**
+   * Schema for newly created docs only: 1 = dBlock (default), 2 = flat.
+   * Ignored for existing docs, which always follow the schemaVersion marker
+   * stored inside the doc itself.
+   */
+  preferredSchemaVersion?: 1 | 2;
   walletAddress?: string | null;
   username?: string | null;
   setUsername?: React.Dispatch<SetStateAction<string>>;

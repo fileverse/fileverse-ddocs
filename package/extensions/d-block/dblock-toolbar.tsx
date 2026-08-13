@@ -1,242 +1,28 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Editor, JSONContent } from '@tiptap/react';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { useMediaQuery } from 'usehooks-ts';
-import { cn } from '@fileverse/ui';
-import useContentItemActions from '../../hooks/use-content-item-actions';
 import {
   createMoreTemplates,
   createTemplateButtons,
   renderTemplateButtons,
 } from '../../utils/template-utils';
-import { DBlockMenu } from './components/menu';
-import {
-  CollapseButton,
-  CopyLinkButton,
-  GripButton,
-  PlusButton,
-} from './components/buttons';
-import {
-  AddBlockTooltip,
-  CollapseTooltip,
-  CopyLinkTooltip,
-  DragTooltip,
-} from './components/tooltips';
-import {
-  getDBlockRenderMeta,
-  getHeadingLinkSlug,
-  toggleHeadingCollapse,
-} from './dblock-collapse';
+import { unwrapDBlocksInJSON } from '../../utils/block-schema';
 import {
   DEFAULT_DBLOCK_RUNTIME_STATE,
   type DBlockRuntimeState,
 } from './dblock-runtime';
-import {
-  getDBlockViewFromElement,
-  getDBlockViewFromEventTarget,
-  refreshRegisteredDBlockViews,
-  type DBlockViewHandle,
-} from './dblock-view-registry';
+import { DBlockDragHandle } from './dblock-drag-handle';
 
-interface ResolvedDBlock {
-  editor: Editor;
-  handle: DBlockViewHandle;
+interface DBlockTemplateTarget {
   node: ProseMirrorNode;
   pos: number;
 }
 
-const resolveCurrentDBlock = (
-  editor: Editor | null,
-  handle: DBlockViewHandle | null,
-): ResolvedDBlock | null => {
-  if (!editor || !handle?.dom.isConnected) {
-    return null;
-  }
-
-  try {
-    const pos = handle.getPos();
-    const node = editor.state.doc.nodeAt(pos);
-
-    if (typeof pos !== 'number' || node?.type.name !== 'dBlock') {
-      return null;
-    }
-
-    return {
-      editor,
-      handle,
-      node,
-      pos,
-    };
-  } catch {
-    return null;
-  }
-};
-
-const DBlockToolbar = React.memo(
-  ({
-    editor,
-    handle,
-    runtimeState,
-    refreshKey,
-  }: {
-    editor: Editor;
-    handle: DBlockViewHandle;
-    runtimeState: DBlockRuntimeState;
-    refreshKey: number;
-  }) => {
-    const isBelowLargeScreen = useMediaQuery('(max-width: 1024px)');
-    const [menuOpen, setMenuOpen] = useState(false);
-    const resolved = useMemo(() => {
-      void refreshKey;
-      return resolveCurrentDBlock(editor, handle);
-    }, [editor, handle, refreshKey]);
-    const resolveBlock = useCallback(
-      () => resolveCurrentDBlock(editor, handle),
-      [editor, handle],
-    );
-    const actions = useContentItemActions(editor, resolveBlock);
-
-    useEffect(() => {
-      setMenuOpen(false);
-    }, [handle.id]);
-
-    if (!resolved) {
-      return null;
-    }
-
-    const meta = getDBlockRenderMeta(resolved.node, resolved.pos);
-
-    const handleAddBlock = (event: React.MouseEvent<HTMLDivElement>) => {
-      const current = resolveBlock();
-      if (!current) {
-        return;
-      }
-
-      const insertPos = event.altKey
-        ? current.pos
-        : current.pos + current.node.nodeSize;
-
-      current.editor.commands.insertContentAt(insertPos, {
-        type: 'dBlock',
-        content: [{ type: 'paragraph' }],
-      });
-    };
-
-    const handleDragClick = (event: React.MouseEvent<HTMLDivElement>) => {
-      if (event.altKey) {
-        actions.deleteNode();
-        return;
-      }
-
-      setMenuOpen((open) => !open);
-    };
-
-    const handleToggleCollapse = () => {
-      const current = resolveBlock();
-      if (current) {
-        toggleHeadingCollapse(current.editor, current.pos);
-      }
-    };
-
-    const handleCopyHeadingLink = () => {
-      const current = resolveBlock();
-      if (!current) {
-        return;
-      }
-
-      const headingLink = getHeadingLinkSlug(current.node, current.pos);
-      if (headingLink) {
-        current.handle.onCopyHeadingLink?.(headingLink);
-      }
-    };
-
-    const buttonClassName = cn(
-      'd-block-button color-text-default hover:color-bg-default-hover aspect-square h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity',
-    );
-
-    const shouldShowEditingControls =
-      !runtimeState.isPreviewMode && !isBelowLargeScreen;
-    const shouldShowCollapse = meta.isHeading;
-    const shouldShowCopyLink =
-      runtimeState.isPreviewMode &&
-      meta.isHeading &&
-      !runtimeState.isPreviewEditor &&
-      !isBelowLargeScreen;
-
-    if (
-      (runtimeState.isPresentationMode && runtimeState.isPreviewMode) ||
-      !resolved.handle.gutterElement.isConnected ||
-      (!shouldShowEditingControls && !shouldShowCollapse && !shouldShowCopyLink)
-    ) {
-      return null;
-    }
-
-    return createPortal(
-      <div className="flex h-6 w-full items-center justify-end gap-[2px]">
-        {shouldShowEditingControls ? (
-          <>
-            <AddBlockTooltip>
-              <PlusButton
-                onClick={handleAddBlock}
-                className={buttonClassName}
-              />
-            </AddBlockTooltip>
-
-            <DBlockMenu
-              isOpen={menuOpen}
-              onOpenChange={setMenuOpen}
-              trigger={
-                <DragTooltip>
-                  <GripButton
-                    onClick={handleDragClick}
-                    className={buttonClassName}
-                  />
-                </DragTooltip>
-              }
-              actions={actions}
-            />
-          </>
-        ) : null}
-
-        {shouldShowCollapse ? (
-          <CollapseTooltip isCollapsed={meta.isThisHeadingCollapsed}>
-            <CollapseButton
-              isCollapsed={meta.isThisHeadingCollapsed}
-              onToggle={handleToggleCollapse}
-              className={buttonClassName}
-            />
-          </CollapseTooltip>
-        ) : null}
-
-        {shouldShowCopyLink ? (
-          <CopyLinkTooltip>
-            <CopyLinkButton
-              onClick={handleCopyHeadingLink}
-              className={cn(
-                'd-block-button color-text-default color-bg-default-hover aspect-square h-6 w-6 shrink-0',
-              )}
-            />
-          </CopyLinkTooltip>
-        ) : null}
-      </div>,
-      resolved.handle.gutterElement,
-    );
-  },
-);
-
-DBlockToolbar.displayName = 'DBlockToolbar';
-
-const getTemplateTarget = (
+export const getTemplateTarget = (
   editor: Editor | null,
   runtimeState: DBlockRuntimeState,
-) => {
+): DBlockTemplateTarget | null => {
   if (
     !editor ||
     editor.isDestroyed ||
@@ -251,12 +37,12 @@ const getTemplateTarget = (
 
   const node = editor.state.doc.firstChild;
   const pos = 0;
-  const paragraphNode = node?.content.firstChild;
+  // v1 wraps the paragraph in a dBlock; in the flat schema the only block IS
+  // the paragraph.
+  const paragraphNode =
+    node?.type.name === 'dBlock' ? node.content.firstChild : node;
 
-  if (
-    node?.type.name !== 'dBlock' ||
-    paragraphNode?.type.name !== 'paragraph'
-  ) {
+  if (!node || paragraphNode?.type.name !== 'paragraph') {
     return null;
   }
 
@@ -280,17 +66,7 @@ const getTemplateTarget = (
     return null;
   }
 
-  const firstDBlockElement = editor.view.dom.querySelector(
-    '[data-dblock-node-view]',
-  );
-  const handle = getDBlockViewFromElement(firstDBlockElement);
-
-  if (!handle?.contentElement.isConnected) {
-    return null;
-  }
-
   return {
-    handle,
     node,
     pos,
   };
@@ -299,15 +75,30 @@ const getTemplateTarget = (
 const DBlockTemplateOverlay = ({
   editor,
   runtimeState,
-  refreshKey,
 }: {
   editor: Editor | null;
   runtimeState: DBlockRuntimeState;
-  refreshKey: number;
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [visibleTemplateCount, setVisibleTemplateCount] = useState(2);
+  const [refreshKey, setRefreshKey] = useState(0);
   const isFocusMode = runtimeState.isFocusMode;
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const refresh = () => setRefreshKey((key) => key + 1);
+    editor.on('transaction', refresh);
+    editor.on('selectionUpdate', refresh);
+    window.addEventListener('resize', refresh);
+
+    return () => {
+      editor.off('transaction', refresh);
+      editor.off('selectionUpdate', refresh);
+      window.removeEventListener('resize', refresh);
+    };
+  }, [editor]);
+
   const target = useMemo(() => {
     void refreshKey;
     return getTemplateTarget(editor, runtimeState);
@@ -320,9 +111,17 @@ const DBlockTemplateOverlay = ({
         return;
       }
 
+      // The template JSON is authored in v1 shape (dBlock wrappers) and stays
+      // the single source of truth; the flat schema gets it unwrapped at
+      // insert time. Insert position: v1's arithmetic lands on the empty
+      // wrapper's own position, which is what the flat schema uses directly.
+      const hasDBlock = Boolean(editor?.schema.nodes.dBlock);
+
       editor?.commands.insertContentAt(
-        currentTarget.pos + currentTarget.node.nodeSize - 4,
-        template,
+        hasDBlock
+          ? currentTarget.pos + currentTarget.node.nodeSize - 4
+          : currentTarget.pos,
+        hasDBlock ? template : unwrapDBlocksInJSON(template),
       );
     },
     [editor, runtimeState],
@@ -344,22 +143,44 @@ const DBlockTemplateOverlay = ({
     });
   }, [moreTemplates.length]);
 
-  if (!target || isFocusMode) {
+  // Same hazard #553 fixed on the old toolbar: the tab-editor cache destroys
+  // and recreates editors inside pre-paint layout effects, so this can render
+  // with an already-destroyed editor, whose `view` access throws on tiptap v3.
+  const panel =
+    editor && !editor.isDestroyed
+      ? editor.view.dom.closest('[data-ddoc-editor-panel]')
+      : null;
+
+  if (!target || isFocusMode || !panel) {
+    return null;
+  }
+
+  // The editor's first block must be rendered before the overlay is worth
+  // portaling. Matched by position rather than by the v1-only
+  // `[data-type="d-block"]` marker, which flat blocks do not carry.
+  const firstBlock = editor?.view.dom.firstElementChild;
+  if (!firstBlock) {
     return null;
   }
 
   return createPortal(
-    renderTemplateButtons(
-      templateButtons,
-      moreTemplates,
-      visibleTemplateCount,
-      toggleAllTemplates,
-      isExpanded,
-      runtimeState.isCollaboratorsDoc,
-      runtimeState.isPreviewMode,
-      isFocusMode,
-    ),
-    target.handle.contentElement,
+    <div
+      data-template-overlay="true"
+      contentEditable={false}
+      className="top-[66px] right-20 w-max absolute z-10 max-md:right-[unset] max-md:left-9"
+    >
+      {renderTemplateButtons(
+        templateButtons,
+        moreTemplates,
+        visibleTemplateCount,
+        toggleAllTemplates,
+        isExpanded,
+        runtimeState.isCollaboratorsDoc,
+        runtimeState.isPreviewMode,
+        isFocusMode,
+      )}
+    </div>,
+    panel,
   );
 };
 
@@ -367,112 +188,34 @@ export const DBlockToolbarProvider = ({
   children,
   editor,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
+  isPreviewEditor = false,
 }: {
   children: React.ReactNode;
   editor: Editor | null;
   runtimeState?: DBlockRuntimeState;
+  // Statically read-only surfaces (PreviewDdocEditor: blog preview, version
+  // history) must never mount block chrome. The read-only heading
+  // affordances live inside the node view, and the upstream DragHandle
+  // plugin relocates its DOM element outside React's tree — so when a
+  // late-arriving blob flips the schema marker and the editor rebuilds,
+  // React re-commits EditorContent against that relocated `.drag-handle`
+  // anchor and insertBefore throws NotFoundError, killing the preview
+  // (TEC-2679 blog publish modal on v2 docs). Never mounted = never a
+  // stale anchor, and no relocated element leaked per version switch.
+  isPreviewEditor?: boolean;
 }) => {
-  const [activeHandle, setActiveHandle] = useState<DBlockViewHandle | null>(
-    null,
-  );
-  const [refreshKey, setRefreshKey] = useState(0);
-  const activeHandleRef = useRef<DBlockViewHandle | null>(null);
-
-  const setActiveDBlock = useCallback((handle: DBlockViewHandle | null) => {
-    activeHandleRef.current = handle;
-    setActiveHandle(handle);
-  }, []);
-
-  const refreshToolbar = useCallback(() => {
-    if (!editor || editor.isDestroyed) {
-      setActiveDBlock(null);
-      return;
-    }
-
-    const currentHandle = activeHandleRef.current;
-    currentHandle?.refresh();
-
-    if (currentHandle && !resolveCurrentDBlock(editor, currentHandle)) {
-      setActiveDBlock(null);
-      return;
-    }
-
-    setRefreshKey((key) => key + 1);
-  }, [editor, setActiveDBlock]);
-
-  useEffect(() => {
-    // The tab-editor cache destroys/recreates editors in pre-paint layout
-    // effects, so this effect can fire with an already-destroyed editor —
-    // whose `view` access throws on tiptap v3.
-    if (!editor || editor.isDestroyed) {
-      setActiveDBlock(null);
-      return;
-    }
-
-    const editorDom = editor.view.dom;
-
-    const activateFromTarget = (target: EventTarget | null) => {
-      const handle = getDBlockViewFromEventTarget(target);
-      if (!handle || !editorDom.contains(handle.dom)) {
-        return;
-      }
-
-      setActiveDBlock(handle);
-      setRefreshKey((key) => key + 1);
-    };
-
-    const handlePointerOver = (event: PointerEvent) => {
-      activateFromTarget(event.target);
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      activateFromTarget(event.target);
-    };
-    const handlePointerOut = () => {
-      refreshToolbar();
-    };
-    const handleFocusOut = () => {
-      refreshToolbar();
-    };
-
-    editorDom.addEventListener('pointerover', handlePointerOver);
-    editorDom.addEventListener('pointerout', handlePointerOut);
-    editorDom.addEventListener('focusin', handleFocusIn);
-    editorDom.addEventListener('focusout', handleFocusOut);
-    editor.on('transaction', refreshToolbar);
-    editor.on('selectionUpdate', refreshToolbar);
-
-    return () => {
-      editorDom.removeEventListener('pointerover', handlePointerOver);
-      editorDom.removeEventListener('pointerout', handlePointerOut);
-      editorDom.removeEventListener('focusin', handleFocusIn);
-      editorDom.removeEventListener('focusout', handleFocusOut);
-      editor.off('transaction', refreshToolbar);
-      editor.off('selectionUpdate', refreshToolbar);
-    };
-  }, [editor, refreshToolbar, setActiveDBlock]);
-
-  useEffect(() => {
-    refreshRegisteredDBlockViews();
-    setActiveDBlock(null);
-    setRefreshKey((key) => key + 1);
-  }, [runtimeState, setActiveDBlock]);
-
+  if (isPreviewEditor) {
+    return <>{children}</>;
+  }
   return (
     <>
       {children}
-      {activeHandle && editor ? (
-        <DBlockToolbar
-          editor={editor}
-          handle={activeHandle}
-          runtimeState={runtimeState}
-          refreshKey={refreshKey}
-        />
+      {/* The drag-handle plugin reads editor.view, so a destroyed editor
+          would throw here too — see the note in DBlockTemplateOverlay. */}
+      {editor && !editor.isDestroyed ? (
+        <DBlockDragHandle editor={editor} runtimeState={runtimeState} />
       ) : null}
-      <DBlockTemplateOverlay
-        editor={editor}
-        runtimeState={runtimeState}
-        refreshKey={refreshKey}
-      />
+      <DBlockTemplateOverlay editor={editor} runtimeState={runtimeState} />
     </>
   );
 };

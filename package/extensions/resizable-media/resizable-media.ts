@@ -6,6 +6,7 @@ import { getMediaPasteDropPlugin } from './media-paste-drop-plugin';
 import UploadImagesPlugin from '../../utils/upload-images';
 import { InlineLoaderPlugin } from '../../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../../types';
+import { wrapBlockNode } from '../../utils/block-schema';
 
 // Background color of a media element, from an inline style or the
 // data-background-color round-trip attribute (whichever is present).
@@ -312,14 +313,10 @@ export const ResizableMedia = Node.create<MediaOptions>({
 
         const pos = selection.$to.pos;
 
-        return editor.commands.insertContentAt(pos, {
-          type: 'dBlock',
-          content: [
-            {
-              type: 'paragraph',
-            },
-          ],
-        });
+        return editor.commands.insertContentAt(
+          pos,
+          wrapBlockNode(editor.schema, { type: 'paragraph' }),
+        );
       },
     };
   },

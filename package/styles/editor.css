@@ -30,13 +30,9 @@
     }
   }
   /* Default Placeholder */
-  & p.is-empty::before {
+  > .is-empty:first-child::before {
     content: 'Type  /  to browse options';
     font-family: system-ui;
-  }
-
-  > * + * p.is-empty::before {
-    content: none;
   }
 
   /* Callout block placeholder (non-focused fallback) */
@@ -63,16 +59,28 @@
     }
   }
 
-  h1 {
-    transform: translateY(-0.5rem);
+  .katex-display > .katex > .katex-html {
+    white-space: normal;
   }
 
-  h2 {
-    transform: translateY(-0.25rem);
+  ul + ul {
+    margin-top: 1.5rem;
   }
 
-  h3 {
-    transform: translateY(0);
+  /* Flat v2 rhythm: match v1's effective uniform 24px block gap. prose-lg
+     gives headings 48px margins; v1 never shows them (margins collapse
+     through the wrapper rows), so v2 pins headings to the same 1.5rem as
+     paragraphs. */
+  &[data-schema-version='2'] {
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin-top: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
   }
 
   & > p {
@@ -333,12 +341,10 @@
 
   ul {
     padding: 0;
-    margin: 0;
   }
 
   ol {
     padding: 0;
-    margin: 0;
   }
 
   li {
@@ -469,12 +475,21 @@
   .task-item {
     grid-template-columns: auto 1fr;
     grid-template-rows: auto 1fr;
-    align-items: center;
+    /* Top-align, not center: on multi-line items the checkbox must sit on
+       the FIRST line (TEC-2644), not float at the item's vertical middle. */
+    align-items: start;
     &:has(> div:has(ul)) {
       row-gap: 0.5rem;
     }
     > label {
       grid-area: 1/1/2/2;
+      /* flex kills the inline line-box slack that pushed the checkbox a few
+         px below the label top (block label + inline-grid input). */
+      display: flex;
+      /* Optically center the 1.25rem checkbox within the first text line
+         (1.5 line-height): (1.5em - 1.25rem) / 2, in em so it tracks the
+         document font size. */
+      margin-top: calc(0.75em - 0.625rem);
     }
     > div {
       p {
@@ -486,6 +501,143 @@
       grid-template-rows: subgrid;
       grid-row: span 2;
     }
+  }
+}
+
+.ProseMirror.main-doc-editor {
+  --padding-t: 24px;
+  --padding-r: 16px;
+  --padding-b: 20vh;
+  --padding-l: 36px;
+  padding: var(--padding-t) var(--padding-r) var(--padding-b) var(--padding-l);
+}
+
+/* The floating handle sits in the container's left padding, which is part of
+   .ProseMirror's own box. Both are positioned siblings in one stacking
+   context, so without an explicit z-index the winner is decided by DOM
+   insertion order — and the plugin's element lands before .ProseMirror in
+   some mounts and after it in others. When it lands first the editor surface
+   paints over the cluster: it stays visible but every click hits the editor
+   instead of the buttons. Pin it above the surface so the order stops
+   mattering. */
+.drag-handle {
+  z-index: 5;
+}
+
+@media (min-width: 768px) {
+  .ProseMirror.main-doc-editor {
+    --padding-t: 72px;
+    --padding-r: 80px;
+    --padding-b: 20vh;
+    --padding-l: var(--padding-r);
+    padding: var(--padding-t) var(--padding-r) var(--padding-b) var(--padding-l);
+  }
+}
+
+/* Read-only-preview heading chrome (collapse chevron + copy link), rendered
+   by the dBlock node view INSIDE the editor DOM — the floating drag-handle
+   cluster can never appear in preview because the upstream plugin hides its
+   element whenever the editor is not editable. The node view renders the
+   controls for headings in every mode; `[contenteditable='false']` is what
+   scopes them to read-only editors (mode switches flip that attribute
+   without dispatching a transaction, so a JS-side gate would go stale —
+   see DBlockNodeView.shouldShowPreviewControls). Sits in the container's
+   left padding (36px mobile / 80px desktop); hover-revealed, but kept
+   visible while the heading is collapsed so hidden content stays
+   discoverable. */
+.ProseMirror [data-type='d-block'] > .d-block-preview-controls {
+  display: none;
+}
+
+.ProseMirror[contenteditable='false']
+  [data-type='d-block']
+  > .d-block-preview-controls {
+  position: absolute;
+  right: 100%;
+  top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  visibility: hidden;
+}
+
+.ProseMirror[contenteditable='false']
+  [data-type='d-block']:hover
+  > .d-block-preview-controls,
+.ProseMirror[contenteditable='false']
+  [data-type='d-block']
+  > .d-block-preview-controls.is-collapsed {
+  visibility: visible;
+}
+
+/* Flat-schema equivalent of the block above. There is no wrapper to anchor
+   to, so the controls are a widget decoration at the heading's inline start
+   and the heading itself becomes the positioning context. Height is set in
+   em so the buttons stay centred on the first line at every heading size. */
+.ProseMirror[contenteditable='false']
+  :is(h1, h2, h3, h4, h5, h6):has(> .d-block-preview-controls-flat) {
+  position: relative;
+}
+
+.ProseMirror .d-block-preview-controls-flat {
+  display: none;
+}
+
+.ProseMirror[contenteditable='false'] .d-block-preview-controls-flat {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  height: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  visibility: hidden;
+  user-select: none;
+}
+
+.ProseMirror[contenteditable='false']
+  :is(h1, h2, h3, h4, h5, h6):hover
+  > .d-block-preview-controls-flat,
+.ProseMirror[contenteditable='false']
+  .d-block-preview-controls-flat.is-collapsed {
+  visibility: visible;
+}
+
+.ProseMirror .d-block-preview-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  cursor: pointer;
+}
+
+.ProseMirror .d-block-preview-button svg {
+  transition: transform 150ms ease;
+}
+
+.ProseMirror .d-block-preview-button.is-collapsed svg {
+  transform: rotate(-90deg);
+}
+
+/* Below the large breakpoint there is no hover to reveal it and the 36px
+   gutter fits only one button — match the cluster's lg gate and keep just
+   the collapse chevron (which self-reveals when collapsed). */
+@media (max-width: 1023px) {
+  .ProseMirror .d-block-preview-copy-link {
+    display: none;
+  }
+}
+
+/* table blocks keep their width cap now that the content shell is gone */
+.ProseMirror [data-type='d-block'].is-table > [data-node-view-content] {
+  max-width: 100%;
+  margin-inline: auto;
+}
+@media (min-width: 1024px) {
+  .ProseMirror [data-type='d-block'].is-table > [data-node-view-content] {
+    max-width: 90%;
   }
 }
 
@@ -511,10 +663,6 @@
   flex-grow: 1;
   transition: all 0.2s;
   width: 100%;
-}
-
-[data-ddoc-editor-root='true'] {
-  padding-bottom: 4rem;
 }
 
 .node-dBlock:first-child > div > .is-table {
@@ -938,6 +1086,15 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
       &.ProseMirror-selectednode {
         background-color: transparent;
       }
+    }
+  }
+
+  /* presentation preview: container inset replaces old per-block px-4 md:px-[80px] */
+  .ProseMirror {
+    padding: 16px;
+
+    @media (min-width: 768px) {
+      padding: 16px 80px;
     }
   }
 

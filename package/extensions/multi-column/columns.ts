@@ -5,7 +5,7 @@ import {
   Predicate,
   findParentNodeClosestToPos,
 } from '@tiptap/core';
-import { NodeSelection } from 'prosemirror-state';
+import { NodeSelection, TextSelection } from 'prosemirror-state';
 import type { Node as ProseMirrorNode, NodeType } from 'prosemirror-model';
 import { ColumnSelection } from './column-selection';
 import {
@@ -117,20 +117,21 @@ export const Columns = Node.create({
             }
 
             // create columns and put old content in the first column
+            const hasDBlock = Boolean(doc.type.schema.nodes.dBlock);
             let columnBlock;
             if (keepContent) {
               const content = sel.content().toJSON();
               const firstColumn = buildColumn(content);
-              const otherColumns = buildNColumns(n - 1);
+              const otherColumns = buildNColumns(n - 1, hasDBlock);
               columnBlock = buildColumnBlock({
                 content: [firstColumn, ...otherColumns],
               });
             } else {
-              const columns = buildNColumns(n);
+              const columns = buildNColumns(n, hasDBlock);
               columnBlock = buildColumnBlock({ content: columns });
             }
             const newNode = doc.type.schema.nodeFromJSON(
-              buildDBlock({ content: [columnBlock] }),
+              hasDBlock ? buildDBlock({ content: [columnBlock] }) : columnBlock,
             );
             if (newNode === null) {
               return;
@@ -154,7 +155,19 @@ export const Columns = Node.create({
             }
 
             tr = tr.setSelection(sel);
+            const columnsStart = tr.selection.from;
             tr = tr.replaceSelectionWith(newNode, false);
+            // Caret into the first cell, computed against THIS transaction:
+            // open tokens for columns + column (+ dBlock in v1), then
+            // TextSelection.near finds the first text position inside.
+            const intoFirstCell = hasDBlock ? 3 : 2;
+            tr = tr.setSelection(
+              TextSelection.near(
+                tr.doc.resolve(
+                  Math.min(columnsStart + intoFirstCell, tr.doc.content.size),
+                ),
+              ),
+            );
             return dispatch(tr);
           } catch (error) {
             console.error(error);

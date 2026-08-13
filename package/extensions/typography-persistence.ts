@@ -61,8 +61,18 @@ export const TypographyPersistence = Extension.create({
 
                 newState.doc.nodesBetween(safeStart, safeEnd, (node, pos) => {
                   if (node.type.name !== 'paragraph') return;
-                  // Skip trailing node — user should be able to clear it
+                  // Skip trailing node — user should be able to clear it.
+                  // v1's custom TrailingNode tags it with a class; v2 uses
+                  // Tiptap's stock one, which adds no attrs, so the trailing
+                  // paragraph is identified by position instead: the last
+                  // top-level child, still empty.
                   if (node.attrs.class === 'trailing-node') return;
+                  if (
+                    node.content.size === 0 &&
+                    newState.doc.lastChild === node
+                  ) {
+                    return;
+                  }
                   // Already has both — nothing to inherit
                   if (node.attrs.fontFamily && node.attrs.fontSize) return;
 

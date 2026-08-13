@@ -30,3 +30,4 @@ dist-ssr
 # graphify (generated knowledge graph — local only)
 graphify-out/
 
+.superpowers/

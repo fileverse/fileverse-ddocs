@@ -19,12 +19,10 @@ export const buildColumn = ({ content }: Partial<JSONContent>) =>
 export const buildColumnBlock = ({ content }: Partial<JSONContent>) =>
   buildNode({ type: 'columns', content });
 
-export const buildNColumns = (n: number) => {
-  const content = [
-    buildDBlock({
-      content: [buildParagraph({})],
-    }),
-  ];
+export const buildNColumns = (n: number, wrapInDBlock = true) => {
+  const content = wrapInDBlock
+    ? [buildDBlock({ content: [buildParagraph({})] })]
+    : [buildParagraph({})];
   const fn = () => buildColumn({ content });
   return times(n, fn);
 };

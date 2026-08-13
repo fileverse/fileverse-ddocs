@@ -275,6 +275,12 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
 
+  // Dev affordance: expose the editor handle for automated smoke tests.
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ddoc = editorRef;
+  }, []);
+
   // Poll tab state from Y.Doc for DevBar
   useEffect(() => {
     const interval = setInterval(() => {
@@ -832,6 +838,12 @@ function App() {
         initialContent={initialContent}
         enableIndexeddbSync={true}
         ddocId={docId}
+        // Only consulted at doc creation; existing docs follow their marker.
+        preferredSchemaVersion={
+          new URLSearchParams(window.location.search).get('v2') === '1'
+            ? 2
+            : undefined
+        }
         tabConfig={tabConfig}
         onError={(error) => {
           toast({

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Node, mergeAttributes } from '@tiptap/core';
+import { replaceSelectionWithBlockNode } from '../../utils/block-insert';
 import { getActionButtonView } from './action-button-node-view';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 
@@ -69,14 +70,14 @@ export const actionButton = Node.create<ActionButtonOptions>({
     return {
       setActionButton:
         (option) =>
-        ({ commands }) => {
-          return commands.insertContent({
-            type: this.name,
-            attrs: {
-              data: option,
-            },
-            content: [],
-          });
+        ({ state, tr, dispatch }) => {
+          const node = state.schema.nodes[this.name].create({ data: option });
+          if (dispatch) {
+            // Operates on `tr` (not `state`): callers chain this after
+            // deleteRange (slash menu), and `state` predates the chain.
+            replaceSelectionWithBlockNode(tr, node);
+          }
+          return true;
         },
     };
   },

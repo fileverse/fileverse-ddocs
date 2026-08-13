@@ -118,21 +118,14 @@ export const insertCommands: Record<string, InsertCommand> = {
       .run();
   },
   // The column commands never consumed the slash range (existing behavior).
+  // setColumns places the caret in the first cell within its own
+  // transaction; a post-hoc focus(head - 1) here read the PRE-insert
+  // selection at chain-build time and aimed at a stale position.
   columns2: (editor) => {
-    editor
-      .chain()
-      .focus()
-      .setColumns(2)
-      .focus(editor.state.selection.head - 1)
-      .run();
+    editor.chain().focus().setColumns(2).run();
   },
   columns3: (editor) => {
-    editor
-      .chain()
-      .focus()
-      .setColumns(3)
-      .focus(editor.state.selection.head - 1)
-      .run();
+    editor.chain().focus().setColumns(3).run();
   },
   bulletList: (editor, range) => {
     begin(editor, range).toggleBulletList().run();

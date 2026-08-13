@@ -34,4 +34,9 @@ export const Column = Node.create({
   },
 });
 
+// Schema v2 variant: columns hold bare blocks, no dBlock wrapper.
+export const FlatColumn = Column.extend({
+  content: 'block+',
+});
+
 export default Column;
