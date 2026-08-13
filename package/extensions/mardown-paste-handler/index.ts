@@ -296,10 +296,20 @@ turndownService.addRule('embeddedTweet', {
     !!(node as HTMLElement).getAttribute('data-tweet-id'),
   replacement: function (_content, node) {
     const id = (node as HTMLElement).getAttribute('data-tweet-id');
-    // Represent the tweet as its URL — portable and sensible in the exported
-    // .md (a raw <div data-tweet-id> means nothing outside this editor). Split
-    // View re-embeds a bare tweet URL on reparse, so it still round-trips.
-    return id ? `\n\nhttps://twitter.com/i/status/${id}\n\n` : '';
+    if (!id) return '';
+    // Plain .md keeps the bare URL — portable, and import re-embeds it. The
+    // styles (blog) export emits a static link card instead: no third-party
+    // widget script, and the destination stylesheet styles .tweet-embed.
+    // Import round-trips the card via the node's div[data-tweet-id] parse
+    // rule. Single html block: inner newlines only, no blank lines.
+    const url = `https://twitter.com/i/status/${id}`;
+    if (!emitInlineStyles) return `\n\n${url}\n\n`;
+    return (
+      `\n\n<div data-tweet-id="${id}" class="tweet-embed">\n` +
+      `<a href="${url}" target="_blank" rel="noopener noreferrer">View post on X</a>\n` +
+      `<span class="tweet-embed-url">${url}</span>\n` +
+      `</div>\n\n`
+    );
   },
 });
 
