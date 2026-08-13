@@ -8,14 +8,24 @@ import { cn } from '@fileverse/ui';
 import useContentItemActions, {
   ResolvedContentItem,
 } from '../../hooks/use-content-item-actions';
-import { getDBlockRenderMeta, toggleHeadingCollapse } from './dblock-collapse';
+import {
+  getDBlockRenderMeta,
+  getHeadingLinkSlug,
+  toggleHeadingCollapse,
+} from './dblock-collapse';
 import { wrapBlockNode } from '../../utils/block-schema';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { DBlockMenu } from './components/menu';
-import { CollapseButton, GripButton, PlusButton } from './components/buttons';
+import {
+  CollapseButton,
+  CopyLinkButton,
+  GripButton,
+  PlusButton,
+} from './components/buttons';
 import {
   AddBlockTooltip,
   CollapseTooltip,
+  CopyLinkTooltip,
   DragTooltip,
 } from './components/tooltips';
 
@@ -34,8 +44,9 @@ const getFirstLineOffset = (editor: Editor, pos: number): number => {
     // want the element whose computed line-height sets the first line's center.
     const domNode = editor.view.nodeDOM(pos) as HTMLElement | null;
     const blockEl =
-      (domNode?.querySelector<HTMLElement>('[data-node-view-content] > *') ??
-        domNode) ?? null;
+      domNode?.querySelector<HTMLElement>('[data-node-view-content] > *') ??
+      domNode ??
+      null;
     const lineHeight = blockEl
       ? parseFloat(getComputedStyle(blockEl).lineHeight)
       : NaN;
@@ -136,9 +147,11 @@ const COMPUTE_POSITION_CONFIG = { placement: 'left-start' as const };
 export const DBlockDragHandle = ({
   editor,
   runtimeState,
+  onCopyHeadingLink,
 }: {
   editor: Editor;
   runtimeState: DBlockRuntimeState;
+  onCopyHeadingLink?: (link: string) => void;
 }) => {
   const [hovered, setHovered] = useState<HoveredBlock | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -242,6 +255,20 @@ export const DBlockDragHandle = ({
   // that widens after positioning (chevron appearing for a heading) grows
   // rightward over the block's text. Constant width keeps `left` stable.
   const isHeadingHovered = Boolean(meta?.isHeading);
+  // "Comment and suggest" on a shared link is preview mode with an EDITABLE
+  // editor (use-tab-editor's readyState only drops on preview WITHOUT
+  // suggest), so this cluster is the only chrome that can show there — the
+  // node-view/decoration copy-link controls are CSS-gated on
+  // .ProseMirror[contenteditable='false'] and stay hidden. View-only is the
+  // inverse: the upstream plugin hard-hides the cluster when
+  // !editor.isEditable, and those CSS-gated controls take over. The two
+  // mechanisms cover disjoint states; both are needed for the button to
+  // exist in both viewer modes. Preview editors (blog preview, version
+  // history) never mount this component at all (DBlockToolbarProvider).
+  const shouldRenderCopyLinkSlot =
+    runtimeState.isPreviewMode &&
+    !runtimeState.isPreviewEditor &&
+    !isBelowLargeScreen;
 
   const handleAddBlock = (event: React.MouseEvent<HTMLButtonElement>) => {
     const current = resolveBlock();
@@ -268,6 +295,13 @@ export const DBlockDragHandle = ({
   const handleToggleCollapse = () => {
     const current = resolveBlock();
     if (current) toggleHeadingCollapse(current.editor, current.pos);
+  };
+
+  const handleCopyHeadingLink = () => {
+    const current = resolveBlock();
+    if (!current) return;
+    const link = getHeadingLinkSlug(current.node, current.pos);
+    if (link) onCopyHeadingLink?.(link);
   };
 
   const buttonClassName = cn(
@@ -318,6 +352,17 @@ export const DBlockDragHandle = ({
             )}
           />
         </CollapseTooltip>
+        {shouldRenderCopyLinkSlot ? (
+          <CopyLinkTooltip>
+            <CopyLinkButton
+              onClick={handleCopyHeadingLink}
+              className={cn(
+                buttonClassName,
+                !isHeadingHovered && 'invisible pointer-events-none',
+              )}
+            />
+          </CopyLinkTooltip>
+        ) : null}
       </div>
     </DragHandle>
   );

@@ -189,10 +189,15 @@ export const DBlockToolbarProvider = ({
   editor,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
   isPreviewEditor = false,
+  onCopyHeadingLink,
 }: {
   children: React.ReactNode;
   editor: Editor | null;
   runtimeState?: DBlockRuntimeState;
+  // Feeds the cluster's copy-link slot, which covers the editable-preview
+  // states (comment & suggest); the CSS-gated node-view/decoration controls
+  // cover the non-editable ones. See DBlockDragHandle.
+  onCopyHeadingLink?: (link: string) => void;
   // Statically read-only surfaces (PreviewDdocEditor: blog preview, version
   // history) must never mount block chrome. The read-only heading
   // affordances live inside the node view, and the upstream DragHandle
@@ -213,7 +218,11 @@ export const DBlockToolbarProvider = ({
       {/* The drag-handle plugin reads editor.view, so a destroyed editor
           would throw here too — see the note in DBlockTemplateOverlay. */}
       {editor && !editor.isDestroyed ? (
-        <DBlockDragHandle editor={editor} runtimeState={runtimeState} />
+        <DBlockDragHandle
+          editor={editor}
+          runtimeState={runtimeState}
+          onCopyHeadingLink={onCopyHeadingLink}
+        />
       ) : null}
       <DBlockTemplateOverlay editor={editor} runtimeState={runtimeState} />
     </>
