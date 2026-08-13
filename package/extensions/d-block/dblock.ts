@@ -316,10 +316,16 @@ export const DBlock = Node.create<DBlockOptions>({
                 .run();
             }
 
-            // If it's not the last item, just delete it and move cursor to next item
+            // If it's not the last item, not delete it and create a dblock between them
             return editor
               .chain()
               .deleteRange({ from: currentItemStart, to: currentItemEnd })
+              .insertContentAt(currentItemStart, {
+                type: 'dBlock',
+                content: [{ type: 'paragraph' }],
+              })
+              .focus(currentItemStart + 2)
+              .unsetAllMarks()
               .run();
           }
           // Handle empty items in nested lists: lift and preserve font attrs
