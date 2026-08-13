@@ -1645,11 +1645,12 @@ async function recreateNodeWithImageContent(
         mimeType,
         authTag,
       });
-      buffer = shouldCompress
-        ? await (
-            await compressImage(result.file, 'MEDIUM', false)
-          ).arrayBuffer()
-        : await result.file.arrayBuffer();
+      // No compression here: the shared shouldCompress block below handles
+      // it with a Blob stamped from the node's mimeType. The decrypted File
+      // is typeless (penumbra), so compressing it directly always failed
+      // ("must be an image File or Blob") and would double-compress once
+      // the mime-stamp fix lands.
+      buffer = await result.file.arrayBuffer();
     } else {
       const { url, encryptedKey, iv, privateKey } = attrs;
       if (!url || !encryptedKey || !iv || !privateKey) return node;
