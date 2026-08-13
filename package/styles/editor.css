@@ -30,13 +30,9 @@
     }
   }
   /* Default Placeholder */
-  & p.is-empty::before {
+  > .is-empty:first-child::before {
     content: 'Type  /  to browse options';
     font-family: system-ui;
-  }
-
-  > * + * p.is-empty::before {
-    content: none;
   }
 
   /* Callout block placeholder (non-focused fallback) */

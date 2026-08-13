@@ -1101,16 +1101,14 @@ const DdocEditor = forwardRef(
                           {!editor || isContentLoading
                             ? fadeInTransition(
                                 <div
-                                  className={`${!isMobile ? 'mx-20' : 'mx-10 mt-10'}`}
+                                  className={`${!isMobile ? 'p-20' : 'px-9 pt-6'}`}
                                 >
                                   {isPreviewMode ? (
                                     <PreviewContentLoader />
                                   ) : (
-                                    <div className="p-20">
-                                      <Skeleton
-                                        className={`${isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4`}
-                                      />
-                                    </div>
+                                    <Skeleton
+                                      className={`${isMobile ? 'w-full' : 'w-[400px]'}  h-[32px] rounded-sm mb-4`}
+                                    />
                                   )}
                                 </div>,
                                 'content-transition',
