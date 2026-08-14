@@ -156,7 +156,7 @@ export const DBlockDragHandle = ({
   const [hovered, setHovered] = useState<HoveredBlock | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const clusterRef = useRef<HTMLDivElement | null>(null);
-  const isBelowLargeScreen = useMediaQuery('(max-width: 1024px)');
+  const isBelowLargeScreen = useMediaQuery('(max-width: 768px)');
 
   const resolveBlock = useCallback(
     (): ResolvedContentItem | null =>
