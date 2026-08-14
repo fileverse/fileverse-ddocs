@@ -19,6 +19,23 @@ interface DBlockTemplateTarget {
   pos: number;
 }
 
+// v1 wraps the paragraph in a dBlock; in the flat schema the block IS the
+// paragraph.
+const isBlankParagraphBlock = (block: ProseMirrorNode): boolean => {
+  const paragraph =
+    block.type.name === 'dBlock' ? block.content.firstChild : block;
+  if (paragraph?.type.name !== 'paragraph') {
+    return false;
+  }
+  let hasContent = false;
+  paragraph.content.forEach((child) => {
+    if ((child.isText && child.text?.trim()) || !child.isText) {
+      hasContent = true;
+    }
+  });
+  return !hasContent;
+};
+
 export const getTemplateTarget = (
   editor: Editor | null,
   runtimeState: DBlockRuntimeState,
@@ -29,20 +46,28 @@ export const getTemplateTarget = (
     runtimeState.isPreviewMode ||
     runtimeState.isCollaboratorsDoc ||
     // Split View renders the doc read-only on the right — no template picker.
-    runtimeState.isSplitView ||
-    editor.state.doc.childCount !== 1
+    runtimeState.isSplitView
   ) {
     return null;
   }
 
-  const node = editor.state.doc.firstChild;
-  const pos = 0;
-  // v1 wraps the paragraph in a dBlock; in the flat schema the only block IS
-  // the paragraph.
-  const paragraphNode =
-    node?.type.name === 'dBlock' ? node.content.firstChild : node;
+  // A visually clean doc is not always a single block: converting the first
+  // block to a heading ('# ' or the toolbar) makes TrailingNode append an
+  // empty paragraph, and converting back never removes it. So instead of
+  // requiring childCount === 1, require EVERY block to be a blank paragraph
+  // — any real content anywhere still hides the picker.
+  const { doc } = editor.state;
+  let allBlank = true;
+  doc.forEach((child) => {
+    if (!isBlankParagraphBlock(child)) {
+      allBlank = false;
+    }
+  });
 
-  if (!node || paragraphNode?.type.name !== 'paragraph') {
+  const node = doc.firstChild;
+  const pos = 0;
+
+  if (!node || !allBlank) {
     return null;
   }
 
@@ -52,17 +77,6 @@ export const getTemplateTarget = (
     selection.$anchor.pos <= pos + node.nodeSize;
 
   if (!isFirstDBlockFocused) {
-    return null;
-  }
-
-  let hasContent = false;
-  paragraphNode.content.forEach((child) => {
-    if ((child.isText && child.text?.trim()) || !child.isText) {
-      hasContent = true;
-    }
-  });
-
-  if (hasContent) {
     return null;
   }
 
