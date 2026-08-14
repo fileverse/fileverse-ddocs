@@ -14,8 +14,11 @@ const css = readFileSync(path.join(__dirname, 'editor.css'), 'utf8');
 const root = postcss.parse(css);
 
 const touchRules: Rule[] = [];
+let touchBlockStartLine = -1;
 root.walkAtRules('media', (atRule: AtRule) => {
-  if (!atRule.params.replace(/\s/g, '').includes('hover:none')) return;
+  // Parenthesized match so `(any-hover: none)` does not satisfy it.
+  if (!atRule.params.replace(/\s/g, '').includes('(hover:none)')) return;
+  touchBlockStartLine = atRule.source?.start?.line ?? -1;
   atRule.walkRules((rule) => touchRules.push(rule));
 });
 
@@ -105,6 +108,30 @@ describe('heading chrome on hover-less (touch) devices', () => {
     );
     expect(rule).toBeDefined();
     expect(declsOf(rule!).display).toBe('none');
+  });
+
+  // The read-only overrides in the touch block have the SAME specificity as
+  // the base `visibility: hidden` rules — they win purely by source order.
+  // Moving the media block above the base heading-chrome rules would break
+  // touch read-only while every existence check above stays green.
+  it('keeps the touch block after every base rule it must out-cascade', () => {
+    const baseHiddenLines: number[] = [];
+    root.walkRules((rule) => {
+      if (
+        rule.parent?.type === 'atrule' ||
+        !rule.selector.includes("[contenteditable='false']") ||
+        !rule.selector.includes('.d-block-preview-controls')
+      ) {
+        return;
+      }
+      rule.walkDecls('visibility', (decl) => {
+        if (decl.value === 'hidden') {
+          baseHiddenLines.push(rule.source?.start?.line ?? Infinity);
+        }
+      });
+    });
+    expect(baseHiddenLines.length).toBeGreaterThan(0);
+    expect(touchBlockStartLine).toBeGreaterThan(Math.max(...baseHiddenLines));
   });
 
   it('suppresses the mousemove-driven floating cluster', () => {

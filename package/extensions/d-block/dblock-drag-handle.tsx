@@ -156,7 +156,10 @@ export const DBlockDragHandle = ({
   const [hovered, setHovered] = useState<HoveredBlock | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const clusterRef = useRef<HTMLDivElement | null>(null);
-  const isBelowLargeScreen = useMediaQuery('(max-width: 768px)');
+  // 767, not 768: the container padding widens at min-width 768px, so a
+  // max-width gate of 768 would leave exactly-768px viewports with the wide
+  // gutter and no controls in it.
+  const isBelowLargeScreen = useMediaQuery('(max-width: 767px)');
 
   const resolveBlock = useCallback(
     (): ResolvedContentItem | null =>

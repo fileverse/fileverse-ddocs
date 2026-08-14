@@ -621,10 +621,10 @@
   transform: rotate(-90deg);
 }
 
-/* Below the large breakpoint there is no hover to reveal it and the 36px
-   gutter fits only one button — match the cluster's lg gate and keep just
-   the collapse chevron (which self-reveals when collapsed). */
-@media (max-width: 1023px) {
+/* Below the padding breakpoint the 36px gutter fits only one button — match
+   the cluster's gate (767px, see isBelowLargeScreen) and keep just the
+   collapse chevron (which self-reveals when collapsed). */
+@media (max-width: 767px) {
   .ProseMirror .d-block-preview-copy-link {
     display: none;
   }
@@ -683,7 +683,10 @@
 
   /* A tap fires a simulated mousemove that can flash the floating cluster
      over the same gutter the in-DOM controls occupy — suppress it where it
-     can never be hover-driven anyway. */
+     can never be hover-driven anyway. DELIBERATE trade-off: plus/drag/menu
+     get no touch equivalent (the cluster was only ever tap-flash reachable
+     there, and HTML5 drag needs a mouse); block insertion on touch falls
+     back to Enter + slash menu. */
   .drag-handle {
     display: none;
   }
