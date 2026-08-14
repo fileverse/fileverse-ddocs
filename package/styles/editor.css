@@ -630,6 +630,65 @@
   }
 }
 
+/* Touch-first devices (primary pointer can't hover): the floating cluster is
+   mousemove-driven and never appears, and :hover can't reveal the in-DOM
+   controls — without these rules the collapse chevron is unreachable in
+   EVERY mode. The in-DOM controls above are already rendered in every mode
+   (node view / widget decoration), so here they simply stay visible in all
+   of them, editable included. Layout mirrors the [contenteditable='false']
+   rules above. */
+@media (hover: none) {
+  .ProseMirror [data-type='d-block'] > .d-block-preview-controls {
+    position: absolute;
+    right: 100%;
+    top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+    visibility: visible;
+  }
+
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6):has(> .d-block-preview-controls-flat) {
+    position: relative;
+  }
+
+  .ProseMirror .d-block-preview-controls-flat {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    height: 1.2em;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+    visibility: visible;
+    user-select: none;
+  }
+
+  /* The read-only base rules set `visibility: hidden` with more specific
+     selectors than the two above — restate visibility at that specificity
+     so read-only mode doesn't stay hover-gated. */
+  .ProseMirror[contenteditable='false']
+    [data-type='d-block']
+    > .d-block-preview-controls,
+  .ProseMirror[contenteditable='false'] .d-block-preview-controls-flat {
+    visibility: visible;
+  }
+
+  /* Copy-link stays a preview-only affordance, as everywhere else. */
+  .ProseMirror[contenteditable='true'] .d-block-preview-copy-link {
+    display: none;
+  }
+
+  /* A tap fires a simulated mousemove that can flash the floating cluster
+     over the same gutter the in-DOM controls occupy — suppress it where it
+     can never be hover-driven anyway. */
+  .drag-handle {
+    display: none;
+  }
+}
+
 /* table blocks keep their width cap now that the content shell is gone */
 .ProseMirror [data-type='d-block'].is-table > [data-node-view-content] {
   max-width: 100%;
