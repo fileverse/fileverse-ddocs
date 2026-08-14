@@ -27,18 +27,26 @@ root.walkDecls('content', (decl) => {
   }
 });
 
-// postcss keeps nested selectors relative; resolve the `&`/implicit
-// .ProseMirror prefix by walking parents.
+// postcss keeps nested selectors relative; resolve the full ancestor chain
+// (accumulating EVERY level — a single-level prefix would silently drop an
+// intermediate wrapper like `&.ProseMirror-focused` and blind every
+// assertion below to a re-nesting regression). `&` concatenates with its
+// parent; anything else is a descendant.
+const resolveChain = (rule: Rule, selector: string): string => {
+  let chain = selector;
+  let parent = rule.parent;
+  while (parent && parent.type === 'rule') {
+    const parentSelector = (parent as Rule).selector;
+    chain = chain.startsWith('&')
+      ? `${parentSelector}${chain.slice(1)}`
+      : `${parentSelector} ${chain}`;
+    parent = parent.parent;
+  }
+  return chain.trim();
+};
+
 const resolvedSelectors = hintRules.flatMap((rule) =>
-  rule.selectors.map((selector) => {
-    let parent = rule.parent;
-    let prefix = '';
-    while (parent && parent.type === 'rule') {
-      prefix = `${(parent as Rule).selector} `;
-      parent = parent.parent;
-    }
-    return `${prefix}${selector.replace(/^&\s*/, '')}`.trim();
-  }),
+  rule.selectors.map((selector) => resolveChain(rule, selector)),
 );
 
 describe('default "Type /" placeholder scoping', () => {
@@ -63,7 +71,7 @@ describe('default "Type /" placeholder scoping', () => {
   it('covers v1: a paragraph inside the first dBlock wrapper', () => {
     expect(
       resolvedSelectors.some(
-        (s) => s.includes("[data-type='d-block']") && s.includes('p'),
+        (s) => s.includes("[data-type='d-block']") && /\bp\.is-empty/.test(s),
       ),
     ).toBe(true);
   });
@@ -101,13 +109,7 @@ describe('default "Type /" placeholder scoping', () => {
     root.walkDecls('content', (decl) => {
       if (!/Heading [1-3]/.test(decl.value)) return;
       const rule = decl.parent as Rule;
-      let parent = rule.parent;
-      let chain = rule.selector;
-      while (parent && parent.type === 'rule') {
-        chain = `${(parent as Rule).selector} ${chain}`;
-        parent = parent.parent;
-      }
-      headingChains.push(chain);
+      headingChains.push(resolveChain(rule, rule.selector));
     });
     expect(headingChains.length).toBeGreaterThanOrEqual(3);
     for (const chain of headingChains) {
