@@ -723,6 +723,9 @@ export const useEditorToolbar = ({
           onError?.(
             'Your document is empty. Add some content before starting presentation mode.',
           );
+          // Bail here or presentation mode still mounts and its own
+          // empty-content backstop fires a second, different error toast.
+          return;
         }
         editor.chain().focus().run(); // added editor focus and delegated the presentation mode setter to give the popover closing time.
         setTimeout(() => {
