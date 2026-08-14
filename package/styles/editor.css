@@ -14,23 +14,35 @@
     width: 100%;
   }
 
+  /* Not focus-gated: showOnlyCurrent keeps the caret's block decorated
+     is-empty after blur, and the placeholder should survive that blur
+     rather than vanish (or fall through to another hint). */
+  h1.is-empty::before {
+    content: 'Heading 1';
+  }
+  h2.is-empty::before {
+    content: 'Heading 2';
+  }
+  h3.is-empty::before {
+    content: 'Heading 3';
+  }
+
   &.ProseMirror-focused {
-    h1.is-empty::before {
-      content: 'Heading 1';
-    }
-    h2.is-empty::before {
-      content: 'Heading 2';
-    }
-    h3.is-empty::before {
-      content: 'Heading 3';
-    }
     /* Show placeholder ONLY if the first paragraph inside callout is empty */
     aside[data-type='callout'] p.is-empty:first-of-type::before {
       content: 'Type to make writing stand out';
     }
   }
-  /* Default Placeholder */
-  > .is-empty:first-child::before {
+  /* Default Placeholder — the first block's empty PARAGRAPH only. Two legs
+     because v1 wraps blocks (the p sits inside the first dBlock div, which
+     is itself decorated is-empty and must never render the hint) while the
+     flat schema's p is the first child directly. Scoped to `p` so an empty
+     first heading never falls back to this hint on blur — its own
+     placeholder is focus-gated above. :where() keeps both legs at the
+     pre-2515 (0,2,1) specificity so the focus-mode cancel and the
+     has-available-models override keep winning exactly as before. */
+  > p.is-empty:where(:first-child)::before,
+  > :where([data-type='d-block']:first-child) p.is-empty::before {
     content: 'Type  /  to browse options';
     font-family: system-ui;
   }
