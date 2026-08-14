@@ -1214,6 +1214,7 @@ const DdocEditor = forwardRef(
                                       runtimeState={
                                         splitAwareDBlockRuntimeState
                                       }
+                                      onCopyHeadingLink={onCopyHeadingLink}
                                     >
                                       <div className="grammarly-wrapper">
                                         {(cachedEditorEntries?.length

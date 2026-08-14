@@ -14,23 +14,35 @@
     width: 100%;
   }
 
+  /* Not focus-gated: showOnlyCurrent keeps the caret's block decorated
+     is-empty after blur, and the placeholder should survive that blur
+     rather than vanish (or fall through to another hint). */
+  h1.is-empty::before {
+    content: 'Heading 1';
+  }
+  h2.is-empty::before {
+    content: 'Heading 2';
+  }
+  h3.is-empty::before {
+    content: 'Heading 3';
+  }
+
   &.ProseMirror-focused {
-    h1.is-empty::before {
-      content: 'Heading 1';
-    }
-    h2.is-empty::before {
-      content: 'Heading 2';
-    }
-    h3.is-empty::before {
-      content: 'Heading 3';
-    }
     /* Show placeholder ONLY if the first paragraph inside callout is empty */
     aside[data-type='callout'] p.is-empty:first-of-type::before {
       content: 'Type to make writing stand out';
     }
   }
-  /* Default Placeholder */
-  > .is-empty:first-child::before {
+  /* Default Placeholder — the first block's empty PARAGRAPH only. Two legs
+     because v1 wraps blocks (the p sits inside the first dBlock div, which
+     is itself decorated is-empty and must never render the hint) while the
+     flat schema's p is the first child directly. Scoped to `p` so an empty
+     first heading never falls back to this hint — it renders its own
+     'Heading N' placeholder (rules above). :where() keeps both legs at the
+     pre-2515 (0,2,1) specificity so the focus-mode cancel and the
+     has-available-models override keep winning exactly as before. */
+  > p.is-empty:where(:first-child)::before,
+  > :where([data-type='d-block']:first-child) p.is-empty::before {
     content: 'Type  /  to browse options';
     font-family: system-ui;
   }
@@ -621,11 +633,73 @@
   transform: rotate(-90deg);
 }
 
-/* Below the large breakpoint there is no hover to reveal it and the 36px
-   gutter fits only one button — match the cluster's lg gate and keep just
-   the collapse chevron (which self-reveals when collapsed). */
-@media (max-width: 1023px) {
+/* Below the padding breakpoint the 36px gutter fits only one button — match
+   the cluster's gate (767px, see isBelowLargeScreen) and keep just the
+   collapse chevron (which self-reveals when collapsed). */
+@media (max-width: 767px) {
   .ProseMirror .d-block-preview-copy-link {
+    display: none;
+  }
+}
+
+/* Touch-first devices (primary pointer can't hover): the floating cluster is
+   mousemove-driven and never appears, and :hover can't reveal the in-DOM
+   controls — without these rules the collapse chevron is unreachable in
+   EVERY mode. The in-DOM controls above are already rendered in every mode
+   (node view / widget decoration), so here they simply stay visible in all
+   of them, editable included. Layout mirrors the [contenteditable='false']
+   rules above. */
+@media (hover: none) {
+  .ProseMirror [data-type='d-block'] > .d-block-preview-controls {
+    position: absolute;
+    right: 100%;
+    top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+    visibility: visible;
+  }
+
+  .ProseMirror :is(h1, h2, h3, h4, h5, h6):has(> .d-block-preview-controls-flat) {
+    position: relative;
+  }
+
+  .ProseMirror .d-block-preview-controls-flat {
+    position: absolute;
+    right: 100%;
+    top: 0;
+    height: 1.2em;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 4px;
+    visibility: visible;
+    user-select: none;
+  }
+
+  /* The read-only base rules set `visibility: hidden` with more specific
+     selectors than the two above — restate visibility at that specificity
+     so read-only mode doesn't stay hover-gated. */
+  .ProseMirror[contenteditable='false']
+    [data-type='d-block']
+    > .d-block-preview-controls,
+  .ProseMirror[contenteditable='false'] .d-block-preview-controls-flat {
+    visibility: visible;
+  }
+
+  /* Copy-link stays a preview-only affordance, as everywhere else. */
+  .ProseMirror[contenteditable='true'] .d-block-preview-copy-link {
+    display: none;
+  }
+
+  /* A tap fires a simulated mousemove that can flash the floating cluster
+     over the same gutter the in-DOM controls occupy — suppress it where it
+     can never be hover-driven anyway. DELIBERATE trade-off: plus/drag/menu
+     get no touch equivalent (the cluster was only ever tap-flash reachable
+     there, and HTML5 drag needs a mouse); block insertion on touch falls
+     back to Enter + slash menu. */
+  .drag-handle {
     display: none;
   }
 }

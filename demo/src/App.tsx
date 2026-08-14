@@ -896,6 +896,14 @@ function App() {
         connectViaUsername={handleConnectViaUsername}
         onCopyHeadingLink={(link: string) => {
           navigator.clipboard.writeText(link);
+          // Mirror the consumer (protected-document-context.tsx): the
+          // package only supplies the slug; feedback is the host's job.
+          toast({
+            title: 'Anchor link copied to clipboard',
+            toastType: 'mini',
+            iconType: 'icon',
+            customIcon: 'Link',
+          });
         }}
         onCollaboratorChange={onCollaboratorChange}
         documentStyling={documentStyling}

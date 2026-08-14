@@ -215,6 +215,65 @@ describe('DBlockDragHandle', () => {
     expect(container.querySelector('[aria-label="block-controls"]')).toBeNull();
   });
 
+  it('renders the copy-link slot only in preview mode', () => {
+    // "Comment and suggest" on a shared ddoc link is preview mode with an
+    // EDITABLE editor (use-tab-editor's readyState only drops on preview
+    // without suggest), so the floating cluster is the only chrome that can
+    // show there — the node-view/decoration copy-link controls are CSS-gated
+    // on .ProseMirror[contenteditable='false'] and stay hidden. The cluster
+    // must therefore carry its own copy-link slot whenever the runtime is
+    // preview mode; owners (isPreviewMode false) keep it out of the cluster.
+    editor = makeEditor('<h1>Section</h1><p>hello</p>');
+    document.body.appendChild(editor.view.dom);
+    const { unmount } = render(
+      <DBlockDragHandle
+        editor={editor}
+        runtimeState={{ ...DEFAULT_DBLOCK_RUNTIME_STATE, isPreviewMode: true }}
+        onCopyHeadingLink={() => {}}
+      />,
+    );
+    const copyLink = document.querySelector(
+      '[data-test="copy-heading-link-button"]',
+    );
+    expect(copyLink).toBeTruthy();
+    // Same constant-width contract as the collapse slot: mounted always,
+    // revealed only while a heading is hovered.
+    expect(copyLink!.className).toMatch(/invisible/);
+    expect(copyLink!.className).toMatch(/pointer-events-none/);
+    // Same chrome as the collapse button: a real IconButton, not a bare
+    // div — and the shared cluster sizing, so the two slots line up.
+    expect(copyLink!.tagName).toBe('BUTTON');
+    const collapse = document.querySelector('[data-test="collapse-button"]')!;
+    const sizingClasses = ['aspect-square', 'h-5', 'w-5', 'min-w-0'];
+    for (const sizingClass of sizingClasses) {
+      expect(copyLink!.classList.contains(sizingClass)).toBe(true);
+      expect(collapse.classList.contains(sizingClass)).toBe(true);
+    }
+
+    try {
+      unmount();
+    } catch {
+      // expected — see the first test's comment.
+    }
+
+    const { unmount: unmountOwner } = render(
+      <DBlockDragHandle
+        editor={editor}
+        runtimeState={DEFAULT_DBLOCK_RUNTIME_STATE}
+        onCopyHeadingLink={() => {}}
+      />,
+    );
+    expect(
+      document.querySelector('[data-test="copy-heading-link-button"]'),
+    ).toBeNull();
+
+    try {
+      unmountOwner();
+    } catch {
+      // expected
+    }
+  });
+
   it('keeps the collapse slot mounted (invisible) so cluster width is constant', () => {
     // The DragHandle plugin computes `left` from the cluster's width at
     // reposition time. If the chevron mounted only for headings, the cluster

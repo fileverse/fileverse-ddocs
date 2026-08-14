@@ -199,9 +199,7 @@ export class DBlockNodeView implements NodeView {
       copyLink.dataset.test = 'preview-copy-link-button';
       copyLink.setAttribute('aria-label', 'Copy heading link');
       copyLink.innerHTML = LINK_SVG;
-      copyLink.addEventListener('mousedown', (event) =>
-        event.preventDefault(),
-      );
+      copyLink.addEventListener('mousedown', (event) => event.preventDefault());
       copyLink.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();

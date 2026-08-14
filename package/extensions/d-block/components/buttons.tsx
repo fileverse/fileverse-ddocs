@@ -99,3 +99,26 @@ export const CollapseButton = React.memo(
 );
 
 CollapseButton.displayName = 'CollapseButton';
+
+export const CopyLinkButton = React.memo(
+  forwardRef<
+    HTMLButtonElement,
+    {
+      onClick: () => void;
+      className: string;
+    }
+  >(({ onClick, className, ...props }, ref) => (
+    <IconButton
+      variant={'ghost'}
+      icon={'Link'}
+      size="sm"
+      ref={ref}
+      className={className}
+      data-test="copy-heading-link-button"
+      {...props}
+      onClick={onClick}
+    />
+  )),
+);
+
+CopyLinkButton.displayName = 'CopyLinkButton';
