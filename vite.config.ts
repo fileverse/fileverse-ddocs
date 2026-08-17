@@ -30,6 +30,10 @@ export default defineConfig({
           'frimousse',
           'mermaid',
         ].includes(id) ||
+        // Subpath imports (react/jsx-runtime etc.) must stay external too —
+        // inlining them breaks under React 19 (React 18-only internals).
+        id.startsWith('react/') ||
+        id.startsWith('react-dom/') ||
         id === 'yjs' ||
         id.startsWith('yjs/') ||
         id.startsWith('@fileverse/crypto') ||
