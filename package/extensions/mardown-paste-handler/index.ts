@@ -12,6 +12,7 @@ import {
 import markdownItFootnote from 'markdown-it-footnote';
 import TurndownService from 'turndown';
 import { arrayBufferToBase64, decryptImage } from '../../utils/security';
+import { DEFAULT_LINE_HEIGHT } from '../line-height';
 import { toByteArray } from 'base64-js';
 import { inlineLoader } from '../../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../../types';
@@ -70,25 +71,59 @@ turndownService.addRule('heading', {
   },
 });
 
-// Text alignment (TextAlign extension, on headings/paragraphs) has no markdown
-// representation, so in styles mode an aligned block is emitted as raw HTML
-// carrying the text-align style. The inner content stays HTML — CommonMark does
-// not parse markdown inside a block-level HTML element — and TipTap's TextAlign
-// reads `style.text-align` back on import. Plain .md export drops alignment
-// (markdown purity). Added after 'heading' so it wins for aligned headings;
-// non-aligned blocks fall through to '#'/paragraph handling. left/start = the
-// visual default, so treated as no alignment.
-turndownService.addRule('alignedBlock', {
+// Block-level styling (alignment from TextAlign, margins from ParagraphSpacing,
+// line-height from LineHeight) has no markdown representation, so in styles mode
+// a styled block is emitted as raw HTML carrying them all. The inner content
+// stays HTML — CommonMark does not parse markdown inside a block-level HTML
+// element — and each extension's parseHTML reads its property back on import.
+// Plain .md export drops block styles (markdown purity).
+//
+// One rule for all three properties, not one rule each: turndown picks a single
+// replacement per node, so competing rules would silently drop whichever lost.
+//
+// Only non-default values are emitted, and that gate is load-bearing. Every
+// block carries a line-height (LineHeight defaults to 138%), so emitting
+// unconditionally would route the entire document through this rule and turn
+// the whole export — and the Split View pane — into raw HTML. left/start is the
+// visual default for alignment, so it counts as unstyled too.
+// Added after 'heading' so it wins for styled headings; unstyled blocks fall
+// through to '#'/paragraph handling.
+const styledBlockDeclarations = (element: HTMLElement): string[] => {
+  const declarations: string[] = [];
+  const align = element.style?.textAlign;
+  if (align && align !== 'left' && align !== 'start') {
+    declarations.push(`text-align: ${align}`);
+  }
+  const marginTop = element.style?.marginTop;
+  if (marginTop) declarations.push(`margin-top: ${marginTop}`);
+  const marginBottom = element.style?.marginBottom;
+  if (marginBottom) declarations.push(`margin-bottom: ${marginBottom}`);
+  const lineHeight = element.style?.lineHeight;
+  if (lineHeight && lineHeight !== DEFAULT_LINE_HEIGHT) {
+    declarations.push(`line-height: ${lineHeight}`);
+  }
+  return declarations;
+};
+
+// No 'LI': the custom 'listItem' rule below is registered later, and turndown
+// checks later rules first, so it always wins for <li>. Carrying list-item
+// spacing would mean emitting the whole <ul>/<ol> as raw HTML rather than a
+// markdown list — a bigger trade than this rule should make on its own.
+// Consequence: list-item spacing does not survive .md export or the Split View
+// round-trip, though it is fine in the editor, HTML export, and PDF.
+const STYLED_BLOCK_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P'];
+
+turndownService.addRule('blockStyle', {
   filter: (node) => {
     if (!emitInlineStyles) return false;
-    if (!['H1', 'H2', 'H3', 'P'].includes(node.nodeName)) return false;
-    const align = (node as HTMLElement).style?.textAlign;
-    return !!align && align !== 'left' && align !== 'start';
+    if (!STYLED_BLOCK_TAGS.includes(node.nodeName)) return false;
+    return styledBlockDeclarations(node as HTMLElement).length > 0;
   },
   replacement: function (_content, node) {
     const el = node as HTMLElement;
     const tag = el.nodeName.toLowerCase();
-    return `\n\n<${tag} style="text-align: ${el.style.textAlign}">${el.innerHTML}</${tag}>\n\n`;
+    const style = styledBlockDeclarations(el).join('; ');
+    return `\n\n<${tag} style="${style}">${el.innerHTML}</${tag}>\n\n`;
   },
 });
 

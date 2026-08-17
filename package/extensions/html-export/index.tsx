@@ -71,7 +71,11 @@ const HtmlExportExtension = (
               }
             });
 
-            // Sanitize HTML content using the utility function
+            // Sanitize HTML content using the utility function.
+            // `style` reaches this allowlist through MERMAID_SVG_ATTRS, which
+            // is what lets block styling (spacing, alignment, line height)
+            // survive HTML export. Named here so it is not dropped by accident
+            // if the mermaid list is ever narrowed.
             const cleanHtml = DOMPurify.sanitize(inlineHtml, {
               ALLOWED_TAGS: [
                 'p',
@@ -103,9 +107,15 @@ const HtmlExportExtension = (
                 'tfoot',
                 ...MERMAID_SVG_TAGS,
               ],
-              ALLOWED_ATTR: ['href', ...MERMAID_SVG_ATTRS],
+              ALLOWED_ATTR: ['href', 'style', ...MERMAID_SVG_ATTRS],
               FORBID_ATTR: ['data-toc-id', 'data-tight'],
             });
+
+            // DOMPurify is a module singleton, so a hook left registered here
+            // also fires on the markdown import sanitize in
+            // mardown-paste-handler — where it deletes any childless, textless
+            // element, including a paragraph that exists only to carry spacing.
+            DOMPurify.removeHook('afterSanitizeElements');
 
             // Build metadata dynamically from props
             const metadata = {

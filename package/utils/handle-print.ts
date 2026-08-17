@@ -79,7 +79,10 @@ const CONTENT_STYLES = `
   .print-content-root ol {
     font-size: 16px;
     line-height: 1.5;
-    margin: 0 0 16px 0;
+    /* Longhands so an inline margin-top from authored spacing is not fighting
+       a shorthand that also resets the bottom. */
+    margin-top: 0;
+    margin-bottom: 16px;
     padding-left: 24px;
   }
   .print-content-root input[type='checkbox'] {
@@ -392,17 +395,20 @@ const MAIN_DOCUMENT_PRINT_BASELINE = `
     font-size: 16px;
     line-height: 1.6;
   }
-  .print-content-root h1 { font-size: 2em; font-weight: 600; line-height: 1.2; margin: 0.67em 0; color: #0D0D0D; }
-  .print-content-root h2 { font-size: 1.5em; font-weight: 600; line-height: 1.2; margin: 0.83em 0; color: #0D0D0D; }
-  .print-content-root h3 { font-size: 1.17em; font-weight: 600; line-height: 1.2; margin: 1em 0; color: #0D0D0D; }
-  .print-content-root h4 { font-size: 1em; font-weight: 600; margin: 1.33em 0; color: #0D0D0D; }
-  .print-content-root h5 { font-size: 0.83em; font-weight: 600; margin: 1.67em 0; color: #0D0D0D; }
-  .print-content-root h6 { font-size: 0.67em; font-weight: 600; margin: 2.33em 0; color: #0D0D0D; }
-  .print-content-root p { margin: 0 0 12px 0; }
+  /* Longhands, not the margin shorthand: authored spacing arrives as an inline
+     margin-top or margin-bottom, and a shorthand here would keep overriding
+     whichever side the author left unset. */
+  .print-content-root h1 { font-size: 2em; font-weight: 600; line-height: 1.2; margin-top: 0.67em; margin-bottom: 0.67em; color: #0D0D0D; }
+  .print-content-root h2 { font-size: 1.5em; font-weight: 600; line-height: 1.2; margin-top: 0.83em; margin-bottom: 0.83em; color: #0D0D0D; }
+  .print-content-root h3 { font-size: 1.17em; font-weight: 600; line-height: 1.2; margin-top: 1em; margin-bottom: 1em; color: #0D0D0D; }
+  .print-content-root h4 { font-size: 1em; font-weight: 600; margin-top: 1.33em; margin-bottom: 1.33em; color: #0D0D0D; }
+  .print-content-root h5 { font-size: 0.83em; font-weight: 600; margin-top: 1.67em; margin-bottom: 1.67em; color: #0D0D0D; }
+  .print-content-root h6 { font-size: 0.67em; font-weight: 600; margin-top: 2.33em; margin-bottom: 2.33em; color: #0D0D0D; }
+  .print-content-root p { margin-top: 0; margin-bottom: 12px; }
   .print-content-root ul { list-style: disc; }
   .print-content-root ol { list-style: decimal; }
-  .print-content-root ul, .print-content-root ol { margin: 0 0 16px 0; padding-left: 24px; }
-  .print-content-root li { margin: 4px 0; }
+  .print-content-root ul, .print-content-root ol { margin-top: 0; margin-bottom: 16px; padding-left: 24px; }
+  .print-content-root li { margin-top: 4px; margin-bottom: 4px; }
   .print-content-root a { color: #3B82F6; text-decoration: underline; }
   .print-content-root strong, .print-content-root b { font-weight: 600; }
   .print-content-root em, .print-content-root i { font-style: italic; }

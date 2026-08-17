@@ -99,6 +99,7 @@ import { TypographyPersistence } from './typography-persistence';
 import { CustomCodeBlockLowlight } from './code-block/custom-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { LineHeight } from './line-height';
+import { ParagraphSpacing } from './paragraph-spacing';
 
 import { Emoji } from './emoji/emoji';
 
@@ -384,6 +385,7 @@ export const defaultExtensions = ({
   }),
   FontSize,
   LineHeight,
+  ParagraphSpacing,
   Typography,
   TextAlign.configure({
     types: ['heading', 'paragraph'],

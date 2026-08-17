@@ -19,4 +19,13 @@ describe('defaultExtensions schema fork', () => {
   it('keeps the gap cursor in the v1 set (legacy behavior unchanged)', () => {
     expect(extensionNames(1)).toContain('gapCursor');
   });
+
+  it.each([1, 2])(
+    'registers paragraph spacing for schema v%i',
+    (schemaVersion) => {
+      // v1 documents are the installed base; a toolbar control that silently
+      // does nothing on them is worse than not shipping it.
+      expect(extensionNames(schemaVersion)).toContain('paragraphSpacing');
+    },
+  );
 });

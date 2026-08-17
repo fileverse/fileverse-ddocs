@@ -53,6 +53,70 @@ export const LINE_HEIGHT_OPTIONS = [
 
 export const getLineHeightOptions = () => LINE_HEIGHT_OPTIONS;
 
+// Paragraph-spacing bounds. Freeform pt input, so the field needs a sane
+// ceiling; 0 stays a legal value (it kills the CSS default gap).
+export const SPACING_MIN_PT = 0;
+export const SPACING_MAX_PT = 100;
+
+const SPACING_TYPES = ['paragraph', 'heading', 'listItem'];
+
+/** A value shared by every block in the selection, or `'mixed'`. */
+export type SpacingReading<T> = T | 'mixed';
+
+export type SpacingSelection = {
+  spaceBefore: SpacingReading<number | null>;
+  spaceAfter: SpacingReading<number | null>;
+  lineHeight: SpacingReading<string | null>;
+};
+
+/**
+ * Read spacing across the current selection, the single place the dialog and
+ * any read-back should use. `'mixed'` means the selected blocks disagree — the
+ * caller must render that as an empty field and leave the attribute alone on
+ * apply, rather than stamping one block's value onto the rest.
+ */
+export const readSpacingSelection = (
+  editor: Editor | null,
+): SpacingSelection => {
+  const empty: SpacingSelection = {
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+  };
+  if (!editor) return empty;
+
+  const seen: Record<keyof SpacingSelection, Set<unknown>> = {
+    spaceBefore: new Set(),
+    spaceAfter: new Set(),
+    lineHeight: new Set(),
+  };
+
+  const { from, to } = editor.state.selection;
+  editor.state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+    if (!SPACING_TYPES.includes(node.type.name)) return;
+    // The list item owns the spacing, so its inner paragraph must not drag the
+    // reading to 'mixed'. Mirrors setParagraphSpacing.
+    if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
+      return;
+    }
+    seen.spaceBefore.add(node.attrs.spaceBefore ?? null);
+    seen.spaceAfter.add(node.attrs.spaceAfter ?? null);
+    seen.lineHeight.add(node.attrs.lineHeight ?? null);
+  });
+
+  const collapse = <T>(values: Set<unknown>): SpacingReading<T | null> => {
+    if (values.size === 0) return null;
+    if (values.size > 1) return 'mixed';
+    return [...values][0] as T | null;
+  };
+
+  return {
+    spaceBefore: collapse<number>(seen.spaceBefore),
+    spaceAfter: collapse<number>(seen.spaceAfter),
+    lineHeight: collapse<string>(seen.lineHeight),
+  };
+};
+
 export const getCurrentLineHeight = (
   editor: Editor | null,
   currentLineHeight?: string,
