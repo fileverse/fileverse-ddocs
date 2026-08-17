@@ -99,7 +99,6 @@ const usercolors = [
   '#0ad7f2',
   '#1bff39',
 ];
-
 type ScheduledIdleTask = {
   kind: 'idle' | 'timeout';
   handle: number;
@@ -1925,7 +1924,7 @@ const useExtensionSyncWithCollaboration = ({
 
     const user = {
       name: session?.username || '',
-      color: userColorRef.current,
+      color: awareness.getLocalState()?.user?.color || userColorRef.current,
       isEns: session?.isEns,
     };
 
@@ -1943,14 +1942,15 @@ const useExtensionSyncWithCollaboration = ({
         if (clientId === awareness.clientID) return;
         const cursor = state.cursor;
         if (cursor) {
-          parts.push(`${clientId}:${JSON.stringify(cursor)}`);
+          parts.push(
+            `${clientId}:${JSON.stringify(cursor)}:${state.user?.color ?? ''}`,
+          );
         }
       });
       return parts.sort().join('|');
     };
-    // Patch apply: only recreate decorations when remote cursor positions
-    // actually changed. Content-only changes and awareness updates that
-    // don't affect cursor positions just remap existing decorations,
+    // Patch apply: only recreate decorations when remote cursor positions or
+    // colors changed. Other awareness updates just remap existing decorations,
     // preserving the cursor DOM and preventing flicker.
     const plugin = new Plugin({
       key: yCursorPluginKey,
@@ -1996,7 +1996,8 @@ const useExtensionSyncWithCollaboration = ({
     if (session.isEns) {
       awareness.setLocalStateField('user', {
         name: session.username,
-        color: userColorRef.current,
+        color:
+          awareness.getLocalState()?.user?.color || userColorRef.current,
         isEns: session.isEns,
       });
     }

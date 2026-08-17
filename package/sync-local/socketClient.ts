@@ -11,7 +11,12 @@ import {
   IAuthArgs,
   AckResponse,
 } from './types';
-import { buildIdentityMap, mergePresence, identitySignature } from './presence';
+import {
+  assignSessionColors,
+  buildIdentityMap,
+  identitySignature,
+  mergePresence,
+} from './presence';
 import { IDocCollabUsers } from '../types';
 import { generateKeyPairFromSeed } from '@stablelib/ed25519';
 import { fromUint8Array, toUint8Array } from 'js-base64';
@@ -82,6 +87,7 @@ export class SocketClient {
 
   roomMembers: string[] = [];
   private _lastPresenceSignature = '';
+  private _presenceColorByName = new Map<string, string>();
   private _onPresenceChange?: (collaborators: IDocCollabUsers[]) => void;
   private _pendingAwarenessUpdates: { data: any; roomId: string }[] = [];
   private collaborationKeyPair: ucans.EdKeypair | null = null;
@@ -238,7 +244,25 @@ export class SocketClient {
     const sig = identitySignature(this.roomMembers, identity);
     if (sig === this._lastPresenceSignature) return;
     this._lastPresenceSignature = sig;
-    this._onPresenceChange(mergePresence(this.roomMembers, identity));
+
+    const collaborators = assignSessionColors(
+      mergePresence(this.roomMembers, identity),
+      this._presenceColorByName,
+    );
+    const localUser = this.awareness.getLocalState()?.user;
+    const localName = this._socket?.id
+      ? identity.get(this._socket.id)?.name
+      : undefined;
+    const localColor = localName
+      ? this._presenceColorByName.get(localName)
+      : undefined;
+    if (localUser && localColor && localUser.color !== localColor) {
+      this.awareness.setLocalStateField('user', {
+        ...localUser,
+        color: localColor,
+      });
+    }
+    this._onPresenceChange(collaborators);
   };
 
   public async sendUpdate({ update }: { update: string }) {
