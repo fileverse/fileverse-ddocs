@@ -7,14 +7,18 @@ import {
   LucideIcon,
 } from '@fileverse/ui';
 import cn from 'classnames';
+import { Editor } from '@tiptap/core';
 import { getLineHeightOptions, IEditorToolElement } from '../editor-utils';
 import { openCustomSpacingDialog } from '../../stores/custom-spacing-store';
+import { getSpacingToggles } from './spacing-toggles';
 
 const LineHeightPicker = ({
+  editor,
   currentLineHeight,
   onSetLineHeight,
   onOpenCustomSpacing,
 }: {
+  editor: Editor | null;
   currentLineHeight?: string;
   onSetLineHeight: (lineHeight: string) => void;
   onOpenCustomSpacing: () => void;
@@ -50,6 +54,20 @@ const LineHeightPicker = ({
 
       <div className="w-full my-1 h-[1px] color-bg-default-hover" />
 
+      {getSpacingToggles(editor).map((toggle) => (
+        <DropdownMenuItem
+          key={toggle.edge}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggle.onSelect}
+          className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm color-text-default transition min-w-[120px]"
+        >
+          <div className="w-4" />
+          <span className="font-medium">{toggle.label}</span>
+        </DropdownMenuItem>
+      ))}
+
+      <div className="w-full my-1 h-[1px] color-bg-default-hover" />
+
       <DropdownMenuItem
         onMouseDown={(e) => e.preventDefault()}
         onClick={onOpenCustomSpacing}
@@ -64,10 +82,12 @@ const LineHeightPicker = ({
 
 export const LineHeightDropdown = ({
   tool,
+  editor,
   currentLineHeight,
   onSetLineHeight,
 }: {
   tool: IEditorToolElement;
+  editor: Editor | null;
   currentLineHeight?: string;
   onSetLineHeight: (lineHeight: string) => void;
 }) => {
@@ -86,6 +106,7 @@ export const LineHeightDropdown = ({
       </DropdownMenuTrigger>
       <DropdownMenuContent className="p-0 b-0">
         <LineHeightPicker
+          editor={editor}
           currentLineHeight={currentLineHeight}
           onSetLineHeight={onSetLineHeight}
           onOpenCustomSpacing={openCustomSpacingDialog}

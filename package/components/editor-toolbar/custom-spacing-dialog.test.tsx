@@ -182,3 +182,66 @@ describe('pasted Google Docs content', () => {
     expect(editor.state.doc.firstChild?.attrs.lineHeight).toBe(before);
   });
 });
+
+// Q1(b): the fields show the spacing the paragraph actually renders with,
+// including what the stylesheet supplies, rather than sitting blank while the
+// paragraph visibly has a gap.
+describe('default spacing in the dialog', () => {
+  const mounted: { editor: Editor; style: HTMLStyleElement }[] = [];
+
+  afterEach(() => {
+    cleanup();
+    mounted.splice(0).forEach(({ editor, style }) => {
+      editor.destroy();
+      style.remove();
+    });
+  });
+
+  const mountEditor = (content: string) => {
+    const style = document.createElement('style');
+    style.textContent =
+      '.ProseMirror > * + * { margin-top: 24px; margin-bottom: 10px; }';
+    document.head.appendChild(style);
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    const editor = new Editor({
+      element,
+      extensions: [
+        StarterKit.configure({ trailingNode: false }),
+        LineHeight,
+        ParagraphSpacing,
+      ] as AnyExtension[],
+      content,
+    });
+    mounted.push({ editor, style });
+    return editor;
+  };
+
+  it('prefills the stylesheet value for a paragraph with nothing set', () => {
+    const editor = mountEditor('<p>one</p><p>two</p>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+
+    render(
+      <CustomSpacingDialog editor={editor} open onOpenChange={() => {}} />,
+    );
+
+    expect(field('Before').value).toBe('18');
+    expect(field('After').value).toBe('8');
+  });
+
+  // Clearing a field is still how a paragraph is handed back to the
+  // stylesheet — otherwise Q1(b) would make pinning irreversible.
+  it('still writes null when a prefilled field is cleared', () => {
+    const editor = mountEditor('<p>one</p><p>two</p>');
+    const second = editor.state.doc.child(0).nodeSize + 2;
+    editor.commands.setTextSelection(second);
+
+    render(
+      <CustomSpacingDialog editor={editor} open onOpenChange={() => {}} />,
+    );
+    fireEvent.change(field('Before'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Apply'));
+
+    expect(editor.state.doc.child(1).attrs.spaceBefore).toBeNull();
+  });
+});

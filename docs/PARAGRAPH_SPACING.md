@@ -95,6 +95,47 @@ and `ddoc-editor.tsx` mounts the single `CustomSpacingDialogHost`, so the demo
 menu needs no new export and the dialog is never duplicated. The registry entry
 is `format.customSpacing`.
 
+### Add / Remove space before|after paragraph
+
+Above "Custom spacing", mirroring Google Docs. The label flips on what the
+block **actually renders with**, stylesheet included, so a fresh paragraph
+offers "Remove space before paragraph" first — its gap comes from editor.css,
+not from an attribute. A mixed selection counts as having a gap, since removing
+is the action that leaves every block in the same state.
+
+Both halves write an explicit value, and the asymmetry is load-bearing:
+
+| Action | Writes | Why not null |
+| --- | --- | --- |
+| Remove | `0` | null hands the block back to the stylesheet — the very gap being removed |
+| Add | `SPACING_ADD_PT` (12pt) | "Add" is only offered when the stylesheet gives nothing, so null would leave it at zero and the item would do nothing |
+
+Consequence: once either item is used the block is pinned and no longer tracks
+the responsive stylesheet. Clearing a field in the dialog is the way back.
+
+Logic lives once in `components/editor-toolbar/spacing-toggles.ts`; the toolbar
+dropdown and the bubble menu render it with their own primitives. The demo
+second-level nav does **not** have these yet — its labels would have to come
+from the reactive state bag in `use-editor-commands.ts`, which is recomputed on
+every transaction, and `readEffectiveSpacing` calls `getComputedStyle` per
+selected block. That is a style recalc per keystroke; deferred deliberately.
+
+### There is no single default spacing
+
+The dialog prefills what the block actually renders with, read via
+`getComputedStyle` on `editor.view.nodeDOM(pos)`, because no constant would be
+right: the gap comes from `.ProseMirror > * + *` (1.5em), a mobile override
+(1rem), tailwind `prose-p:my-2` (0.5rem), and `:first-child`/`:last-child`
+resets — so it varies by viewport, element type and sibling position.
+
+That means **Apply pins spacing on every selected block**, since the prefilled
+value gets written back. Clearing a field still writes null and returns that
+block to the stylesheet, which is the only escape hatch.
+
+`getComputedStyle` returns resolved pixels in a browser but the *specified*
+value in jsdom (no layout), so anything that is not px is treated as unknown
+rather than parsed into a wrong number — and the tests specify px.
+
 > **Verified.** `uiValueToPercentage` is `round(uiValue * 120)` and the preset
 > table matches it exactly (1 -> 120%, 1.15 -> 138%, 1.5 -> 180%, 2 -> 240%), so
 > the multiplier field is consistent with the presets. Note that "1.15" in the

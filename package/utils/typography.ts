@@ -84,6 +84,16 @@ export const getLineHeightOptions = () => LINE_HEIGHT_OPTIONS;
 export const SPACING_MIN_PT = 0;
 export const SPACING_MAX_PT = 100;
 
+/**
+ * What "Add space before/after paragraph" writes, matching Google Docs.
+ *
+ * A real value rather than null: null would hand the block back to the
+ * stylesheet, and the toggle only offers "Add" when the stylesheet is already
+ * giving it nothing — so restoring null would leave the gap at zero and the
+ * menu item would appear to do nothing.
+ */
+export const SPACING_ADD_PT = 12;
+
 const SPACING_TYPES = ['paragraph', 'heading', 'listItem'];
 
 /** A value shared by every block in the selection, or `'mixed'`. */
@@ -157,3 +167,82 @@ export const getCurrentLineHeight = (
   }
   return currentLineHeight || '1.15';
 };
+
+const PT_PER_PX = 0.75;
+
+/**
+ * getComputedStyle returns resolved pixels in a browser. jsdom does no layout
+ * and hands back whatever the stylesheet said, so anything that is not px is
+ * treated as unknown rather than parsed into a wrong number.
+ */
+const computedPxToPt = (value: string | undefined): number => {
+  if (!value || !value.endsWith('px')) return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isNaN(parsed) ? 0 : Math.round(parsed * PT_PER_PX);
+};
+
+export type EffectiveSpacing = {
+  spaceBefore: SpacingReading<number>;
+  spaceAfter: SpacingReading<number>;
+};
+
+/**
+ * The spacing a block actually renders with: its explicit attribute when set,
+ * otherwise whatever the stylesheet resolves to.
+ *
+ * Read from the rendered DOM because there is no single default to hardcode —
+ * the gap depends on viewport, schema version, element type, and whether the
+ * block is the first or last child. Both the "add/remove space" menu items and
+ * the custom spacing dialog need the real number, not the attribute.
+ */
+export const readEffectiveSpacing = (
+  editor: Editor | null,
+): EffectiveSpacing => {
+  const seen = {
+    spaceBefore: new Set<number>(),
+    spaceAfter: new Set<number>(),
+  };
+  if (!editor) return { spaceBefore: 0, spaceAfter: 0 };
+
+  const { from, to } = editor.state.selection;
+  editor.state.doc.nodesBetween(from, to, (node, pos, parent) => {
+    if (!SPACING_TYPES.includes(node.type.name)) return;
+    if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
+      return;
+    }
+
+    const dom = editor.view.nodeDOM(pos);
+    const computed =
+      dom instanceof HTMLElement ? window.getComputedStyle(dom) : undefined;
+
+    seen.spaceBefore.add(
+      node.attrs.spaceBefore ?? computedPxToPt(computed?.marginTop),
+    );
+    seen.spaceAfter.add(
+      node.attrs.spaceAfter ?? computedPxToPt(computed?.marginBottom),
+    );
+  });
+
+  const collapse = (values: Set<number>): SpacingReading<number> => {
+    if (values.size === 0) return 0;
+    if (values.size > 1) return 'mixed';
+    return [...values][0];
+  };
+
+  return {
+    spaceBefore: collapse(seen.spaceBefore),
+    spaceAfter: collapse(seen.spaceAfter),
+  };
+};
+
+/**
+ * Which half of the Google-Docs-style toggle to offer.
+ *
+ * "Add space before paragraph" only appears once the block genuinely has no
+ * gap — the stylesheet's default counts, so a fresh paragraph offers "Remove"
+ * first. A mixed selection counts as having a gap, since removing is the
+ * action that leaves every block in the same state.
+ */
+export const spacingToggleAction = (
+  effective: SpacingReading<number>,
+): 'add' | 'remove' => (effective === 0 ? 'add' : 'remove');

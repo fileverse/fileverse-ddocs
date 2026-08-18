@@ -4,7 +4,12 @@ import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { LineHeight } from '../extensions/line-height';
 import { ParagraphSpacing } from '../extensions/paragraph-spacing';
-import { percentageToUiValue, readSpacingSelection } from './typography';
+import {
+  percentageToUiValue,
+  readEffectiveSpacing,
+  readSpacingSelection,
+  spacingToggleAction,
+} from './typography';
 
 const makeEditor = (content: string) =>
   new Editor({
@@ -104,5 +109,94 @@ describe('percentageToUiValue', () => {
 
   it('gives up on units it cannot express, rather than inventing a number', () => {
     expect(percentageToUiValue('20px')).toBe('');
+  });
+});
+
+// What a block actually renders with, which is not the same as what the
+// attribute says: unset spacing falls through to a stylesheet whose value
+// depends on viewport, element type and sibling position. The menu labels and
+// the dialog both need the real number, so it is read from the rendered DOM.
+describe('readEffectiveSpacing', () => {
+  const mounted: { editor: Editor; style: HTMLStyleElement }[] = [];
+
+  const makeMountedEditor = (content: string, css: string) => {
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+
+    const editor = new Editor({
+      element,
+      extensions: [
+        StarterKit.configure({ trailingNode: false }),
+        LineHeight,
+        ParagraphSpacing,
+      ] as AnyExtension[],
+      content,
+    });
+    mounted.push({ editor, style });
+    return editor;
+  };
+
+  afterEach(() => {
+    mounted.splice(0).forEach(({ editor, style }) => {
+      editor.destroy();
+      style.remove();
+    });
+  });
+
+  const CSS = '.ProseMirror > * + * { margin-top: 24px; margin-bottom: 10px; }';
+
+  it('reports the stylesheet value when nothing is set, converted to pt', () => {
+    const editor = makeMountedEditor('<p>one</p><p>two</p>', CSS);
+    // second paragraph: the sibling selector applies to it
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+
+    expect(readEffectiveSpacing(editor)).toEqual({
+      spaceBefore: 18,
+      spaceAfter: 8,
+    });
+  });
+
+  it('reports zero where the stylesheet gives the block no margin', () => {
+    const editor = makeMountedEditor('<p>one</p><p>two</p>', CSS);
+    editor.commands.setTextSelection(1);
+
+    expect(readEffectiveSpacing(editor).spaceBefore).toBe(0);
+  });
+
+  it('prefers an explicit attribute over the stylesheet', () => {
+    const editor = makeMountedEditor(
+      '<p>one</p><p style="margin-top: 30pt">two</p>',
+      CSS,
+    );
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+
+    expect(readEffectiveSpacing(editor).spaceBefore).toBe(30);
+  });
+
+  it('reports mixed when the selected blocks differ', () => {
+    const editor = makeMountedEditor('<p>one</p><p>two</p>', CSS);
+    editor.commands.selectAll();
+
+    expect(readEffectiveSpacing(editor).spaceBefore).toBe('mixed');
+  });
+});
+
+describe('spacingToggleAction', () => {
+  it('offers to remove when the block has a gap', () => {
+    expect(spacingToggleAction(18)).toBe('remove');
+  });
+
+  it('offers to add when the block has none', () => {
+    expect(spacingToggleAction(0)).toBe('add');
+  });
+
+  // Some of the selection has a gap, so "remove" is the action that changes
+  // every block to the same state; "add" would leave it mixed.
+  it('treats a mixed selection as having a gap', () => {
+    expect(spacingToggleAction('mixed')).toBe('remove');
   });
 });

@@ -13,6 +13,7 @@ import {
 } from '@fileverse/ui';
 import { Editor } from '@tiptap/core';
 import {
+  readEffectiveSpacing,
   readSpacingSelection,
   uiValueToPercentage,
   percentageToUiValue,
@@ -70,7 +71,17 @@ export const CustomSpacingDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    const next = readSpacingSelection(editor);
+    // The pt fields show what the paragraph actually renders with, stylesheet
+    // included, so they are read from the DOM rather than from the attribute —
+    // an unset paragraph still has a visible gap and a blank field would be a
+    // lie. Line height keeps its attribute-based reading, which has no
+    // stylesheet fallback to account for.
+    const effective = readEffectiveSpacing(editor);
+    const next: SpacingSelection = {
+      spaceBefore: effective.spaceBefore,
+      spaceAfter: effective.spaceAfter,
+      lineHeight: readSpacingSelection(editor).lineHeight,
+    };
     setReading(next);
     setValues({
       spaceBefore: toFieldValue(next.spaceBefore, 'spaceBefore'),
