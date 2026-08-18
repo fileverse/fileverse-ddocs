@@ -101,6 +101,31 @@
     }
   }
 
+  /* v1 wraps every block twice — dBlock row > div > block — so `.ProseMirror
+     > *` puts the gap on the outer wrapper while authored spacing renders on
+     the block itself. A parent's bottom margin collapses with its last child's
+     and the larger wins, so the wrapper's default floored anything set below
+     it. The gap therefore belongs to the same element the attribute does, and
+     both wrappers carry none and let it collapse out through them (neither has
+     padding or a border, so it does). Structural rather than gated on
+     data-schema-version: dBlocks only exist in v1, and this then holds
+     wherever the editor DOM renders without that attribute. */
+  & > [data-type='d-block'] {
+    margin-bottom: 0;
+
+    > * {
+      margin-bottom: 0;
+
+      > * {
+        margin-bottom: 1.5rem;
+      }
+    }
+
+    &:last-child > * > * {
+      margin-bottom: 0;
+    }
+  }
+
   .media-node-view {
     display: flex;
     position: relative;

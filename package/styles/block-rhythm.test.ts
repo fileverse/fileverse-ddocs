@@ -74,4 +74,35 @@ describe('editor block rhythm', () => {
     expect(find('.ProseMirror > *', 'margin-top')?.value).toBe('0');
     expect(find('.ProseMirror > * + *', 'margin-top')).toBeUndefined();
   });
+
+  // v1 wraps every block twice: dBlock row > div > block. `.ProseMirror > *`
+  // lands the gap on the outer wrapper, while authored spacing renders on the
+  // block itself. A parent's bottom margin collapses with its last child's and
+  // the larger wins, so the wrapper's default floored anything the author set
+  // below it. The gap has to belong to the same element the attribute does.
+  describe('v1 dBlock wrappers', () => {
+    const WRAPPER = ".ProseMirror >> & > [data-type='d-block']";
+
+    it('gives the outer wrapper no gap of its own', () => {
+      expect(find(WRAPPER, 'margin-bottom')?.value).toBe('0');
+    });
+
+    it('gives the inner row no gap either', () => {
+      expect(find(`${WRAPPER} >> > *`, 'margin-bottom')?.value).toBe('0');
+    });
+
+    // The one that matters: this is the element ParagraphSpacing renders on,
+    // so an authored value has nothing larger to collapse against.
+    it('gives the gap to the block itself', () => {
+      expect(find(`${WRAPPER} >> > * >> > *`, 'margin-bottom')?.value).toBe(
+        '1.5rem',
+      );
+    });
+
+    it('keeps the last row flush, like every other last child', () => {
+      expect(
+        find(`${WRAPPER} >> &:last-child > * > *`, 'margin-bottom')?.value,
+      ).toBe('0');
+    });
+  });
 });

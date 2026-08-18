@@ -149,6 +149,23 @@ Two details that are load-bearing:
   rows; with nothing collapsing, an unpinned heading would expose them and
   roughly double the gap after every v1 heading.
 
+**v1 needs its own rule.** v1 wraps every block twice — `dBlock row > div >
+block` — so `.ProseMirror > *` lands the gap on the outer wrapper while the
+spacing attribute renders on the block itself. A parent's bottom margin
+collapses with its last child's and the larger wins, so the wrapper's 1.5em
+floored any authored value below it. Both wrappers therefore carry no margin
+(neither has padding or a border, so the block's margin collapses out through
+them) and the gap sits on `> [data-type='d-block'] > * > *`, the element the
+attribute is on. Nested content — list-item and blockquote paragraphs — is
+deeper than that and keeps the smaller nested default.
+
+The selector is structural rather than gated on `data-schema-version`, since
+dBlocks only exist in v1 and this then holds wherever the editor DOM renders
+without that attribute. `styles/v1-block-rhythm.test.ts` restates the rules
+flattened (jsdom cannot parse CSS nesting) and asserts them against a real v1
+editor, because the failure mode here is a selector one level too shallow —
+which CSS text assertions cannot see.
+
 `handle-print.ts` mirrors this, so PDF and screen space identically. Scope is
 the editing canvas — `.presentation-mode` and `.ai-preview-editor` are separate
 renderers with their own rhythm and are untouched.
