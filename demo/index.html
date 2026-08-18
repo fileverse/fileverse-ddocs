@@ -4,7 +4,14 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <!-- viewport-fit=cover + the apple-mobile-web-app metas mirror the consumer
+       app's standalone PWA setup: add the demo to an iPhone home screen and it
+       opens edge-to-edge with a real env(safe-area-inset-bottom), so the
+       footer ↔ mobile-tab-panel safe-area pairing is testable from the
+       package repo alone. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Demo - Ddoc Editor - Fileverse</title>
 </head>
 

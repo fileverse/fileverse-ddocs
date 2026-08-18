@@ -3,6 +3,7 @@
 import { LegacyRef, useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, NodeViewContent, NodeViewProps } from '@tiptap/react';
 import { resizableMediaActions } from './resizable-media-menu-util';
+import { MediaBackgroundPicker } from './media-background-picker';
 import cn from 'classnames';
 import { useEditingContext } from '../../hooks/use-editing-context';
 import ToolbarButton from '../../common/toolbar-button';
@@ -414,6 +415,14 @@ export const getResizableMediaNodeView =
         >
           {!isPreviewMode && (
             <div className="flex gap-1 p-1 mb-1 ml-auto">
+              {isImageType && (
+                <MediaBackgroundPicker
+                  value={node.attrs.backgroundColor ?? null}
+                  onChange={(color) =>
+                    updateAttributes({ backgroundColor: color })
+                  }
+                />
+              )}
               {resizableMediaActions
                 .filter((btn) => {
                   if (mediaType === 'iframe' && btn.tooltip === 'Add Caption')

@@ -64,6 +64,9 @@ const ALLOWED_HTML_TAGS = new Set([
   'sub',
   'summary',
   'sup',
+  // Inline SVG round-trips as raw markup (TEC-2680) — sanitized and encoded
+  // to a data URI in handleMarkdownContent before it can reach the doc.
+  'svg',
   'table',
   'tbody',
   'td',

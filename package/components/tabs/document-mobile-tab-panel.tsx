@@ -208,11 +208,14 @@ export const DocumentMobileTabPanel = ({
       data-testid="mobile-tab-panel"
       className={cn('fixed w-full flex flex-col z-[9]')}
       style={{
+        // 24px = the consumer app's footer height; the env() term keeps the
+        // panel above the iOS home indicator in home-screen (standalone)
+        // installs, where the footer grows by the same inset (0 elsewhere).
         bottom: isVersionHistoryMode
           ? 'var(--version-sheet-bottom, 24px)'
           : isFocusMode
-            ? '0px'
-            : '24px',
+            ? 'env(safe-area-inset-bottom, 0px)'
+            : 'calc(24px + env(safe-area-inset-bottom, 0px))',
       }}
     >
       <div

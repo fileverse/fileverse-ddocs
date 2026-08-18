@@ -33,6 +33,12 @@ import {
   escapeOutsideMath,
   hasMathRegions,
 } from '../../utils/math-aware-escape';
+import {
+  isSvgDataUri,
+  decodeSvgDataUri,
+  sanitizeSvgForEmbed,
+  encodeSvgToDataUri,
+} from '../../utils/svg-embed';
 
 // Initialize MarkdownIt for converting Markdown back to HTML with footnote support.
 const markdownIt = new MarkdownIt({ html: true })
@@ -136,7 +142,12 @@ turndownService.addRule('table', {
 
     // Process header
     const headers = Array.from(rows[0].cells).map((cell) => {
-      return turndownService.turndown(cell.innerHTML).trim();
+      inTableCell = true;
+      try {
+        return turndownService.turndown(cell.innerHTML).trim();
+      } finally {
+        inTableCell = false;
+      }
     });
     const maxColumnWidths = headers.map((header) => header.length);
 
@@ -155,7 +166,12 @@ turndownService.addRule('table', {
             '</li><li>',
           )}</li></${listType}>`;
         } else {
-          cellContent = turndownService.turndown(cellContent);
+          inTableCell = true;
+          try {
+            cellContent = turndownService.turndown(cellContent);
+          } finally {
+            inTableCell = false;
+          }
         }
 
         maxColumnWidths[index] = Math.max(
@@ -440,12 +456,38 @@ turndownService.addRule('formulaEmphasis', {
   },
 });
 
+// SVG media exports as raw inline markup — VB: "embed the SVG into the md
+// and html directly" (TEC-2680). null → caller falls back to base64 form.
+const inlineSvgFromSrc = (
+  src: string,
+  width?: string | null,
+  backgroundColor?: string | null,
+): string | null => {
+  if (!isSvgDataUri(src)) return null;
+  const text = decodeSvgDataUri(src);
+  return text ? sanitizeSvgForEmbed(text, width, backgroundColor) : null;
+};
+
+// The backdrop attr lives on the exported img, or on the node-view wrapper
+// the img was serialized from — check both.
+const mediaBackgroundColor = (el: HTMLElement): string | null =>
+  el.getAttribute('data-background-color') || el.style?.backgroundColor || null;
+
 // Custom rules for image
 turndownService.addRule('img', {
   filter: ['img'],
   replacement: function (_content, node) {
-    const src = (node as HTMLElement).getAttribute('src');
-    const alt = (node as HTMLElement).getAttribute('alt') || '';
+    const el = node as HTMLElement;
+    const src = el.getAttribute('src') || '';
+    const svg = inTableCell
+      ? null
+      : inlineSvgFromSrc(
+          src,
+          el.getAttribute('width'),
+          mediaBackgroundColor(el),
+        );
+    if (svg) return `\n\n${svg}\n\n`;
+    const alt = el.getAttribute('alt') || '';
     return src ? `![${alt}](${src})` : '';
   },
 });
@@ -519,10 +561,28 @@ turndownService.addRule('mediaFigure', {
       )
       .map((a) => `${a.name}="${esc(a.value)}"`)
       .join(' ');
-    const mediaHtml =
-      media.nodeName === 'VIDEO'
-        ? `<video ${attrs}>\n</video>`
-        : `<img ${attrs} />`;
+    const background =
+      mediaBackgroundColor(media as HTMLElement) || mediaBackgroundColor(el);
+    const svg =
+      media.nodeName === 'IMG'
+        ? inlineSvgFromSrc(
+            media.getAttribute('src') || '',
+            media.getAttribute('width'),
+            background,
+          )
+        : null;
+    // The generic attr copy skips `style` (node-view junk), so the backdrop
+    // is re-emitted as a single controlled declaration — data-background-color
+    // alone can't render on the published page (CSS can't read arbitrary
+    // colors out of a data attribute).
+    const backgroundStyle = background
+      ? ` style="background-color: ${esc(background)}"`
+      : '';
+    const mediaHtml = svg
+      ? svg
+      : media.nodeName === 'VIDEO'
+        ? `<video ${attrs}${backgroundStyle}>\n</video>`
+        : `<img ${attrs}${backgroundStyle} />`;
     const align =
       el.getAttribute('dataalign') ||
       media.getAttribute('dataalign') ||
@@ -611,6 +671,12 @@ let omitPageBreaks = false;
 export const setOmitPageBreaks = (enabled: boolean) => {
   omitPageBreaks = enabled;
 };
+
+// The table rule's nested `turndownService.turndown(cell.innerHTML)` parses
+// each cell as a detached fragment, so ancestry (closest('td')) is lost by
+// the time other rules run — this flag is the only way they can tell they're
+// inside a table cell, whose pipe rows must stay single-line.
+let inTableCell = false;
 
 // Color / font-family / font-size live on a styled <span> (TextStyle marks).
 turndownService.addRule('inlineTextStyle', {
@@ -1268,6 +1334,7 @@ type Base64UploadResult = {
   downloadUrl: string;
   ipfsHash: string;
   authTag: string;
+  contentType: string;
 };
 
 // Same-content uploads are deduped: Split View reparses the whole markdown on
@@ -1286,7 +1353,9 @@ async function uploadBase64ImageContent(
   if (cached) return cached;
 
   // Remove the data URL prefix. e.g., "data:image/jpeg;base64,"
-  const prefixMatch = base64Image.match(/^(data:(image\/[a-zA-Z]+);base64,)/);
+  const prefixMatch = base64Image.match(
+    /^(data:(image\/[a-zA-Z0-9.+-]+);base64,)/,
+  );
   if (!prefixMatch) {
     throw new Error('Invalid base64 image string.');
   }
@@ -1304,6 +1373,7 @@ async function uploadBase64ImageContent(
     downloadUrl: URL.createObjectURL(file),
     ipfsHash,
     authTag,
+    contentType,
   };
   base64UploadCache.set(base64Image, result);
   if (base64UploadCache.size > BASE64_UPLOAD_CACHE_MAX) {
@@ -1461,6 +1531,37 @@ export async function handleMarkdownContent(
     }
   }
 
+  // Inline <svg> → sanitized data-URI <img>: after encoding, the svg text is
+  // opaque to the document-level DOMPurify pass below, so sanitization must
+  // happen here. From this point the existing image pipeline (re-upload,
+  // figure parse, node creation) handles it like any other image.
+  const svgEls = Array.from(doc.getElementsByTagName('svg'));
+  for (const svgEl of svgEls) {
+    // Lift the backdrop off the root before encoding: it becomes the img's
+    // data-background-color (→ the node attr, editable later) instead of a
+    // value baked immutably into the data URI. Export stamps it back on.
+    const background =
+      svgEl.getAttribute('data-background-color') ||
+      svgEl.style?.backgroundColor ||
+      null;
+    svgEl.removeAttribute('data-background-color');
+    if (svgEl.style?.backgroundColor) {
+      svgEl.style.removeProperty('background-color');
+      if (!svgEl.getAttribute('style')) svgEl.removeAttribute('style');
+    }
+    const clean = sanitizeSvgForEmbed(svgEl.outerHTML);
+    if (!clean) {
+      svgEl.remove();
+      continue;
+    }
+    const img = doc.createElement('img');
+    img.setAttribute('src', encodeSvgToDataUri(clean));
+    const width = svgEl.getAttribute('width');
+    if (width && width !== '100%') img.setAttribute('width', width);
+    if (background) img.setAttribute('data-background-color', background);
+    svgEl.replaceWith(img);
+  }
+
   // Handle images
   const paragraphs = doc.getElementsByTagName('p');
   for (let i = paragraphs.length - 1; i >= 0; i--) {
@@ -1487,7 +1588,7 @@ export async function handleMarkdownContent(
           imgElement.setAttribute('nonce', uploadResult.nonce);
           imgElement.setAttribute('version', '2');
           imgElement.setAttribute('ipfsHash', uploadResult.ipfsHash);
-          imgElement.setAttribute('mimeType', 'image/jpeg');
+          imgElement.setAttribute('mimeType', uploadResult.contentType);
           imgElement.setAttribute('authTag', uploadResult.authTag);
         } catch (error) {
           console.error('Error uploading secure image to IPFS:', error);
@@ -1632,6 +1733,9 @@ async function recreateNodeWithImageContent(
   shouldCompress: boolean = false,
 ): Promise<PMNode> {
   const { version, mimeType, ipfsHash, ...attrs } = node.attrs;
+  // SVG is text — canvas compression would rasterize it (or wrap JPEG bytes
+  // in an image/svg+xml data URI). It ships uncompressed; TEC-2680.
+  const isSvg = mimeType === 'image/svg+xml';
   let buffer: ArrayBuffer;
 
   try {
@@ -1674,7 +1778,7 @@ async function recreateNodeWithImageContent(
 
       buffer = decrypted;
     }
-    if (shouldCompress) {
+    if (shouldCompress && !isSvg) {
       const imgBlob = new Blob([buffer], { type: mimeType || 'image/jpeg' });
       const compressed = await compressImage(imgBlob, 'MEDIUM', false);
 
@@ -1754,7 +1858,8 @@ export async function searchForSecureImageNodeAndEmbedImageContent(
       } else if (
         current.node.attrs['media-type'] === 'img' &&
         shouldCompress &&
-        isValidBase64Image(current.node.attrs['src'] as string)
+        isValidBase64Image(current.node.attrs['src'] as string) &&
+        !isSvgDataUri(current.node.attrs['src'] as string)
       ) {
         const { compressedBase64, mimeType } = await getCompressedBase64Image(
           current.node.attrs['src'],

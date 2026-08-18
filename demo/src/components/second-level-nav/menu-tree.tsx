@@ -788,6 +788,14 @@ export const demoMenuTree: MenuBarTree = [
     label: 'Tools',
     children: [
       {
+        id: 'tools.wordCount',
+        kind: 'action',
+        label: 'Word count',
+        icon: 'FileText',
+        action: 'tools.wordCount',
+        visibleWhen: canTools,
+      },
+      {
         id: 'tools.slides',
         kind: 'action',
         label: 'Slides',
