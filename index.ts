@@ -7,6 +7,7 @@ export type {
   TabbedJSONContent,
   TabbedJSONContentTab,
 } from './package/hooks/use-headless-editor';
+export { FANFIC_TEMPLATE } from './package/utils/fanfic-template';
 export { useEditorCommands } from './package/hooks/use-editor-commands';
 export type {
   EditorCommand,
