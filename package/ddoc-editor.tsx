@@ -55,6 +55,7 @@ import { EditorProvider } from './context/editor-context';
 import { fadeInTransition, slideUpTransition } from './components/motion-div';
 import { PreviewContentLoader } from './components/preview-content-loader';
 import { EmbedSettings } from './extensions/twitter-embed/embed-settings';
+import { CustomSpacingDialogHost } from './components/editor-toolbar/custom-spacing-dialog';
 import {
   DEFAULT_TAB_ID,
   DEFAULT_TAB_NAME,
@@ -1088,6 +1089,10 @@ const DdocEditor = forwardRef(
                                   }
                                 />
                                 <EmbedSettings editor={editor} />
+                                {/* The only instance — the toolbar dropdown,
+                                    the bubble menu and a host app's menu all
+                                    open it through the store. */}
+                                <CustomSpacingDialogHost editor={editor} />
                               </>
                             )}
 

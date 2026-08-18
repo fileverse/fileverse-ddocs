@@ -8,6 +8,7 @@ import {
   CommentStoreContext,
   createCommentStore,
 } from '../stores/comment-store';
+import { useCustomSpacingStore } from '../stores/custom-spacing-store';
 
 describe('useEditorCommands', () => {
   let editor: Editor;
@@ -98,6 +99,14 @@ describe('useEditorCommands', () => {
     const { result } = renderHook(() => useEditorCommands(editor));
     act(() => result.current['insert.mermaid'].run());
     expect(editor.isActive('codeBlock', { language: 'mermaid' })).toBe(true);
+  });
+
+  it('format.customSpacing opens the shared dialog through the store', () => {
+    useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
+    const { result } = renderHook(() => useEditorCommands(editor));
+    act(() => result.current['format.customSpacing'].run());
+    expect(useCustomSpacingStore.getState().isCustomSpacingOpen).toBe(true);
+    useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
   });
 
   it('returns disabled no-op commands for a null editor', () => {

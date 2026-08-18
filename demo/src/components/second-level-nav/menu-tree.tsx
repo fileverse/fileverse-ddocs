@@ -618,15 +618,24 @@ export const demoMenuTree: MenuBarTree = [
         label: 'Line height',
         icon: 'UnfoldVertical',
         visibleWhen: canEdit,
-        children: ['1', '1.15', '1.5', '2', '2.5', '3'].map((v) => ({
-          id: `format.lineHeight.${v.replace('.', '_')}`,
-          kind: 'radio' as const,
-          label: v,
-          value: v,
-          action: 'format.lineHeight',
-          state: (c: MenuContext) =>
-            c.state['format.lineHeight']?.current === v,
-        })),
+        children: [
+          ...['1', '1.15', '1.5', '2', '2.5', '3'].map((v) => ({
+            id: `format.lineHeight.${v.replace('.', '_')}`,
+            kind: 'radio' as const,
+            label: v,
+            value: v,
+            action: 'format.lineHeight',
+            state: (c: MenuContext) =>
+              c.state['format.lineHeight']?.current === v,
+          })),
+          { id: 'format.lineHeight.sep', kind: 'separator' },
+          {
+            id: 'format.lineHeight.custom',
+            kind: 'action',
+            label: 'Custom spacing',
+            action: 'format.customSpacing',
+          },
+        ],
       },
       {
         id: 'format.lists',

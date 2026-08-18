@@ -20,6 +20,7 @@ import {
   SPACING_MAX_PT,
   type SpacingSelection,
 } from '../../utils/typography';
+import { useCustomSpacingStore } from '../../stores/custom-spacing-store';
 
 type FieldKey = keyof SpacingSelection;
 
@@ -239,5 +240,22 @@ export const CustomSpacingDialog = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+};
+
+/**
+ * The single mounted instance, wired to the store. Subscribing here rather
+ * than at the mount site keeps the open/close re-render off the editor tree.
+ */
+export const CustomSpacingDialogHost = ({
+  editor,
+}: {
+  editor: Editor | null;
+}) => {
+  const open = useCustomSpacingStore((s) => s.isCustomSpacingOpen);
+  const setOpen = useCustomSpacingStore((s) => s.setCustomSpacingOpen);
+
+  return (
+    <CustomSpacingDialog editor={editor} open={open} onOpenChange={setOpen} />
   );
 };

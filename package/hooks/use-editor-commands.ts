@@ -19,6 +19,7 @@ import {
   CommentStoreState,
   useCommentStoreOptional,
 } from '../stores/comment-store';
+import { openCustomSpacingDialog } from '../stores/custom-spacing-store';
 
 // Module-scope stable selectors: useCommentStoreOptional's
 // useSyncExternalStore contract compares snapshots with Object.is, so these
@@ -72,6 +73,7 @@ export type EditorCommandId =
   | 'format.align'
   | 'format.direction'
   | 'format.lineHeight'
+  | 'format.customSpacing'
   | 'format.fontFamily'
   | 'format.fontSize.increase'
   | 'format.fontSize.decrease'
@@ -363,6 +365,9 @@ export const useEditorCommands = (
         },
         { current: state.lineHeight },
       ),
+      // Opens the shared dialog (mounted once by ddoc-editor) rather than
+      // dispatching — the toolbar dropdown and bubble menu items do the same.
+      'format.customSpacing': cmd(() => openCustomSpacingDialog()),
       'format.fontFamily': cmd(
         (arg) => editor.chain().focus().setFontFamily(arg!).run(),
         { current: state.fontFamily },

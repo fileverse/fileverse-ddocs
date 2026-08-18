@@ -358,7 +358,6 @@ const TiptapToolBar = ({
                                     <LineHeightDropdown
                                       key={moreTool.title}
                                       tool={moreTool}
-                                      editor={editor}
                                       currentLineHeight={currentLineHeight}
                                       onSetLineHeight={onSetLineHeight}
                                     />
@@ -428,7 +427,6 @@ const TiptapToolBar = ({
                   ? slideUpTransition(
                       <LineHeightDropdown
                         tool={tool}
-                        editor={editor}
                         currentLineHeight={currentLineHeight}
                         onSetLineHeight={onSetLineHeight}
                       />,

@@ -154,6 +154,23 @@ describe('demoMenuTree', () => {
     ]);
   });
 
+  it('Format ▸ Line height ends with a Custom spacing action', () => {
+    const format = projectMenu(demoMenuTree, ctxFor('owner')).find(
+      (m) => m.id === 'format',
+    )!;
+    const lineHeight = findNode(format.children, 'format.lineHeight');
+    if (lineHeight?.kind !== 'submenu') throw new Error('expected submenu');
+    // Mirrors the toolbar dropdown and the bubble menu: presets, a divider,
+    // then the dialog opener.
+    expect(lineHeight.children.at(-2)).toMatchObject({ kind: 'separator' });
+    expect(lineHeight.children.at(-1)).toMatchObject({
+      kind: 'action',
+      label: 'Custom spacing',
+      action: 'format.customSpacing',
+      disabled: false,
+    });
+  });
+
   it('margins is comingSoon-disabled for owner', () => {
     const format = projectMenu(demoMenuTree, ctxFor('owner')).find(
       (m) => m.id === 'format',

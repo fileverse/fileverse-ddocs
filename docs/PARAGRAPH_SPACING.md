@@ -87,6 +87,14 @@ Placement mirrors the existing line-height control: `group: 'More'`,
 `notVisible: 1270`, present in the overflow popover and the bubble menu, absent
 from `mobile-toolbar.tsx`.
 
+**As built:** three entry points open it — the toolbar dropdown, the bubble
+menu, and the demo's second-level nav (Format ▸ Line height ▸ Custom spacing),
+which is data-driven and has nowhere to hold dialog state. They share
+`stores/custom-spacing-store.ts` (module-level, like `search-replace-store`)
+and `ddoc-editor.tsx` mounts the single `CustomSpacingDialogHost`, so the demo
+menu needs no new export and the dialog is never duplicated. The registry entry
+is `format.customSpacing`.
+
 > **Verified.** `uiValueToPercentage` is `round(uiValue * 120)` and the preset
 > table matches it exactly (1 -> 120%, 1.15 -> 138%, 1.5 -> 180%, 2 -> 240%), so
 > the multiplier field is consistent with the presets. Note that "1.15" in the

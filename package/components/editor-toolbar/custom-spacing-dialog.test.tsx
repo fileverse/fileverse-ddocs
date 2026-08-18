@@ -1,11 +1,24 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  act,
+} from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { LineHeight } from '../../extensions/line-height';
 import { ParagraphSpacing } from '../../extensions/paragraph-spacing';
-import { CustomSpacingDialog } from './custom-spacing-dialog';
+import {
+  CustomSpacingDialog,
+  CustomSpacingDialogHost,
+} from './custom-spacing-dialog';
+import {
+  openCustomSpacingDialog,
+  useCustomSpacingStore,
+} from '../../stores/custom-spacing-store';
 
 const makeEditor = (content: string) =>
   new Editor({
@@ -102,5 +115,38 @@ describe('CustomSpacingDialog', () => {
 
     expect(spaceBefores(editor)).toEqual([null]);
     expect(spaceAfters(editor)).toEqual([0]);
+  });
+});
+
+// The dialog is mounted once, by ddoc-editor; the toolbar dropdown, the
+// bubble menu and the app's own menu all reach it through the store.
+describe('CustomSpacingDialogHost', () => {
+  const editors: Editor[] = [];
+
+  afterEach(() => {
+    cleanup();
+    useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
+    editors.splice(0).forEach((editor) => editor.destroy());
+  });
+
+  it('opens exactly one dialog when an entry point sets the store flag', () => {
+    const editor = makeEditor('<p>one</p>');
+    editors.push(editor);
+
+    render(<CustomSpacingDialogHost editor={editor} />);
+    expect(screen.queryByText('Custom spacing')).toBeNull();
+
+    act(() => openCustomSpacingDialog());
+    expect(screen.getAllByText('Custom spacing')).toHaveLength(1);
+  });
+
+  it('clearing the store flag closes it', () => {
+    const editor = makeEditor('<p>one</p>');
+    editors.push(editor);
+
+    render(<CustomSpacingDialogHost editor={editor} />);
+    act(() => openCustomSpacingDialog());
+    act(() => useCustomSpacingStore.getState().setCustomSpacingOpen(false));
+    expect(screen.queryByText('Custom spacing')).toBeNull();
   });
 });

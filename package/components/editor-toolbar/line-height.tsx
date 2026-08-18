@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,9 +7,8 @@ import {
   LucideIcon,
 } from '@fileverse/ui';
 import cn from 'classnames';
-import { Editor } from '@tiptap/core';
 import { getLineHeightOptions, IEditorToolElement } from '../editor-utils';
-import { CustomSpacingDialog } from './custom-spacing-dialog';
+import { openCustomSpacingDialog } from '../../stores/custom-spacing-store';
 
 const LineHeightPicker = ({
   currentLineHeight,
@@ -66,44 +64,33 @@ const LineHeightPicker = ({
 
 export const LineHeightDropdown = ({
   tool,
-  editor,
   currentLineHeight,
   onSetLineHeight,
 }: {
   tool: IEditorToolElement;
-  editor: Editor | null;
   currentLineHeight?: string;
   onSetLineHeight: (lineHeight: string) => void;
 }) => {
-  // Held here rather than in the picker: selecting the item closes the
-  // dropdown, which would unmount a dialog rendered inside it.
-  const [isCustomSpacingOpen, setIsCustomSpacingOpen] = useState(false);
-
+  // No dialog rendered here on purpose: selecting the item closes the
+  // dropdown, which would unmount it. The store drives the one instance
+  // ddoc-editor mounts.
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton
-            icon={tool.icon}
-            variant="ghost"
-            size="sm"
-            disabled={tool.disabled}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="p-0 b-0">
-          <LineHeightPicker
-            currentLineHeight={currentLineHeight}
-            onSetLineHeight={onSetLineHeight}
-            onOpenCustomSpacing={() => setIsCustomSpacingOpen(true)}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <CustomSpacingDialog
-        editor={editor}
-        open={isCustomSpacingOpen}
-        onOpenChange={setIsCustomSpacingOpen}
-      />
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          icon={tool.icon}
+          variant="ghost"
+          size="sm"
+          disabled={tool.disabled}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="p-0 b-0">
+        <LineHeightPicker
+          currentLineHeight={currentLineHeight}
+          onSetLineHeight={onSetLineHeight}
+          onOpenCustomSpacing={openCustomSpacingDialog}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
