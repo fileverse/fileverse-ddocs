@@ -38,6 +38,7 @@ import {
   decodeSvgDataUri,
   sanitizeSvgForEmbed,
   encodeSvgToDataUri,
+  stripStyleBlocksOutsideSvg,
 } from '../../utils/svg-embed';
 
 // Initialize MarkdownIt for converting Markdown back to HTML with footnote support.
@@ -1066,15 +1067,15 @@ const MarkdownPasteHandler = (
                 setOmitPageBreaks(false);
               }
 
-              // Enforce the invariant: exactly one <style> block, and only the
-              // canonical custom CSS. Strip any stray <style> the content may
-              // carry (e.g. an old doc polluted before the import-side fix),
-              // then, in "with styles" mode, prepend the single custom-CSS block
-              // so the downloaded .md is self-contained and never duplicated.
-              markdown = markdown.replace(
-                /<style\b[^>]*>[\s\S]*?<\/style>\s*/gi,
-                '',
-              );
+              // Enforce the invariant: exactly one doc-level <style> block,
+              // and only the canonical custom CSS. Strip any stray <style>
+              // the content may carry (e.g. an old doc polluted before the
+              // import-side fix), then, in "with styles" mode, prepend the
+              // single custom-CSS block so the downloaded .md is
+              // self-contained and never duplicated. Style elements INSIDE
+              // inline <svg> are content, not doc CSS — they stay (scoped by
+              // sanitizeSvgForEmbed).
+              markdown = stripStyleBlocksOutsideSvg(markdown);
               // sanitizeCustomCss scopes the author CSS to `body` (the rendered
               // doc's root, mirroring the editor's `.ProseMirror`) AND strips
               // injection vectors — breakout, url()/@import exfiltration,
@@ -1397,15 +1398,14 @@ export async function handleMarkdownContent(
   // Remove YAML frontmatter before parsing
   let cleanMarkdown = stripFrontmatter(content);
 
-  // Custom CSS is styling, never document content. Strip every <style> block
-  // so it can't leak into the doc — DOMPurify is inconsistent (it drops a
-  // leading multi-line block but keeps an inline/single-line one), which is how
-  // a stray <style> ends up as a text node and re-exports as a duplicate. The
-  // canonical block is handled separately (Split View seed / export prepend).
-  cleanMarkdown = cleanMarkdown.replace(
-    /<style\b[^>]*>[\s\S]*?<\/style>/gi,
-    '',
-  );
+  // Custom CSS is styling, never document content. Strip every doc-level
+  // <style> block so it can't leak into the doc — DOMPurify is inconsistent
+  // (it drops a leading multi-line block but keeps an inline/single-line
+  // one), which is how a stray <style> ends up as a text node and re-exports
+  // as a duplicate. The canonical block is handled separately (Split View
+  // seed / export prepend). Style elements INSIDE inline <svg> are content
+  // (Illustrator colors via <style> + classes) and must survive import.
+  cleanMarkdown = stripStyleBlocksOutsideSvg(cleanMarkdown);
 
   // Shield $…$/$$…$$ regions from everything below (markdown-it escape
   // stripping, the asterisk regexes, the sup/sub regexes) — restored verbatim

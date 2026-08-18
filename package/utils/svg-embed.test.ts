@@ -4,6 +4,7 @@ import {
   decodeSvgDataUri,
   sanitizeSvgForEmbed,
   encodeSvgToDataUri,
+  stripStyleBlocksOutsideSvg,
 } from './svg-embed';
 
 const SVG =
@@ -99,6 +100,138 @@ describe('sanitizeSvgForEmbed', () => {
   it('ignores default-size widths', () => {
     expect(sanitizeSvgForEmbed(SVG, '100%')).not.toContain('width="100%"');
     expect(sanitizeSvgForEmbed(SVG, null)).toContain('<svg');
+  });
+  it('drops the file height when stamping a width so the viewBox ratio holds', () => {
+    const sized =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="200px" height="200px" viewBox="0 0 200 200"><rect width="200" height="200"/></svg>';
+    const out = sanitizeSvgForEmbed(sized, '666')!;
+    expect(out).toMatch(/<svg[^>]*width="666"/);
+    expect(out).not.toMatch(/<svg[^>]*height=/);
+    expect(out).toContain('viewBox="0 0 200 200"');
+  });
+  it('synthesizes a viewBox from the file box when none exists', () => {
+    const noViewBox =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100"/></svg>';
+    const out = sanitizeSvgForEmbed(noViewBox, '666')!;
+    expect(out).toContain('viewBox="0 0 200 100"');
+    expect(out).toMatch(/<svg[^>]*width="666"/);
+    expect(out).not.toMatch(/<svg[^>]*height=/);
+  });
+  it('pins a natural width from the viewBox when the file has none', () => {
+    const out = sanitizeSvgForEmbed(SVG)!;
+    expect(out).toMatch(/<svg[^>]*width="10"/);
+    expect(sanitizeSvgForEmbed(SVG, '100%')).toMatch(/<svg[^>]*width="10"/);
+  });
+  it('treats a percentage file width as absent and replaces it', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 50 50"><rect width="50" height="50"/></svg>',
+    )!;
+    expect(out).toMatch(/<svg[^>]*width="50"/);
+  });
+  it('derives natural width from a concrete height and the viewBox ratio', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" height="200" viewBox="0 0 400 400"><rect width="400" height="400"/></svg>',
+    )!;
+    expect(out).toMatch(/<svg[^>]*width="200"/);
+    expect(out).toMatch(/<svg[^>]*height="200"/);
+  });
+  it('leaves a concrete file width alone when no resize width is given', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100"/></svg>',
+    )!;
+    expect(out).toMatch(/<svg[^>]*width="200"/);
+  });
+  it('keeps the file height when no resize width is given', () => {
+    const sized =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100"/></svg>';
+    const out = sanitizeSvgForEmbed(sized)!;
+    expect(out).toMatch(/<svg[^>]*height="100"/);
+  });
+});
+
+describe('svg style scoping', () => {
+  const STYLED =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style type="text/css">.st0{fill:#FFDF0A;}</style><path class="st0" d="M0 0h5v5z"/></svg>';
+
+  it('keeps the style block and scopes its selectors to the svg', () => {
+    const out = sanitizeSvgForEmbed(STYLED)!;
+    expect(out).toContain('<style');
+    expect(out).toContain('FFDF0A');
+    expect(out).toMatch(/\.svg-scope-[a-z0-9]+ \.st0 \{/);
+    expect(out).toMatch(/<svg[^>]*class="[^"]*svg-scope-[a-z0-9]+/);
+  });
+
+  it('neutralizes page-level selectors by scoping them', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><style>body{display:none}</style><rect width="4" height="4"/></svg>',
+    )!;
+    expect(out).toMatch(/\.svg-scope-[a-z0-9]+ body \{/);
+    expect(out).not.toMatch(/<style[^>]*>\s*body\s*\{/);
+  });
+
+  it('drops @import and external url() but keeps url(#fragment)', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><style>@import url(http://evil.example/x.css);.a{fill:url(http://evil.example/y)}.b{fill:url(#grad)}</style><rect class="b" width="4" height="4"/></svg>',
+    )!;
+    expect(out).not.toContain('@import');
+    expect(out).not.toContain('evil.example');
+    expect(out).toContain('url(#grad)');
+  });
+
+  it('drops image-set() smuggled URLs and sibling-combinator selectors', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><style>.a{background:image-set("//evil.example/x.png" 1x)}~ figcaption{display:none}.b{fill:red}</style><rect class="b" width="4" height="4"/></svg>',
+    )!;
+    expect(out).not.toContain('image-set');
+    expect(out).not.toContain('figcaption');
+    expect(out).toMatch(/\.svg-scope-[a-z0-9]+ \.b \{/);
+  });
+
+  it('drops a style block whose every rule is unsafe', () => {
+    const out = sanitizeSvgForEmbed(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><style>.a{background:url(http://evil.example/z)}</style><rect width="4" height="4"/></svg>',
+    )!;
+    expect(out).not.toContain('<style');
+    expect(out).not.toContain('svg-scope-');
+  });
+
+  it('is idempotent: re-sanitizing scoped output does not double-prefix', () => {
+    const once = sanitizeSvgForEmbed(STYLED)!;
+    const twice = sanitizeSvgForEmbed(once)!;
+    expect(twice).not.toMatch(/svg-scope-[a-z0-9]+ \.svg-scope-/);
+    expect((twice.match(/svg-scope-/g) || []).length).toBe(
+      (once.match(/svg-scope-/g) || []).length,
+    );
+  });
+});
+
+describe('stripStyleBlocksOutsideSvg', () => {
+  it('strips a doc-level style block', () => {
+    const out = stripStyleBlocksOutsideSvg(
+      '<style>body{color:red}</style>\n# Title',
+    );
+    expect(out).not.toContain('<style');
+    expect(out).toContain('# Title');
+  });
+
+  it('keeps a style inside svg while stripping ones outside', () => {
+    const md =
+      '<style>body{}</style>\n<svg viewBox="0 0 4 4">\n<style>.a{fill:red}</style>\n<rect class="a"/>\n</svg>\n<style>.x{}</style>';
+    const out = stripStyleBlocksOutsideSvg(md);
+    expect(out).toContain('.a{fill:red}');
+    expect(out).not.toContain('body{}');
+    expect(out).not.toContain('.x{}');
+  });
+
+  it('handles nested svgs as one region', () => {
+    const md =
+      '<svg viewBox="0 0 4 4"><svg viewBox="0 0 2 2"></svg><style>.a{fill:red}</style></svg>';
+    expect(stripStyleBlocksOutsideSvg(md)).toContain('.a{fill:red}');
+  });
+
+  it('fails open on an unclosed svg', () => {
+    const md = '<svg viewBox="0 0 4 4"><style>.a{fill:red}</style>';
+    expect(stripStyleBlocksOutsideSvg(md)).toBe(md);
   });
 });
 
