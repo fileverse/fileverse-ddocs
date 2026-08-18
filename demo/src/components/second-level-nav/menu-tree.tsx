@@ -795,6 +795,14 @@ export const demoMenuTree: MenuBarTree = [
         action: 'tools.slides',
         visibleWhen: canTools,
       },
+      {
+        id: 'tools.wordCount',
+        kind: 'action',
+        label: 'Word count',
+        icon: 'FileText',
+        action: 'tools.wordCount',
+        visibleWhen: canTools,
+      },
     ],
   },
 ];

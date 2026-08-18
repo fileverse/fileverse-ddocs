@@ -14,6 +14,7 @@ import { demoMenuTree } from './components/second-level-nav/menu-tree';
 import { deriveCapabilities } from './components/second-level-nav/capabilities';
 import { createDemoAppActions } from './components/second-level-nav/demo-app-actions';
 import { LinkModal } from './components/LinkModal';
+import { WordCountModal } from './components/WordCountModal';
 
 const demoFonts: FontDescriptor[] = [
   {
@@ -176,6 +177,7 @@ function App() {
   const [characterCount, setCharacterCount] = useState(0);
   const [wordCount, setWordCount] = useState(0);
   const [pageCount, setPageCount] = useState(0);
+  const [wordCountModalOpen, setWordCountModalOpen] = useState(false);
 
   // --- Title with persistence ---
   const [title, setTitle] = useState(() => {
@@ -522,6 +524,7 @@ function App() {
       documentStyling,
       setDocumentStyling,
       startPresentation: () => setIsPresentationMode(true),
+      openWordCountModal: () => setWordCountModalOpen(true),
     });
 
     return (
@@ -913,6 +916,13 @@ function App() {
         setCharacterCount={setCharacterCount}
         setWordCount={setWordCount}
         setPageCount={setPageCount}
+      />
+      <WordCountModal
+        open={wordCountModalOpen}
+        onOpenChange={setWordCountModalOpen}
+        pageCount={pageCount}
+        wordCount={wordCount}
+        characterCount={characterCount}
       />
       <LinkModal
         open={linkModalOpen}
