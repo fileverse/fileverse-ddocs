@@ -7,6 +7,16 @@ export interface AwarenessIdentity {
 }
 
 export const PLACEHOLDER_COLOR = '#9CA3AF';
+export const COLLAB_PRESENCE_COLORS = [
+  '#30bced',
+  '#6eeb83',
+  '#fa69d1',
+  '#ecd444',
+  '#ee6352',
+  '#db3041',
+  '#0ad7f2',
+  '#1bff39',
+] as const;
 
 // socketId (a sibling awareness field) → identity, keeping only states that carry both.
 // Typed without `any` (the package enforces @typescript-eslint/no-explicit-any); the raw
@@ -75,8 +85,42 @@ export function mergePresence(
   });
 }
 
-// Signature over only what the rendered roster depends on (member set + each identity),
-// so cursor-position churn yields an identical signature and is skipped by callers.
+export function assignSessionColors(
+  collaborators: IDocCollabUsers[],
+  colorByName: Map<string, string>,
+): IDocCollabUsers[] {
+  const activeNames = new Set(
+    collaborators
+      .filter(({ isPlaceholder, name }) => !isPlaceholder && name)
+      .map(({ name }) => name),
+  );
+  colorByName.forEach((_, name) => {
+    if (!activeNames.has(name)) colorByName.delete(name);
+  });
+
+  const usedColors = new Set<string>();
+  collaborators.forEach((collaborator) => {
+    if (collaborator.isPlaceholder || !collaborator.name) return;
+    let color = colorByName.get(collaborator.name);
+    if (!color || usedColors.has(color)) {
+      color =
+        COLLAB_PRESENCE_COLORS.find((candidate) => !usedColors.has(candidate)) ??
+        color ??
+        COLLAB_PRESENCE_COLORS[
+          colorByName.size % COLLAB_PRESENCE_COLORS.length
+        ];
+      colorByName.set(collaborator.name, color);
+    }
+    usedColors.add(color);
+    collaborator.color = color;
+  });
+  return collaborators;
+}
+
+// Used to check if the collaborator list has changed.
+// Color is left out because saving a new color runs this check again.
+// This prevents the collaborator list from updating twice.
+// Cursor colors are updated separately in use-tab-editor.
 export function identitySignature(
   roomMembers: string[],
   identityBySocketId: Map<string, AwarenessIdentity>,
@@ -86,7 +130,7 @@ export function identitySignature(
     .sort()
     .map((sid) => {
       const id = identityBySocketId.get(sid);
-      return id ? `${sid}:${id.name}:${id.color}:${id.isEns}` : `${sid}:?`;
+      return id ? `${sid}:${id.name}:${id.isEns}` : `${sid}:?`;
     })
     .join('|');
 }
