@@ -124,9 +124,34 @@ selected block. That is a style recalc per keystroke; deferred deliberately.
 
 The dialog prefills what the block actually renders with, read via
 `getComputedStyle` on `editor.view.nodeDOM(pos)`, because no constant would be
-right: the gap comes from `.ProseMirror > * + *` (1.5em), a mobile override
-(1rem), tailwind `prose-p:my-2` (0.5rem), and `:first-child`/`:last-child`
-resets — so it varies by viewport, element type and sibling position.
+right: the gap comes from `.ProseMirror > *` (1.5em), `> p` (1.5rem), nested
+`p` (0.5rem), the heading pin (1.5rem) and the `:last-child` reset — so it
+varies by element type, nesting depth and position.
+
+### Block spacing is margin-bottom only
+
+Every block used to carry a top *and* a bottom margin. Adjacent margins
+collapse to the larger, so an authored `spaceAfter` smaller than the next
+block's default top margin did nothing visible. A block now owns only the gap
+below it, which makes `spaceAfter` authoritative.
+
+`spaceBefore` still collapses against the previous block's bottom margin and
+only wins when larger. That is Word's behaviour too, and matches the collapsing
+decision recorded above — it is not fixed by this change.
+
+Two details that are load-bearing:
+
+- The generic rule is `.ProseMirror > *`, not `> * + *`. A bottom gap belongs
+  on every block including the first; `* + *` existed only to keep a *top*
+  margin off the first block.
+- The heading pin is no longer gated on `[data-schema-version='2']`. v1 hid
+  prose-lg's 48px heading margins by collapsing them through the dBlock wrapper
+  rows; with nothing collapsing, an unpinned heading would expose them and
+  roughly double the gap after every v1 heading.
+
+`handle-print.ts` mirrors this, so PDF and screen space identically. Scope is
+the editing canvas — `.presentation-mode` and `.ai-preview-editor` are separate
+renderers with their own rhythm and are untouched.
 
 That means **Apply pins spacing on every selected block**, since the prefilled
 value gets written back. Clearing a field still writes null and returns that
