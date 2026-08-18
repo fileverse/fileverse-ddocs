@@ -29,11 +29,13 @@ const CountRow = ({ label, value }: { label: string; value: number }) => (
   </div>
 );
 
-// Filled 1px rule (the `color-border-default` utility only sets
-// border-color, so a divider div needs the raw token as a background).
+// Border, not a filled div: borders pixel-snap the same way as the modal's
+// other hairlines (header border-t), while a 1px background rect can round
+// to 2 physical px at some zoom/DPR combos — which is exactly how it
+// shipped and got flagged by design.
 const RowDivider = () => (
   <div className="py-1 w-full">
-    <div className="h-px w-full bg-[hsl(var(--color-border-default))]" />
+    <div className="w-full border-t color-border-default" />
   </div>
 );
 
