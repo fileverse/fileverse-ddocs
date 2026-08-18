@@ -60,6 +60,9 @@ const HtmlExportExtension = (
             const rawHtml = temporalEditor.getHTML();
             const inlineHtml = await renderMermaidBlocks(rawHtml);
 
+            // Hooks are global on the DOMPurify instance — remove in a
+            // finally so this empty-element pruning can't leak into every
+            // later sanitize (it would even delete an svg's empty <path>s).
             DOMPurify.addHook('afterSanitizeElements', (node: any) => {
               if (
                 node.nodeType === 1 &&
@@ -72,40 +75,45 @@ const HtmlExportExtension = (
             });
 
             // Sanitize HTML content using the utility function
-            const cleanHtml = DOMPurify.sanitize(inlineHtml, {
-              ALLOWED_TAGS: [
-                'p',
-                'h1',
-                'h2',
-                'h3',
-                'ul',
-                'ol',
-                'li',
-                'blockquote',
-                'pre',
-                'code',
-                'strong',
-                'em',
-                'u',
-                's',
-                'mark',
-                'span',
-                'br',
-                'hr',
-                'a',
-                'img',
-                'table',
-                'tbody',
-                'tr',
-                'td',
-                'th',
-                'thead',
-                'tfoot',
-                ...MERMAID_SVG_TAGS,
-              ],
-              ALLOWED_ATTR: ['href', ...MERMAID_SVG_ATTRS],
-              FORBID_ATTR: ['data-toc-id', 'data-tight'],
-            });
+            let cleanHtml: string;
+            try {
+              cleanHtml = DOMPurify.sanitize(inlineHtml, {
+                ALLOWED_TAGS: [
+                  'p',
+                  'h1',
+                  'h2',
+                  'h3',
+                  'ul',
+                  'ol',
+                  'li',
+                  'blockquote',
+                  'pre',
+                  'code',
+                  'strong',
+                  'em',
+                  'u',
+                  's',
+                  'mark',
+                  'span',
+                  'br',
+                  'hr',
+                  'a',
+                  'img',
+                  'table',
+                  'tbody',
+                  'tr',
+                  'td',
+                  'th',
+                  'thead',
+                  'tfoot',
+                  ...MERMAID_SVG_TAGS,
+                ],
+                ALLOWED_ATTR: ['href', ...MERMAID_SVG_ATTRS],
+                FORBID_ATTR: ['data-toc-id', 'data-tight'],
+              });
+            } finally {
+              DOMPurify.removeHook('afterSanitizeElements');
+            }
 
             // Build metadata dynamically from props
             const metadata = {
