@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import * as Y from 'yjs';
 import { toUint8Array } from 'js-base64';
-import { useHeadlessEditor } from './use-headless-editor';
+import {
+  createHeadlessEditorRuntime,
+  useHeadlessEditor,
+} from './use-headless-editor';
 import { getDocSchemaVersion } from '../utils/schema-version';
 
 // v1-shaped template JSON — the app's template-utils source-of-truth shape.
@@ -58,6 +61,13 @@ const convertWith = (
 };
 
 describe('useHeadlessEditor schema-version support (M3 template creation)', () => {
+  it('keeps the existing hook API backed by the plain runtime factory', () => {
+    const directRuntime = createHeadlessEditorRuntime();
+    const { result } = renderHook(() => useHeadlessEditor());
+
+    expect(Object.keys(result.current)).toEqual(Object.keys(directRuntime));
+  });
+
   it('stamps the marker and stores flat content when converting as v2', () => {
     const blob = convertWith({ schemaVersion: 2 }, v1TemplateJSON);
     const { topLevelTypes, schemaVersion } = decodeBlob(blob);

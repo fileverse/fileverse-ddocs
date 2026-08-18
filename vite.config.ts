@@ -14,11 +14,17 @@ export default defineConfig({
       //Defines the entry point for the library build. It resolves
       //to src/index.ts,indicating that the library starts from this file.
       name: 'ddoc',
-      entry: path.resolve(__dirname, './index.ts'),
+      entry: {
+        index: path.resolve(__dirname, './index.ts'),
+        'headless-editor-utils': path.resolve(
+          __dirname,
+          './headless-editor-utils.ts',
+        ),
+      },
       formats: ['es'],
       //A function that generates the output file
       //name for different formats during the build
-      fileName: (format) => `index.${format}.js`,
+      fileName: (format, entryName) => `${entryName}.${format}.js`,
     },
     rollupOptions: {
       external: (id) =>
