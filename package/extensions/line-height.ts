@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { normalizeLineHeight } from '../utils/typography';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -46,7 +47,7 @@ export const LineHeight = Extension.create({
           lineHeight: {
             default: this.options.defaultLineHeight,
             parseHTML: (element) =>
-              element.style.lineHeight?.replace(/['"]+/g, '') ||
+              normalizeLineHeight(element.style.lineHeight) ||
               this.options.defaultLineHeight,
             renderHTML: (attributes) => {
               const lineHeight =

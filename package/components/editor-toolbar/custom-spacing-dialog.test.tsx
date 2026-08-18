@@ -150,3 +150,35 @@ describe('CustomSpacingDialogHost', () => {
     expect(screen.queryByText('Custom spacing')).toBeNull();
   });
 });
+
+// Reported: paste from Google Docs with formatting, change space before/after
+// on a paragraph, and the line height collapses to 1%. Google Docs writes a
+// unitless `line-height:1.38`, which the percentage converters mangled on the
+// round trip that Apply performs on every field.
+describe('pasted Google Docs content', () => {
+  const GOOGLE_DOCS_PARAGRAPH =
+    '<p dir="ltr" style="line-height:1.38;margin-top:0pt;margin-bottom:14pt;">' +
+    '<span>text</span></p>';
+
+  const editors: Editor[] = [];
+  afterEach(() => {
+    cleanup();
+    editors.splice(0).forEach((editor) => editor.destroy());
+  });
+
+  it('does not disturb line height when only spacing is changed', () => {
+    const editor = makeEditor(GOOGLE_DOCS_PARAGRAPH);
+    editors.push(editor);
+    editor.commands.setTextSelection(2);
+    const before = editor.state.doc.firstChild?.attrs.lineHeight;
+
+    render(
+      <CustomSpacingDialog editor={editor} open onOpenChange={() => {}} />,
+    );
+    fireEvent.change(field('After'), { target: { value: '18' } });
+    fireEvent.click(screen.getByText('Apply'));
+
+    expect(editor.state.doc.firstChild?.attrs.spaceAfter).toBe(18);
+    expect(editor.state.doc.firstChild?.attrs.lineHeight).toBe(before);
+  });
+});

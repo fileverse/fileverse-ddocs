@@ -4,7 +4,7 @@ import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { LineHeight } from '../extensions/line-height';
 import { ParagraphSpacing } from '../extensions/paragraph-spacing';
-import { readSpacingSelection } from './typography';
+import { percentageToUiValue, readSpacingSelection } from './typography';
 
 const makeEditor = (content: string) =>
   new Editor({
@@ -88,5 +88,21 @@ describe('readSpacingSelection', () => {
     editor.commands.selectAll();
 
     expect(readSpacingSelection(editor).lineHeight).toBe('mixed');
+  });
+});
+
+describe('percentageToUiValue', () => {
+  it('converts our stored percentage to the UI multiplier', () => {
+    expect(percentageToUiValue('138%')).toBe('1.15');
+  });
+
+  // Defence in depth: documents pasted before line-height normalisation still
+  // hold a bare ratio, and round-tripping it as a percentage collapsed it to 1%.
+  it('treats a bare ratio as CSS, not as a percentage', () => {
+    expect(percentageToUiValue('1.38')).toBe('1.15');
+  });
+
+  it('gives up on units it cannot express, rather than inventing a number', () => {
+    expect(percentageToUiValue('20px')).toBe('');
   });
 });

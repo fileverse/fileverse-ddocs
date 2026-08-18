@@ -63,3 +63,33 @@ describe('lineHeight scope', () => {
     expect(lineHeights(editor)).toEqual(['138%', '240%']);
   });
 });
+
+// Google Docs pastes `line-height:1.38` — a unitless CSS ratio, not a
+// percentage. Storing it verbatim gave the attribute two possible meanings,
+// and every helper that converts it assumes percentages.
+describe('lineHeight parsing', () => {
+  const parse = (style: string) => {
+    const editor = new Editor({
+      extensions: [
+        StarterKit.configure({ trailingNode: false }),
+        LineHeight,
+      ] as AnyExtension[],
+      content: `<p style="${style}">x</p>`,
+    });
+    const value = editor.state.doc.firstChild?.attrs.lineHeight;
+    editor.destroy();
+    return value;
+  };
+
+  it('normalises a unitless ratio to our percentage representation', () => {
+    expect(parse('line-height: 1.38')).toBe('138%');
+  });
+
+  it('leaves an existing percentage alone', () => {
+    expect(parse('line-height: 240%')).toBe('240%');
+  });
+
+  it('leaves units it cannot express as a ratio alone', () => {
+    expect(parse('line-height: 20px')).toBe('20px');
+  });
+});

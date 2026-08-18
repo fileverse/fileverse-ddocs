@@ -37,9 +37,35 @@ export const uiValueToPercentage = (uiValue: string): string => {
   return `${Math.round(num * LINE_HEIGHT_BASE)}%`;
 };
 
+/**
+ * CSS line-height comes in three shapes and ddoc stores percentages, so the
+ * attribute needs one meaning. A unitless ratio is exactly percentage / 100,
+ * so it normalises losslessly — Google Docs pastes `line-height:1.38`, which
+ * is `138%`. Absolute units cannot become a ratio without knowing the font
+ * size, so they are passed through untouched rather than guessed at.
+ */
+export const normalizeLineHeight = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const trimmed = value.replace(/['"]+/g, '').trim();
+  if (!trimmed) return null;
+  if (trimmed.endsWith('%')) return trimmed;
+  if (/^-?\d*\.?\d+$/.test(trimmed)) {
+    return `${Math.round(Number.parseFloat(trimmed) * 100)}%`;
+  }
+  return trimmed;
+};
+
 export const percentageToUiValue = (percentage: string): string => {
-  const num = parseFloat(percentage.replace('%', ''));
-  return (num / LINE_HEIGHT_BASE).toString();
+  // Normalise first: documents pasted before line-height normalisation still
+  // hold a bare ratio, and dividing that by 120 as though it were a percentage
+  // is what collapsed 1.38 to 1%.
+  const normalized = normalizeLineHeight(percentage);
+  if (!normalized?.endsWith('%')) return '';
+  const num = Number.parseFloat(normalized.replace('%', ''));
+  if (Number.isNaN(num)) return '';
+  return String(Number((num / LINE_HEIGHT_BASE).toFixed(4)));
 };
 
 export const LINE_HEIGHT_OPTIONS = [
