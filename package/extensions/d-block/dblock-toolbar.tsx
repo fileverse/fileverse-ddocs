@@ -8,6 +8,7 @@ import {
   renderTemplateButtons,
 } from '../../utils/template-utils';
 import { unwrapDBlocksInJSON } from '../../utils/block-schema';
+import type { TabbedJSONContent } from '../../hooks/use-headless-editor';
 import {
   DEFAULT_DBLOCK_RUNTIME_STATE,
   type DBlockRuntimeState,
@@ -88,9 +89,11 @@ export const getTemplateTarget = (
 
 const DBlockTemplateOverlay = ({
   editor,
+  onApplyTabbedTemplate,
   runtimeState,
 }: {
   editor: Editor | null;
+  onApplyTabbedTemplate?: (template: TabbedJSONContent) => void;
   runtimeState: DBlockRuntimeState;
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -142,8 +145,8 @@ const DBlockTemplateOverlay = ({
   );
 
   const templateButtons = useMemo(
-    () => createTemplateButtons(addTemplate),
-    [addTemplate],
+    () => createTemplateButtons(addTemplate, onApplyTabbedTemplate),
+    [addTemplate, onApplyTabbedTemplate],
   );
   const moreTemplates = useMemo(
     () => createMoreTemplates(addTemplate),
@@ -203,6 +206,7 @@ export const DBlockToolbarProvider = ({
   editor,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
   isPreviewEditor = false,
+  onApplyTabbedTemplate,
   onCopyHeadingLink,
 }: {
   children: React.ReactNode;
@@ -212,6 +216,7 @@ export const DBlockToolbarProvider = ({
   // states (comment & suggest); the CSS-gated node-view/decoration controls
   // cover the non-editable ones. See DBlockDragHandle.
   onCopyHeadingLink?: (link: string) => void;
+  onApplyTabbedTemplate?: (template: TabbedJSONContent) => void;
   // Statically read-only surfaces (PreviewDdocEditor: blog preview, version
   // history) must never mount block chrome. The read-only heading
   // affordances live inside the node view, and the upstream DragHandle
@@ -238,7 +243,11 @@ export const DBlockToolbarProvider = ({
           onCopyHeadingLink={onCopyHeadingLink}
         />
       ) : null}
-      <DBlockTemplateOverlay editor={editor} runtimeState={runtimeState} />
+      <DBlockTemplateOverlay
+        editor={editor}
+        runtimeState={runtimeState}
+        onApplyTabbedTemplate={onApplyTabbedTemplate}
+      />
     </>
   );
 };

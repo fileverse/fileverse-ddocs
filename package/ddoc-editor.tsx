@@ -74,6 +74,8 @@ import { SplitViewMarkdownPane } from './components/split-view/split-view-markdo
 import { SplitViewRightHeader } from './components/split-view/split-view-right-header';
 import { useMarkdownSync } from './hooks/use-markdown-sync';
 import { useSplitResize } from './hooks/use-split-resize';
+import { applyTabbedTemplate } from './utils/apply-tabbed-template';
+import type { TabbedJSONContent } from './hooks/use-headless-editor';
 
 const DdocEditor = forwardRef(
   (
@@ -304,6 +306,7 @@ const DdocEditor = forwardRef(
       storeApiRef,
       dBlockRuntimeState,
       isSchemaUnsupported,
+      flushPendingUpdate,
     } = useDdocEditor({
       documentStyling,
       ipfsImageFetchFn,
@@ -361,6 +364,20 @@ const DdocEditor = forwardRef(
         tabs.find((tab) => tab.id === (activeTabId || DEFAULT_TAB_ID))?.name ||
         DEFAULT_TAB_NAME,
       [activeTabId, tabs],
+    );
+
+    const handleApplyTabbedTemplate = useCallback(
+      (template: TabbedJSONContent) => {
+        if (!editor || editor.isDestroyed || !activeTabId) return;
+        applyTabbedTemplate({
+          activeTabId,
+          editor,
+          flushPendingUpdate,
+          template,
+          ydoc,
+        });
+      },
+      [activeTabId, editor, flushPendingUpdate, ydoc],
     );
 
     // All tabs share a single scroll container (editorScrollContainerRef), so
@@ -1213,6 +1230,9 @@ const DdocEditor = forwardRef(
                                       editor={editor}
                                       runtimeState={
                                         splitAwareDBlockRuntimeState
+                                      }
+                                      onApplyTabbedTemplate={
+                                        handleApplyTabbedTemplate
                                       }
                                       onCopyHeadingLink={onCopyHeadingLink}
                                     >
