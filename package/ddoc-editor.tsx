@@ -97,6 +97,7 @@ const DdocEditor = forwardRef(
       ensResolutionUrl,
       ipfsImageUploadFn,
       disableBottomToolbar,
+      enableFanficTemplate = false,
       onError,
       setCharacterCount,
       setWordCount,
@@ -1228,6 +1229,9 @@ const DdocEditor = forwardRef(
                                     )}
                                     <DBlockToolbarProvider
                                       editor={editor}
+                                      enableFanficTemplate={
+                                        enableFanficTemplate
+                                      }
                                       runtimeState={
                                         splitAwareDBlockRuntimeState
                                       }

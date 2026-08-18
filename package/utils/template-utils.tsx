@@ -30,12 +30,26 @@ type TemplateConfig = {
   tabbedContent?: TabbedJSONContent;
 };
 
+const TODO_TEMPLATE: TemplateConfig = {
+  id: 'todo-list',
+  label: 'To-do',
+  icon: 'ListChecks',
+};
+
+const BREATHE_TEMPLATE: TemplateConfig = {
+  id: 'breathe',
+  label: 'Breathe!',
+  icon: '🧘‍♂️',
+};
+
+const FANFIC_TEMPLATE_CONFIG: TemplateConfig = {
+  id: 'fanfic',
+  label: 'Fanfic',
+  icon: '✍️',
+  tabbedContent: FANFIC_TEMPLATE,
+};
+
 const MORE_TEMPLATES: TemplateConfig[] = [
-  {
-    id: 'todo-list',
-    label: 'To-do',
-    icon: 'ListChecks',
-  },
   {
     id: 'meeting-notes',
     label: 'Meeting notes',
@@ -55,20 +69,6 @@ const MORE_TEMPLATES: TemplateConfig[] = [
     id: 'pretend-to-work',
     label: 'Pretend to work',
     icon: '🏄🏻‍♂️',
-  },
-];
-
-const QUICK_TEMPLATES: TemplateConfig[] = [
-  {
-    id: 'breathe',
-    label: 'Breathe!',
-    icon: '🧘‍♂️',
-  },
-  {
-    id: 'fanfic',
-    label: 'Fanfic',
-    icon: '✍️',
-    tabbedContent: FANFIC_TEMPLATE,
   },
 ];
 
@@ -94,14 +94,22 @@ const createTemplateButton = (
 
 const createMoreTemplates = (
   addTemplate: (template: JSONContent) => void,
+  enableFanficTemplate = false,
 ): TemplateButtonProps =>
-  MORE_TEMPLATES.map((config) => createTemplateButton(config, addTemplate));
+  (enableFanficTemplate
+    ? [TODO_TEMPLATE, ...MORE_TEMPLATES]
+    : MORE_TEMPLATES
+  ).map((config) => createTemplateButton(config, addTemplate));
 
 const createTemplateButtons = (
   addTemplate: (template: JSONContent) => void,
   addTabbedTemplate?: (template: TabbedJSONContent) => void,
+  enableFanficTemplate = false,
 ): TemplateButtonProps =>
-  QUICK_TEMPLATES.map((config) =>
+  (enableFanficTemplate
+    ? [BREATHE_TEMPLATE, FANFIC_TEMPLATE_CONFIG]
+    : [TODO_TEMPLATE, BREATHE_TEMPLATE]
+  ).map((config) =>
     createTemplateButton(config, addTemplate, addTabbedTemplate),
   );
 

@@ -89,10 +89,12 @@ export const getTemplateTarget = (
 
 const DBlockTemplateOverlay = ({
   editor,
+  enableFanficTemplate,
   onApplyTabbedTemplate,
   runtimeState,
 }: {
   editor: Editor | null;
+  enableFanficTemplate: boolean;
   onApplyTabbedTemplate?: (template: TabbedJSONContent) => void;
   runtimeState: DBlockRuntimeState;
 }) => {
@@ -145,12 +147,17 @@ const DBlockTemplateOverlay = ({
   );
 
   const templateButtons = useMemo(
-    () => createTemplateButtons(addTemplate, onApplyTabbedTemplate),
-    [addTemplate, onApplyTabbedTemplate],
+    () =>
+      createTemplateButtons(
+        addTemplate,
+        onApplyTabbedTemplate,
+        enableFanficTemplate,
+      ),
+    [addTemplate, enableFanficTemplate, onApplyTabbedTemplate],
   );
   const moreTemplates = useMemo(
-    () => createMoreTemplates(addTemplate),
-    [addTemplate],
+    () => createMoreTemplates(addTemplate, enableFanficTemplate),
+    [addTemplate, enableFanficTemplate],
   );
 
   const toggleAllTemplates = useCallback(() => {
@@ -204,6 +211,7 @@ const DBlockTemplateOverlay = ({
 export const DBlockToolbarProvider = ({
   children,
   editor,
+  enableFanficTemplate = false,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
   isPreviewEditor = false,
   onApplyTabbedTemplate,
@@ -211,6 +219,7 @@ export const DBlockToolbarProvider = ({
 }: {
   children: React.ReactNode;
   editor: Editor | null;
+  enableFanficTemplate?: boolean;
   runtimeState?: DBlockRuntimeState;
   // Feeds the cluster's copy-link slot, which covers the editable-preview
   // states (comment & suggest); the CSS-gated node-view/decoration controls
@@ -245,6 +254,7 @@ export const DBlockToolbarProvider = ({
       ) : null}
       <DBlockTemplateOverlay
         editor={editor}
+        enableFanficTemplate={enableFanficTemplate}
         runtimeState={runtimeState}
         onApplyTabbedTemplate={onApplyTabbedTemplate}
       />
