@@ -21,6 +21,7 @@ import { CommentDropdown } from '../inline-comment/comment-dropdown';
 import { EditorBubbleMenuProps, BubbleMenuItem } from './types';
 import { useResponsive } from '../../utils/responsive';
 import {
+  isBubbleMenuHidden,
   isSelectionInsideEditor,
   shouldShow,
   shouldShowIgnoringFocus,
@@ -28,7 +29,10 @@ import {
 import { useCommentStore } from '../../stores/comment-store';
 import { useCommentRefs } from '../../stores/comment-store-provider';
 import { useEditorStates } from '../../hooks/use-editor-states';
-import { openCustomSpacingDialog } from '../../stores/custom-spacing-store';
+import {
+  openCustomSpacingDialog,
+  useCustomSpacingStore,
+} from '../../stores/custom-spacing-store';
 import { Editor } from '@tiptap/react';
 
 const MemoizedFontSizePicker = React.memo(FontSizePicker);
@@ -76,6 +80,9 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   );
   const setIsBubbleMenuSuppressed = useCommentStore(
     (s) => s.setIsBubbleMenuSuppressed,
+  );
+  const isCustomSpacingOpen = useCustomSpacingStore(
+    (s) => s.isCustomSpacingOpen,
   );
   const { buttonRef } = useCommentRefs();
 
@@ -295,9 +302,12 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
       shouldShow={handleBubbleMenuShouldShow}
       className={cn(
         'flex gap-2 overflow-hidden rounded-lg min-w-fit w-full p-1 border color-bg-default items-center shadow-elevation-3',
-        isCommentOpen ||
-          toolVisibility === IEditorTool.LINK_POPUP ||
-          isBubbleMenuSuppressed
+        isBubbleMenuHidden({
+          isCommentOpen,
+          isLinkPopupOpen: toolVisibility === IEditorTool.LINK_POPUP,
+          isBubbleMenuSuppressed,
+          isCustomSpacingOpen,
+        })
           ? '!invisible'
           : '!visible',
         isNativeMobile ? '!-translate-y-[120%]' : '',
