@@ -60,6 +60,9 @@ const HtmlExportExtension = (
             const rawHtml = temporalEditor.getHTML();
             const inlineHtml = await renderMermaidBlocks(rawHtml);
 
+            // Hooks are global on the DOMPurify instance — remove in a
+            // finally so this empty-element pruning can't leak into every
+            // later sanitize (it would even delete an svg's empty <path>s).
             DOMPurify.addHook('afterSanitizeElements', (node: any) => {
               if (
                 node.nodeType === 1 &&
@@ -72,50 +75,54 @@ const HtmlExportExtension = (
             });
 
             // Sanitize HTML content using the utility function.
-            // `style` reaches this allowlist through MERMAID_SVG_ATTRS, which
-            // is what lets block styling (spacing, alignment, line height)
-            // survive HTML export. Named here so it is not dropped by accident
-            // if the mermaid list is ever narrowed.
-            const cleanHtml = DOMPurify.sanitize(inlineHtml, {
-              ALLOWED_TAGS: [
-                'p',
-                'h1',
-                'h2',
-                'h3',
-                'ul',
-                'ol',
-                'li',
-                'blockquote',
-                'pre',
-                'code',
-                'strong',
-                'em',
-                'u',
-                's',
-                'mark',
-                'span',
-                'br',
-                'hr',
-                'a',
-                'img',
-                'table',
-                'tbody',
-                'tr',
-                'td',
-                'th',
-                'thead',
-                'tfoot',
-                ...MERMAID_SVG_TAGS,
-              ],
-              ALLOWED_ATTR: ['href', 'style', ...MERMAID_SVG_ATTRS],
-              FORBID_ATTR: ['data-toc-id', 'data-tight'],
-            });
-
-            // DOMPurify is a module singleton, so a hook left registered here
-            // also fires on the markdown import sanitize in
-            // mardown-paste-handler — where it deletes any childless, textless
-            // element, including a paragraph that exists only to carry spacing.
-            DOMPurify.removeHook('afterSanitizeElements');
+            //
+            // `style` is listed explicitly: it is what lets block styling
+            // (paragraph spacing, alignment, line height) survive HTML export.
+            // It also arrives via MERMAID_SVG_ATTRS, so naming it here keeps it
+            // from being dropped by accident if that list is ever narrowed.
+            let cleanHtml: string;
+            try {
+              cleanHtml = DOMPurify.sanitize(inlineHtml, {
+                ALLOWED_TAGS: [
+                  'p',
+                  'h1',
+                  'h2',
+                  'h3',
+                  'ul',
+                  'ol',
+                  'li',
+                  'blockquote',
+                  'pre',
+                  'code',
+                  'strong',
+                  'em',
+                  'u',
+                  's',
+                  'mark',
+                  'span',
+                  'br',
+                  'hr',
+                  'a',
+                  'img',
+                  'table',
+                  'tbody',
+                  'tr',
+                  'td',
+                  'th',
+                  'thead',
+                  'tfoot',
+                  ...MERMAID_SVG_TAGS,
+                ],
+                ALLOWED_ATTR: ['href', 'style', ...MERMAID_SVG_ATTRS],
+                FORBID_ATTR: ['data-toc-id', 'data-tight'],
+              });
+            } finally {
+              // DOMPurify is a module singleton, so a hook left registered here
+              // also fires on the markdown import sanitize, where it deletes
+              // childless textless elements — including a spacing-only
+              // paragraph. finally, so a throw cannot leak it.
+              DOMPurify.removeHook('afterSanitizeElements');
+            }
 
             // Build metadata dynamically from props
             const metadata = {
