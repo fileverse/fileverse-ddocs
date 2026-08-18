@@ -202,4 +202,35 @@ describe('svg import', () => {
     expect(media.attrs.dataAlign).toBe('right');
     expect(media.firstChild!.textContent).toBe('my caption');
   });
+
+  it('keeps an svg-inner <style> on import while stripping doc-level ones', async () => {
+    const STYLED =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style type="text/css">.st0{fill:#FFDF0A;}</style><path class="st0" d="M0 0h5v5z"/></svg>';
+    const block = sanitizeSvgForEmbed(STYLED) as string;
+    const doc = await importMarkdown(
+      `<style>body{color:red}</style>\n\n${block}`,
+    );
+    const media = firstMedia(doc);
+    expect(media).toBeTruthy();
+    const inner = decodeSvgDataUri(media.attrs.src)!;
+    expect(inner).toContain('FFDF0A');
+    expect(inner).toMatch(/\.svg-scope-[a-z0-9]+ \.st0/);
+    expect(doc.textContent).not.toContain('color:red');
+  });
+
+  it('round-trips an svg with a scoped style through styles export and back', async () => {
+    const STYLED =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><style type="text/css">.st0{fill:#FFDF0A;}</style><path class="st0" d="M0 0h5v5z"/></svg>';
+    const md = exportStyled(
+      '<div data-type="resizable-media" dataalign="center">' +
+        `<img src="${encodeSvgToDataUri(STYLED)}" />` +
+        '</div>',
+    );
+    expect(md).toContain('<style');
+    expect(md).toMatch(/\.svg-scope-[a-z0-9]+ \.st0/);
+    const doc = await importMarkdown(md);
+    const inner = decodeSvgDataUri(firstMedia(doc).attrs.src)!;
+    expect(inner).toContain('FFDF0A');
+    expect(inner).not.toMatch(/svg-scope-[a-z0-9]+ \.svg-scope-/);
+  });
 });
