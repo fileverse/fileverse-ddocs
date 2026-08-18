@@ -210,16 +210,29 @@ export const readEffectiveSpacing = (
     if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
       return;
     }
+    // Both edges already disagree — every remaining block collapses to
+    // 'mixed' whatever it reads, so stop paying for style recalcs. This is
+    // what makes the reading affordable in a per-transaction selector: a
+    // drag-select across a long document stops measuring almost immediately.
+    if (seen.spaceBefore.size > 1 && seen.spaceAfter.size > 1) return false;
 
-    const dom = editor.view.nodeDOM(pos);
-    const computed =
-      dom instanceof HTMLElement ? window.getComputedStyle(dom) : undefined;
+    // getComputedStyle forces a style recalc, so it is called only for the
+    // edges that have no attribute to answer with. nodeDOM itself is a map
+    // lookup and costs nothing.
+    let computed: CSSStyleDeclaration | undefined;
+    const measure = () => {
+      if (!computed) {
+        const dom = editor.view.nodeDOM(pos);
+        if (dom instanceof HTMLElement) computed = window.getComputedStyle(dom);
+      }
+      return computed;
+    };
 
     seen.spaceBefore.add(
-      node.attrs.spaceBefore ?? computedPxToPt(computed?.marginTop),
+      node.attrs.spaceBefore ?? computedPxToPt(measure()?.marginTop),
     );
     seen.spaceAfter.add(
-      node.attrs.spaceAfter ?? computedPxToPt(computed?.marginBottom),
+      node.attrs.spaceAfter ?? computedPxToPt(measure()?.marginBottom),
     );
   });
 

@@ -101,7 +101,7 @@ Placement mirrors the existing line-height control: `group: 'More'`,
 from `mobile-toolbar.tsx`.
 
 **As built:** three entry points open it — the toolbar dropdown, the bubble
-menu, and the demo's second-level nav (Format ▸ Line height ▸ Custom spacing),
+menu, and the second-level nav (Format ▸ Line height ▸ Custom spacing),
 which is data-driven and has nowhere to hold dialog state. They share
 `stores/custom-spacing-store.ts` (module-level, like `search-replace-store`)
 and `ddoc-editor.tsx` mounts the single `CustomSpacingDialogHost`, so the demo
@@ -126,12 +126,32 @@ Both halves write an explicit value, and the asymmetry is load-bearing:
 Consequence: once either item is used the block is pinned and no longer tracks
 the responsive stylesheet. Clearing a field in the dialog is the way back.
 
-Logic lives once in `components/editor-toolbar/spacing-toggles.ts`; the toolbar
-dropdown and the bubble menu render it with their own primitives. The demo
-second-level nav does **not** have these yet — its labels would have to come
-from the reactive state bag in `use-editor-commands.ts`, which is recomputed on
-every transaction, and `readEffectiveSpacing` calls `getComputedStyle` per
-selected block. That is a style recalc per keystroke; deferred deliberately.
+Logic lives once in `components/editor-toolbar/spacing-toggles.ts`;
+`applySpacingToggle` is the single writer and `spacingToggleLabel` the single
+wording, so the toolbar dropdown, the bubble menu and the second-level nav
+cannot drift apart on either.
+
+**Second-level nav (originally deferred, now built).** The nav is data —
+`menu-tree` nodes name an action id and the label is a function of the
+projected state bag — so the "which half" reading has to come from
+`use-editor-commands.ts` as `format.spaceBefore` / `format.spaceAfter` with
+`current: 'add' | 'remove'`. It must live in the `useEditorState` **selector**,
+not in the `useMemo` body: writing a margin moves nothing else in that snapshot,
+so a memo-only reading would leave the label stuck on the half already taken.
+
+That is what made this expensive, since the selector runs per transaction and
+`readEffectiveSpacing` calls `getComputedStyle` (a forced style recalc) per
+selected block. Two changes make it affordable, both pinned by tests in
+`utils/typography.test.ts`:
+
+- the DOM is consulted only for an edge with **no attribute** to answer with —
+  `nodeDOM` alone is a map lookup and costs nothing;
+- the walk stops measuring once **both edges are already `'mixed'`**, since no
+  later block can change that, which bounds a drag-select across a long
+  document.
+
+The common case — a collapsed cursor — was always one block, so typing costs at
+most one style read per transaction.
 
 ### There is no single default spacing
 

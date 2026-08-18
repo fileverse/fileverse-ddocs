@@ -109,6 +109,52 @@ describe('useEditorCommands', () => {
     useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
   });
 
+  // The pair the second-level nav renders in its Line height submenu. In
+  // jsdom no stylesheet applies, so an untouched paragraph has no gap and the
+  // toggle offers "add" first; in the browser editor.css supplies the gap and
+  // the same read offers "remove" first (see spacing-toggles.test.ts).
+  //
+  // makeEditor builds the v1 schema, so the spacing attribute lands on the
+  // paragraph INSIDE the dBlock — reading doc.firstChild.attrs here would
+  // read the wrapper and pass vacuously.
+  const spacedParagraph = () => editor.state.doc.firstChild?.firstChild?.attrs;
+
+  it('format.spaceBefore reports the toggle half and writes 12pt', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    expect(result.current['format.spaceBefore'].current).toBe('add');
+    act(() => result.current['format.spaceBefore'].run());
+
+    expect(spacedParagraph()?.spaceBefore).toBe(12);
+  });
+
+  // The reason the reading lives in the useEditorState snapshot rather than
+  // being computed at dispatch: writing a margin moves nothing else in that
+  // snapshot, so a memo-only reading would leave the menu label stuck on the
+  // half that was already taken.
+  it('format.spaceBefore flips to remove once a gap exists', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+    act(() => result.current['format.spaceBefore'].run());
+
+    expect(result.current['format.spaceBefore'].current).toBe('remove');
+
+    act(() => result.current['format.spaceBefore'].run());
+    expect(spacedParagraph()?.spaceBefore).toBe(0);
+  });
+
+  it('format.spaceAfter drives the bottom margin independently', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.spaceAfter'].run());
+
+    expect(spacedParagraph()?.spaceAfter).toBe(12);
+    expect(spacedParagraph()?.spaceBefore).toBeNull();
+    expect(result.current['format.spaceBefore'].current).toBe('add');
+  });
+
   it('returns disabled no-op commands for a null editor', () => {
     const { result } = renderHook(() => useEditorCommands(null));
     expect(result.current['format.bold'].isEnabled).toBe(false);

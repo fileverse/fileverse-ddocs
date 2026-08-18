@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -183,6 +183,46 @@ describe('readEffectiveSpacing', () => {
     editor.commands.selectAll();
 
     expect(readEffectiveSpacing(editor).spaceBefore).toBe('mixed');
+  });
+
+  // The walk stops measuring once both edges are already mixed, so a long
+  // selection costs a bounded number of style recalcs. Guard against that
+  // shortcut ever changing the answer: block three carries a third distinct
+  // value and the reading must still be mixed on both edges.
+  it('stays mixed once the shortcut has kicked in', () => {
+    const editor = makeMountedEditor(
+      '<p>one</p><p>two</p><p style="margin-top: 44pt; margin-bottom: 44pt">three</p>',
+      CSS,
+    );
+    editor.commands.selectAll();
+
+    expect(readEffectiveSpacing(editor)).toEqual({
+      spaceBefore: 'mixed',
+      spaceAfter: 'mixed',
+    });
+  });
+
+  // getComputedStyle forces a style recalc, and this runs in a
+  // per-transaction selector (use-editor-commands.ts) — so a block that can
+  // answer from its own attributes must never reach the DOM.
+  it('does not touch computed style when every edge has an attribute', () => {
+    const editor = makeMountedEditor(
+      '<p style="margin-top: 30pt; margin-bottom: 5pt">one</p>' +
+        '<p style="margin-top: 30pt; margin-bottom: 5pt">two</p>',
+      CSS,
+    );
+    editor.commands.selectAll();
+
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    try {
+      expect(readEffectiveSpacing(editor)).toEqual({
+        spaceBefore: 30,
+        spaceAfter: 5,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

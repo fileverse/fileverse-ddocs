@@ -8,8 +8,11 @@ import {
 import {
   FONT_SIZES,
   getCurrentLineHeight,
+  readEffectiveSpacing,
+  spacingToggleAction,
   uiValueToPercentage,
 } from '../utils/typography';
+import { applySpacingToggle } from '../components/editor-toolbar/spacing-toggles';
 import { setShowReplacePopoverWithData } from '../extensions/search-replace/utils';
 import {
   hasTextTargetAtSelection,
@@ -74,6 +77,8 @@ export type EditorCommandId =
   | 'format.direction'
   | 'format.lineHeight'
   | 'format.customSpacing'
+  | 'format.spaceBefore'
+  | 'format.spaceAfter'
   | 'format.fontFamily'
   | 'format.fontSize.increase'
   | 'format.fontSize.decrease'
@@ -174,6 +179,10 @@ export const useEditorCommands = (
     editor,
     selector: ({ editor: e }: { editor: Editor | null }) => {
       if (!e || e.isDestroyed) return null;
+      // Which half of the add/remove toggle each edge should offer. Read here
+      // rather than at dispatch time so the menu LABEL flips as soon as the
+      // spacing changes — writing a margin moves nothing else in this snapshot.
+      const spacing = readEffectiveSpacing(e);
       return {
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
@@ -201,6 +210,8 @@ export const useEditorCommands = (
         heading: currentHeading(e),
         align: currentAlign(e),
         lineHeight: getCurrentLineHeight(e, readLineHeight(e)),
+        spaceBefore: spacingToggleAction(spacing.spaceBefore),
+        spaceAfter: spacingToggleAction(spacing.spaceAfter),
         fontFamily: (e.getAttributes('textStyle').fontFamily as string) ?? null,
         canInsertComment:
           inlineCommentAvailable &&
@@ -368,6 +379,16 @@ export const useEditorCommands = (
       // Opens the shared dialog (mounted once by ddoc-editor) rather than
       // dispatching — the toolbar dropdown and bubble menu items do the same.
       'format.customSpacing': cmd(() => openCustomSpacingDialog()),
+      // `current` is 'add' | 'remove' — the consumer's menu renders the label
+      // from it, so the wording lives with the surface rather than here.
+      'format.spaceBefore': cmd(
+        () => applySpacingToggle(editor, 'before', state.spaceBefore),
+        { current: state.spaceBefore },
+      ),
+      'format.spaceAfter': cmd(
+        () => applySpacingToggle(editor, 'after', state.spaceAfter),
+        { current: state.spaceAfter },
+      ),
       'format.fontFamily': cmd(
         (arg) => editor.chain().focus().setFontFamily(arg!).run(),
         { current: state.fontFamily },
