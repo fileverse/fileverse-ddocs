@@ -117,8 +117,10 @@ export function assignSessionColors(
   return collaborators;
 }
 
-// Signature over only what the rendered roster depends on (member set + each identity),
-// so cursor-position churn yields an identical signature and is skipped by callers.
+// Used to check if the collaborator list has changed.
+// Color is left out because saving a new color runs this check again.
+// This prevents the collaborator list from updating twice.
+// Cursor colors are updated separately in use-tab-editor.
 export function identitySignature(
   roomMembers: string[],
   identityBySocketId: Map<string, AwarenessIdentity>,

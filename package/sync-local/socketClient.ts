@@ -245,6 +245,8 @@ export class SocketClient {
     if (sig === this._lastPresenceSignature) return;
     this._lastPresenceSignature = sig;
 
+    // Give each collaborator a color from the palette.
+    // Keep their color while they are in the room and reuse it after they leave.
     const collaborators = assignSessionColors(
       mergePresence(this.roomMembers, identity),
       this._presenceColorByName,
@@ -256,6 +258,8 @@ export class SocketClient {
     const localColor = localName
       ? this._presenceColorByName.get(localName)
       : undefined;
+    // Share this user's color so everyone sees it on their cursor.
+    // Only update it when the color has changed.
     if (localUser && localColor && localUser.color !== localColor) {
       this.awareness.setLocalStateField('user', {
         ...localUser,
