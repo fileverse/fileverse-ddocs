@@ -27,6 +27,7 @@ export type DemoAppActionDeps = {
   documentStyling: DocumentStyling | undefined;
   setDocumentStyling: (s: DocumentStyling) => void;
   startPresentation: () => void;
+  openWordCountModal: () => void;
 };
 
 /** Plain factory (not a hook) — safe to call inside renderNavbar's closure. */
@@ -93,4 +94,7 @@ export const createDemoAppActions = (d: DemoAppActionDeps): ActionRegistry => ({
     current: d.documentStyling?.orientation ?? 'portrait',
   },
   'tools.slides': { run: () => d.startPresentation() },
+  // Word count modal (TEC-2705) — demo/src/components/WordCountModal.tsx,
+  // mirroring the consumer app's `tools.wordCount` (editor-ui-store flag).
+  'tools.wordCount': { run: () => d.openWordCountModal() },
 });
