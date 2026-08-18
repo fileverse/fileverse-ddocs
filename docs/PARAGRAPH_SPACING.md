@@ -51,20 +51,28 @@ Paragraph → paragraph inherits both attributes.
 every heading with a large gap above it produces body text with the same gap
 above it, on every Enter, forever.
 
-**As built** (differs from the plan above, which assumed two hand-written
-carry-over paths):
+**As built**, and it needs a path per schema after all:
 
-- Inheritance itself needed no code. ProseMirror's split copies node attrs, so
-  paragraph → paragraph already carries both in v1 and v2.
-- The carve-out is one `appendTransaction` plugin in `paragraph-spacing.ts`,
-  written against node types rather than schema version. It clears `spaceBefore`
-  on a freshly split, still-empty paragraph whose previous sibling is a heading.
-  Attribute-only edits leave node sizes unchanged, so a deliberately-set
-  `spaceBefore` on a paragraph under a heading is never caught.
-- The two schemas behave differently at a heading boundary and both are pinned
-  by tests: **v1's dBlock Enter continues with another heading** (so there is no
-  type change and the rhythm is kept), while **v2 drops to a paragraph** (so the
-  carve-out fires). Only v2 needed fixing.
+- **v2** needs no carry-over code. ProseMirror's split copies node attrs, so
+  paragraph → paragraph carries both for free.
+- **v1** does. Its dBlock `Enter` handler builds the new block's attrs by hand,
+  so `spaceBefore`/`spaceAfter` are carried explicitly alongside `lineHeight`.
+- The heading carve-out exists twice for the same reason. v2 uses an
+  `appendTransaction` in `paragraph-spacing.ts` that clears `spaceBefore` on a
+  freshly split, still-empty paragraph whose previous sibling is a heading;
+  attribute-only edits leave node sizes unchanged, so a deliberately-set
+  `spaceBefore` under a heading is never caught. That plugin cannot see the v1
+  case, because v1's new block sits in its own dBlock row and has no heading
+  sibling — so `dblock.ts` drops `spaceBefore` itself when leaving a heading.
+- Both schemas drop to a **paragraph** when Enter is pressed at the end of a
+  heading.
+
+> An earlier version of this document claimed v1 continued with another heading
+> and needed no carry-over work. Both claims came from a test using a
+> **detached** editor, where `Enter` never splits at all — so it asserted on the
+> original block and passed vacuously. `paragraph-spacing-carryover.test.ts`
+> now mounts the editor and reads the *created* block by index rather than the
+> block at the cursor, which in v1 is still the original one after Enter.
 
 ## UI
 
