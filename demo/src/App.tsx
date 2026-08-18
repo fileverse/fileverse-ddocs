@@ -15,6 +15,7 @@ import { deriveCapabilities } from './components/second-level-nav/capabilities';
 import { createDemoAppActions } from './components/second-level-nav/demo-app-actions';
 import { LinkModal } from './components/LinkModal';
 import { WordCountModal } from './components/WordCountModal';
+import { DemoFooter } from './components/DemoFooter';
 
 const demoFonts: FontDescriptor[] = [
   {
@@ -917,6 +918,7 @@ function App() {
         setWordCount={setWordCount}
         setPageCount={setPageCount}
       />
+      <DemoFooter wordCount={wordCount} pageCount={pageCount} />
       <WordCountModal
         open={wordCountModalOpen}
         onOpenChange={setWordCountModalOpen}
