@@ -27,9 +27,17 @@ export const decodeSvgDataUri = (src: string): string | null => {
   }
 };
 
+// Colors reach raw markup (svg root style, figure img style) — allow only
+// shapes that cannot carry CSS payloads: hex, simple names, rgb()/hsl().
+export const isSafeCssColor = (value: string): boolean =>
+  /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ||
+  /^[a-z]{3,20}$/i.test(value) ||
+  /^(?:rgb|rgba|hsl|hsla)\([\d\s.,%/-]+\)$/i.test(value);
+
 export const sanitizeSvgForEmbed = (
   svgText: string,
   width?: string | null,
+  backgroundColor?: string | null,
 ): string | null => {
   const clean = DOMPurify.sanitize(svgText, {
     USE_PROFILES: { svg: true, svgFilters: true },
@@ -46,6 +54,16 @@ export const sanitizeSvgForEmbed = (
   }
   if (!root.getAttribute('xmlns')) root.setAttribute('xmlns', SVG_NS);
   if (width && width !== '100%') root.setAttribute('width', width);
+  if (backgroundColor && isSafeCssColor(backgroundColor)) {
+    // data- attr is the round-trip carrier (import lifts it back onto the
+    // img node); the style is what the published page actually renders.
+    root.setAttribute('data-background-color', backgroundColor);
+    const style = root.getAttribute('style');
+    root.setAttribute(
+      'style',
+      `${style ? `${style.replace(/;\s*$/, '')}; ` : ''}background-color: ${backgroundColor}`,
+    );
+  }
   const serialized = new XMLSerializer().serializeToString(root);
   // One raw HTML block for markdown-it: no blank lines anywhere, and the
   // opening tag ALONE on line 1 (CommonMark html_block rule 7 — see the

@@ -120,6 +120,17 @@ describe('svg import', () => {
     expect(String(firstMedia(bare).attrs.width)).toBe('354');
   });
 
+  it('lifts the backdrop off the svg root onto the media node attr', async () => {
+    const stamped = sanitizeSvgForEmbed(SVG, null, '#FFFFFF') as string;
+    const doc = await importMarkdown(stamped);
+    const media = firstMedia(doc);
+    expect(media.attrs.backgroundColor).toBe('#FFFFFF');
+    // The attr is the single source of truth: the encoded payload must not
+    // keep its own baked-in copy, or later attr edits couldn't remove it.
+    const decoded = decodeSvgDataUri(media.attrs.src) as string;
+    expect(decoded).not.toContain('background-color');
+  });
+
   it('strips scripts before encoding', async () => {
     const doc = await importMarkdown(`before\n\n${HOSTILE_BLOCK}\n\nafter`);
     const decoded = decodeSvgDataUri(firstMedia(doc).attrs.src) as string;

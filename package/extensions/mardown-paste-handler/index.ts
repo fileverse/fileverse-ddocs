@@ -461,11 +461,17 @@ turndownService.addRule('formulaEmphasis', {
 const inlineSvgFromSrc = (
   src: string,
   width?: string | null,
+  backgroundColor?: string | null,
 ): string | null => {
   if (!isSvgDataUri(src)) return null;
   const text = decodeSvgDataUri(src);
-  return text ? sanitizeSvgForEmbed(text, width) : null;
+  return text ? sanitizeSvgForEmbed(text, width, backgroundColor) : null;
 };
+
+// The backdrop attr lives on the exported img, or on the node-view wrapper
+// the img was serialized from — check both.
+const mediaBackgroundColor = (el: HTMLElement): string | null =>
+  el.getAttribute('data-background-color') || el.style?.backgroundColor || null;
 
 // Custom rules for image
 turndownService.addRule('img', {
@@ -475,7 +481,11 @@ turndownService.addRule('img', {
     const src = el.getAttribute('src') || '';
     const svg = inTableCell
       ? null
-      : inlineSvgFromSrc(src, el.getAttribute('width'));
+      : inlineSvgFromSrc(
+          src,
+          el.getAttribute('width'),
+          mediaBackgroundColor(el),
+        );
     if (svg) return `\n\n${svg}\n\n`;
     const alt = el.getAttribute('alt') || '';
     return src ? `![${alt}](${src})` : '';
@@ -551,18 +561,28 @@ turndownService.addRule('mediaFigure', {
       )
       .map((a) => `${a.name}="${esc(a.value)}"`)
       .join(' ');
+    const background =
+      mediaBackgroundColor(media as HTMLElement) || mediaBackgroundColor(el);
     const svg =
       media.nodeName === 'IMG'
         ? inlineSvgFromSrc(
             media.getAttribute('src') || '',
             media.getAttribute('width'),
+            background,
           )
         : null;
+    // The generic attr copy skips `style` (node-view junk), so the backdrop
+    // is re-emitted as a single controlled declaration — data-background-color
+    // alone can't render on the published page (CSS can't read arbitrary
+    // colors out of a data attribute).
+    const backgroundStyle = background
+      ? ` style="background-color: ${esc(background)}"`
+      : '';
     const mediaHtml = svg
       ? svg
       : media.nodeName === 'VIDEO'
-        ? `<video ${attrs}>\n</video>`
-        : `<img ${attrs} />`;
+        ? `<video ${attrs}${backgroundStyle}>\n</video>`
+        : `<img ${attrs}${backgroundStyle} />`;
     const align =
       el.getAttribute('dataalign') ||
       media.getAttribute('dataalign') ||
@@ -1517,6 +1537,18 @@ export async function handleMarkdownContent(
   // figure parse, node creation) handles it like any other image.
   const svgEls = Array.from(doc.getElementsByTagName('svg'));
   for (const svgEl of svgEls) {
+    // Lift the backdrop off the root before encoding: it becomes the img's
+    // data-background-color (→ the node attr, editable later) instead of a
+    // value baked immutably into the data URI. Export stamps it back on.
+    const background =
+      svgEl.getAttribute('data-background-color') ||
+      svgEl.style?.backgroundColor ||
+      null;
+    svgEl.removeAttribute('data-background-color');
+    if (svgEl.style?.backgroundColor) {
+      svgEl.style.removeProperty('background-color');
+      if (!svgEl.getAttribute('style')) svgEl.removeAttribute('style');
+    }
     const clean = sanitizeSvgForEmbed(svgEl.outerHTML);
     if (!clean) {
       svgEl.remove();
@@ -1526,6 +1558,7 @@ export async function handleMarkdownContent(
     img.setAttribute('src', encodeSvgToDataUri(clean));
     const width = svgEl.getAttribute('width');
     if (width && width !== '100%') img.setAttribute('width', width);
+    if (background) img.setAttribute('data-background-color', background);
     svgEl.replaceWith(img);
   }
 
