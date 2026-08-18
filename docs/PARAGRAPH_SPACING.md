@@ -193,6 +193,46 @@ is missing. Fixing it means a `patch-package` fork or an upstream PR; deferred.
    stylesheet's `margin-bottom: 12px` in force. Convert to longhands. Eyeball the
    print output afterward — those values were tuned by hand.
 
+## DOCX import
+
+Word documents carry spacing that ddoc can now model, so it is read on import.
+
+**Mammoth cannot supply it.** Its README states it converts "using the semantic
+information in the document, and ignoring other details" — it never parses
+`w:spacing` at all, and its paragraph model carries only styleId, styleName,
+numbering, alignment and indent. So mammoth keeps doing structure, and
+`extensions/docx/docx-spacing.ts` reads the presentational values straight from
+`word/document.xml` in the same `arrayBuffer`, via the `jszip` that mammoth
+already pulls in (now a direct dependency, so the import is not relying on
+hoisting; it is already inside the bundle either way).
+
+| Word | ddoc | Conversion |
+| --- | --- | --- |
+| `w:before` / `w:after` (twips) | `spaceBefore` / `spaceAfter` (pt) | twips / 20 |
+| `w:line` with `w:lineRule="auto"` (240ths of a line) | `lineHeight` (% on a 120 base) | line / 2 |
+
+Layers are merged **per attribute**, lowest first, because Word does the same:
+`docDefaults` -> the `basedOn` style chain -> the paragraph's own style ->
+direct `w:pPr/w:spacing`. A style supplying only `w:before` therefore survives
+direct formatting that supplies only `w:after`.
+
+Alignment between the two passes is positional, so it is **verified, not
+trusted**: block counts must match and each block's text must match its `w:p`,
+or the HTML is returned untouched. Spacing on the wrong paragraphs is silent
+and hard to trace; no spacing is not.
+
+`ignoreEmptyParagraphs: false` is required for that alignment to hold — mammoth
+drops empty paragraphs by default, which desynchronised a 38-paragraph test
+document by 3. It also means blank lines an author typed now survive import,
+which is a behaviour change to every DOCX import, not just spaced ones.
+
+**Known gaps:** `w:contextualSpacing` ("don't add space between paragraphs of
+the same style") has no equivalent in the model and is ignored. `w:lineRule`
+of `exact` or `atLeast` is absolute and has no multiplier equivalent, so it is
+dropped rather than guessed from an assumed font size. Text boxes are
+relocated by mammoth and footnotes are appended, so a document using them will
+fail the alignment check and import without spacing.
+
 ## Out of scope
 
 - ODT support (odf-kit patch)
