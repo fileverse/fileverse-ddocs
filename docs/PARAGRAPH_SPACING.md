@@ -68,11 +68,16 @@ above it, on every Enter, forever.
   heading.
 
 > An earlier version of this document claimed v1 continued with another heading
-> and needed no carry-over work. Both claims came from a test using a
-> **detached** editor, where `Enter` never splits at all — so it asserted on the
-> original block and passed vacuously. `paragraph-spacing-carryover.test.ts`
-> now mounts the editor and reads the *created* block by index rather than the
-> block at the cursor, which in v1 is still the original one after Enter.
+> and needed no carry-over work. Both came from a vacuous test that read **the
+> block at the cursor** — and in v1 the cursor stays in the *original* block
+> after Enter, so the assertion kept reading the block that already had the
+> spacing. `paragraph-spacing-carryover.test.ts` now reads the *created* block
+> by index.
+>
+> A previous revision of this note blamed the editor being **detached**. That
+> was wrong and has been measured: detached and mounted editors split on Enter
+> identically, in both schemas. The tests mount only because that matches how
+> the editor really runs.
 
 ## UI
 

@@ -82,3 +82,38 @@ describe('block style export', () => {
     expect(md.trim()).toBe('* one');
   });
 });
+
+describe('block style export edge cases', () => {
+  it('emits all three properties on one block', () => {
+    const md = withStyles(
+      '<p style="text-align: center; margin-top: 12pt; margin-bottom: 8pt; line-height: 240%">one</p>',
+    );
+
+    expect(md).toContain('text-align: center');
+    expect(md).toContain('margin-top: 12pt');
+    expect(md).toContain('margin-bottom: 8pt');
+    expect(md).toContain('line-height: 240%');
+  });
+
+  it('emits only the property that is set', () => {
+    const md = withStyles('<p style="margin-top: 12pt">one</p>');
+
+    expect(md).toContain('margin-top: 12pt');
+    expect(md).not.toContain('margin-bottom');
+    expect(md).not.toContain('text-align');
+  });
+
+  // left/start is the visual default, so it counts as unstyled — otherwise
+  // every left-aligned block would route through the raw-HTML rule.
+  it('treats left alignment as no alignment', () => {
+    const md = withStyles('<p style="text-align: left">one</p>');
+
+    expect(md.trim()).toBe('one');
+  });
+
+  it('keeps a zero margin, which is a real authored value', () => {
+    const md = withStyles('<p style="margin-top: 0pt">one</p>');
+
+    expect(md).toContain('margin-top: 0pt');
+  });
+});

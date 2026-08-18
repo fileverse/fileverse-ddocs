@@ -7,9 +7,10 @@ import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 // run against a real Collaboration-backed editor rather than the schema-only
 // editor used in paragraph-spacing.test.ts.
 const makeEditor = (schemaVersion: number, content: string) => {
-  // Mounted, not detached: Enter does not split in a view-less editor, so a
-  // detached editor made these assertions vacuous — nothing was ever created
-  // and they read the original block instead.
+  // Mounted because that is how the editor really runs. Note this is *not*
+  // what made the old version of this file vacuous — a detached editor splits
+  // on Enter identically. The bug was reading the block at the cursor: see
+  // textblocks() below.
   const element = document.createElement('div');
   document.body.appendChild(element);
   const editor = new Editor({
@@ -113,3 +114,17 @@ describe.each([1, 2])(
     });
   },
 );
+
+describe.each([1, 2])('line height carry-over (schema v%i)', (version) => {
+  // lineHeight has always been carried; pinned here because the v1 path that
+  // does it is the same hand-written attr list that was dropping spacing.
+  it('carries onto the next paragraph', () => {
+    const editor = track(makeEditor(version, '<p>one</p>'));
+    editor.commands.setTextSelection(endOf(editor, 'one'));
+    editor.commands.setLineHeight('240%');
+
+    pressEnterAtEndOf(editor, 'one');
+
+    expect(createdBlock(editor)?.attrs.lineHeight).toBe('240%');
+  });
+});

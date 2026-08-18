@@ -245,3 +245,79 @@ describe('default spacing in the dialog', () => {
     expect(editor.state.doc.child(1).attrs.spaceBefore).toBeNull();
   });
 });
+
+describe('dialog interaction guarantees', () => {
+  const editors: Editor[] = [];
+  afterEach(() => {
+    cleanup();
+    editors.splice(0).forEach((editor) => editor.destroy());
+  });
+
+  const openOn = (content: string) => {
+    const editor = makeEditor(content);
+    editors.push(editor);
+    editor.commands.setTextSelection(2);
+    render(
+      <CustomSpacingDialog editor={editor} open onOpenChange={() => {}} />,
+    );
+    return editor;
+  };
+
+  const attrs = (editor: Editor) => editor.state.doc.firstChild?.attrs;
+
+  // Apply chains every field into one transaction, so a freeform field cannot
+  // leave a trail of undo steps behind it.
+  it('applies as a single undo step', () => {
+    const editor = openOn('<p>one</p>');
+
+    fireEvent.change(field('Before'), { target: { value: '12' } });
+    fireEvent.change(field('After'), { target: { value: '8' } });
+    fireEvent.change(field('Line height'), { target: { value: '2' } });
+    fireEvent.click(screen.getByText('Apply'));
+    expect(attrs(editor)).toMatchObject({ spaceBefore: 12, spaceAfter: 8 });
+
+    editor.commands.undo();
+
+    expect(attrs(editor)).toMatchObject({
+      spaceBefore: null,
+      spaceAfter: null,
+    });
+  });
+
+  it('changes nothing when cancelled', () => {
+    const editor = openOn('<p>one</p>');
+
+    fireEvent.change(field('Before'), { target: { value: '30' } });
+    fireEvent.click(screen.getByText('Cancel'));
+
+    expect(attrs(editor)?.spaceBefore).toBeNull();
+  });
+
+  it('applies on Enter, so the dialog is keyboard-usable', () => {
+    const editor = openOn('<p>one</p>');
+
+    fireEvent.change(field('Before'), { target: { value: '9' } });
+    fireEvent.keyDown(field('Before'), { key: 'Enter' });
+
+    expect(attrs(editor)?.spaceBefore).toBe(9);
+  });
+
+  it('clamps a value beyond the allowed range instead of storing it', () => {
+    const editor = openOn('<p>one</p>');
+
+    fireEvent.change(field('Before'), { target: { value: '9999' } });
+    fireEvent.change(field('After'), { target: { value: '-40' } });
+    fireEvent.click(screen.getByText('Apply'));
+
+    expect(attrs(editor)).toMatchObject({ spaceBefore: 100, spaceAfter: 0 });
+  });
+
+  it('rounds a fractional entry to whole points', () => {
+    const editor = openOn('<p>one</p>');
+
+    fireEvent.change(field('Before'), { target: { value: '12.6' } });
+    fireEvent.click(screen.getByText('Apply'));
+
+    expect(attrs(editor)?.spaceBefore).toBe(13);
+  });
+});

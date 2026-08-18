@@ -151,3 +151,58 @@ describe('paragraphSpacing', () => {
     expect(paragraph?.attrs.spaceAfter).toBe(8);
   });
 });
+
+describe('paragraphSpacing value handling', () => {
+  const editors: Editor[] = [];
+  const track = (editor: Editor) => {
+    editors.push(editor);
+    return editor;
+  };
+
+  afterEach(() => {
+    editors.splice(0).forEach((editor) => editor.destroy());
+  });
+
+  const attrsOf = (editor: Editor) => editor.state.doc.firstChild?.attrs;
+
+  const withSpacing = (style: string) => {
+    const editor = track(makeEditor(`<p style="${style}">one</p>`));
+    return attrsOf(editor);
+  };
+
+  it('parses 0pt back as 0, not as unset', () => {
+    expect(withSpacing('margin-top: 0pt')?.spaceBefore).toBe(0);
+  });
+
+  it('ignores units it does not store', () => {
+    expect(withSpacing('margin-top: 16px')?.spaceBefore).toBeNull();
+    expect(withSpacing('margin-top: 2em')?.spaceBefore).toBeNull();
+  });
+
+  it('ignores a value it cannot parse', () => {
+    expect(withSpacing('margin-top: inherit')?.spaceBefore).toBeNull();
+  });
+
+  it('keeps a fractional pt value from a foreign document', () => {
+    expect(withSpacing('margin-top: 12.5pt')?.spaceBefore).toBe(12.5);
+  });
+
+  it('renders and re-parses the same number', () => {
+    const first = track(makeEditor('<p>one</p>'));
+    first.commands.setTextSelection(2);
+    first.commands.setParagraphSpacing({ spaceBefore: 7, spaceAfter: 0 });
+
+    const second = track(makeEditor(first.getHTML()));
+
+    expect(attrsOf(second)).toMatchObject({ spaceBefore: 7, spaceAfter: 0 });
+  });
+
+  it('leaves blocks alone when the selection contains none of its types', () => {
+    const editor = track(makeEditor('<hr><p>one</p>'));
+    editor.commands.setTextSelection(1);
+
+    expect(() =>
+      editor.commands.setParagraphSpacing({ spaceBefore: 12 }),
+    ).not.toThrow();
+  });
+});

@@ -261,3 +261,57 @@ describe('readDocxSpacingFromArchive', () => {
     );
   });
 });
+
+describe('readDocxSpacing edge cases', () => {
+  it('survives a basedOn cycle instead of hanging', () => {
+    const xml = doc(para({ style: 'A' }));
+    const sty = styles(
+      `<w:style w:styleId="A"><w:basedOn w:val="B"/></w:style>` +
+        `<w:style w:styleId="B"><w:basedOn w:val="A"/><w:pPr><w:spacing w:after="200"/></w:pPr></w:style>`,
+    );
+
+    expect(readDocxSpacing(xml, sty)[0].spaceAfter).toBe(10);
+  });
+
+  it('ignores a style id that does not exist', () => {
+    const xml = doc(para({ style: 'Missing' }));
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].spaceAfter).toBeNull();
+  });
+
+  it('ignores atLeast line spacing, like exact', () => {
+    const xml = doc(
+      para({ spacing: '<w:spacing w:line="360" w:lineRule="atLeast"/>' }),
+    );
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].lineHeight).toBeNull();
+  });
+
+  it('ignores a line value with no rule at all', () => {
+    const xml = doc(para({ spacing: '<w:spacing w:line="360"/>' }));
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].lineHeight).toBeNull();
+  });
+
+  it('clamps a negative twip value to zero', () => {
+    const xml = doc(para({ spacing: '<w:spacing w:before="-500"/>' }));
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].spaceBefore).toBe(0);
+  });
+
+  it('reads paragraphs inside table cells, in document order', () => {
+    const xml = doc(
+      para({ text: 'before' }) +
+        `<w:tbl><w:tr><w:tc>${para({ text: 'cell', spacing: '<w:spacing w:after="200"/>' })}</w:tc></w:tr></w:tbl>` +
+        para({ text: 'after' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result.map((p) => p.text)).toEqual(['before', 'cell', 'after']);
+    expect(result[1].spaceAfter).toBe(10);
+  });
+
+  it('returns nothing for a document with no paragraphs', () => {
+    expect(readDocxSpacing(doc(''), NO_STYLES)).toEqual([]);
+  });
+});

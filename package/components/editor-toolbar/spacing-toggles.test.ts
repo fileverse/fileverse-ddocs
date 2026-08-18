@@ -92,3 +92,43 @@ describe('getSpacingToggles', () => {
     expect(editor.state.doc.child(0).attrs.spaceBefore).toBe(SPACING_ADD_PT);
   });
 });
+
+describe('getSpacingToggles edge cases', () => {
+  it('offers remove for a mixed selection, which lands every block the same', () => {
+    const editor = mountEditor();
+    // first block has no gap from the stylesheet, second does
+    editor.commands.selectAll();
+
+    expect(getSpacingToggles(editor)[0].label).toBe(
+      'Remove space before paragraph',
+    );
+  });
+
+  it('applies to every block in a selection, not just the first', () => {
+    const editor = mountEditor();
+    editor.commands.selectAll();
+
+    getSpacingToggles(editor)[1].onSelect();
+
+    const afters: unknown[] = [];
+    editor.state.doc.forEach((node) => afters.push(node.attrs.spaceAfter));
+    expect(afters).toEqual([0, 0]);
+  });
+
+  it('works on a heading, not only paragraphs', () => {
+    const editor = mountEditor();
+    editor.commands.setContent('<p>one</p><h2>head</h2>');
+    editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+
+    getSpacingToggles(editor)[0].onSelect();
+
+    expect(editor.state.doc.child(1).attrs.spaceBefore).toBe(0);
+  });
+
+  it('does nothing without an editor rather than throwing', () => {
+    const toggles = getSpacingToggles(null);
+
+    expect(toggles).toHaveLength(2);
+    expect(() => toggles[0].onSelect()).not.toThrow();
+  });
+});

@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { LineHeight } from '../extensions/line-height';
 import { ParagraphSpacing } from '../extensions/paragraph-spacing';
 import {
+  normalizeLineHeight,
   percentageToUiValue,
   readEffectiveSpacing,
   readSpacingSelection,
@@ -198,5 +199,42 @@ describe('spacingToggleAction', () => {
   // every block to the same state; "add" would leave it mixed.
   it('treats a mixed selection as having a gap', () => {
     expect(spacingToggleAction('mixed')).toBe('remove');
+  });
+});
+
+describe('normalizeLineHeight', () => {
+  it('strips quotes a stylesheet may carry', () => {
+    expect(normalizeLineHeight("'1.5'")).toBe('150%');
+  });
+
+  it('tolerates surrounding whitespace', () => {
+    expect(normalizeLineHeight('  200%  ')).toBe('200%');
+  });
+
+  it('treats an empty or missing value as nothing', () => {
+    expect(normalizeLineHeight('')).toBeNull();
+    expect(normalizeLineHeight(undefined)).toBeNull();
+    expect(normalizeLineHeight(null)).toBeNull();
+  });
+
+  it('passes through keywords and units it cannot express', () => {
+    expect(normalizeLineHeight('normal')).toBe('normal');
+    expect(normalizeLineHeight('20px')).toBe('20px');
+  });
+
+  it('rounds a ratio that does not land on a whole percent', () => {
+    expect(normalizeLineHeight('1.155')).toBe('116%');
+  });
+});
+
+describe('percentageToUiValue edge cases', () => {
+  it('gives up on keywords rather than inventing a number', () => {
+    expect(percentageToUiValue('normal')).toBe('');
+    expect(percentageToUiValue('')).toBe('');
+  });
+
+  it('does not round a clean value into noise', () => {
+    expect(percentageToUiValue('120%')).toBe('1');
+    expect(percentageToUiValue('360%')).toBe('3');
   });
 });
