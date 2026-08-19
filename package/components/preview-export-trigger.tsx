@@ -47,7 +47,7 @@ const PreviewModeExportTrigger = ({
 }: PreviewModeExportTriggerProps) => {
   const [fileExportsOpen, setFileExportsOpen] = useState(false);
 
-  const { exportOptions } = useEditorToolbar({
+  const { exportOptions, copyAo3Html } = useEditorToolbar({
     editor,
     onError,
     ipfsImageUploadFn,
@@ -73,6 +73,7 @@ const PreviewModeExportTrigger = ({
         editor={editor}
         tabs={tabs}
         ydoc={ydoc}
+        copyAo3Html={copyAo3Html}
         onRegisterExportTrigger={onRegisterExportTrigger}
       />
     </div>
