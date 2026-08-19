@@ -4,6 +4,12 @@ import * as Y from 'yjs';
 import { toUint8Array } from 'js-base64';
 import { useHeadlessEditor } from './use-headless-editor';
 import { getDocSchemaVersion } from '../utils/schema-version';
+import { FANFIC_TEMPLATE } from '../utils/fanfic-template';
+import {
+  getActiveTabIdFromNodes,
+  getTabListFromNodes,
+  getTabsYdocNodes,
+} from '../components/tabs/utils/tab-utils';
 
 // v1-shaped template JSON — the app's template-utils source-of-truth shape.
 const v1TemplateJSON = {
@@ -52,6 +58,18 @@ const convertWith = (
   const convertor = result.current.getYjsConvertor(options);
   try {
     return convertor.convertJSONContentToYjsEncodedString(json);
+  } finally {
+    convertor.cleanup();
+  }
+};
+
+const convertTabbedWith = (options?: { schemaVersion?: number }) => {
+  const { result } = renderHook(() => useHeadlessEditor());
+  const convertor = result.current.getYjsConvertor(options);
+  try {
+    return convertor.convertTabbedJSONContentToYjsEncodedString(
+      FANFIC_TEMPLATE,
+    );
   } finally {
     convertor.cleanup();
   }
@@ -109,4 +127,33 @@ describe('useHeadlessEditor schema-version support (M3 template creation)', () =
     expect(topLevelTypes[0]).toBe('heading');
     expect(topLevelTypes).not.toContain('dBlock');
   });
+
+  it.each([
+    { schemaVersion: 1, firstNode: 'dBlock' },
+    { schemaVersion: 2, firstNode: 'heading' },
+  ])(
+    'converts the four-tab Fanfic template for schema v$schemaVersion',
+    ({ schemaVersion, firstNode }) => {
+      const blob = convertTabbedWith({ schemaVersion });
+      const { doc } = decodeBlob(blob);
+      const tabNodes = getTabsYdocNodes(doc);
+      const tabs = getTabListFromNodes(tabNodes);
+
+      expect(tabs.map(({ name, emoji }) => ({ name, emoji }))).toEqual([
+        { name: 'Ship Basis', emoji: '🥐' },
+        { name: 'Plot & Outline', emoji: '🍩' },
+        { name: 'Characters', emoji: '🍦' },
+        { name: 'World & Canon', emoji: '🧋' },
+      ]);
+      expect(getActiveTabIdFromNodes(tabNodes)).toBe(tabs[0].id);
+
+      tabs.forEach((tab) => {
+        const fragment = doc.getXmlFragment(tab.id);
+        expect((fragment.get(0) as Y.XmlElement).nodeName).toBe(firstNode);
+      });
+      expect(doc.getXmlFragment(tabs[1].id).toString()).toContain(
+        'Plot & outline',
+      );
+    },
+  );
 });

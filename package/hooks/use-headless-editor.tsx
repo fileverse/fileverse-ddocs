@@ -17,10 +17,28 @@ import { handleMarkdownContent } from '../extensions/mardown-paste-handler';
 import { IpfsImageUploadResponse } from '../types';
 import mammoth from 'mammoth';
 import { CommentExtension as Comment } from '../extensions/comment';
-import { mergeTabAwareYjsUpdates } from '../components/tabs/utils/tab-utils';
+import {
+  ACTIVE_TAB_STATE_KEY,
+  DEFAULT_TAB_ID,
+  getTabsYdocNodes,
+  mergeTabAwareYjsUpdates,
+} from '../components/tabs/utils/tab-utils';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface UseHeadlessEditorProps {
   optionalExtensions?: string[];
+}
+
+export interface TabbedJSONContentTab {
+  name: string;
+  emoji: string | null;
+  content: JSONContent;
+}
+
+export interface TabbedJSONContent {
+  type: 'tabbed-doc';
+  title: string;
+  tabs: TabbedJSONContentTab[];
 }
 
 /**
@@ -29,6 +47,7 @@ export interface UseHeadlessEditorProps {
  */
 export const getHeadlessExtensions = (options?: {
   ydoc?: Y.Doc;
+  field?: string;
   optionalExtensions?: string[];
   schemaVersion?: number;
 }): AnyExtension[] => {
@@ -51,14 +70,46 @@ export const getHeadlessExtensions = (options?: {
     ...defaultExtensions({
       onError: () => null,
       schemaVersion: options?.schemaVersion,
-    }).filter(
-      (extension) => extension.name !== 'characterCount',
-    ),
+    }).filter((extension) => extension.name !== 'characterCount'),
     customTextInputRules,
     PageBreak,
-    Collaboration.configure({ document: ydoc }),
+    Collaboration.configure({
+      document: ydoc,
+      ...(options?.field ? { field: options.field } : {}),
+    }),
     ...getOptionalExtensions(),
   ] as unknown as AnyExtension[];
+};
+
+export const setJSONContent = (content: JSONContent, editor: Editor) => {
+  const hasDBlock = Boolean(editor.schema.nodes.dBlock);
+  editor.commands.setContent(
+    sanitizeContent({
+      data: hasDBlock ? content : unwrapDBlocksInJSON(content),
+      wrapInDBlock: hasDBlock,
+    }),
+  );
+};
+
+export const writeJSONContentToYjsField = ({
+  content,
+  field,
+  schemaVersion,
+  ydoc,
+}: {
+  content: JSONContent;
+  field: string;
+  schemaVersion?: number;
+  ydoc: Y.Doc;
+}) => {
+  const editor = new Editor({
+    extensions: getHeadlessExtensions({ ydoc, field, schemaVersion }),
+    textDirection: 'auto',
+    autofocus: false,
+  });
+
+  setJSONContent(content, editor);
+  editor.destroy();
 };
 
 export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
@@ -123,17 +174,9 @@ export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
         Y.applyUpdate(ydoc, toUint8Array(initialContent as string));
       }
     } else {
-      const hasDBlock = Boolean(editor.schema.nodes.dBlock);
-      editor.commands.setContent(
-        sanitizeContent({
-          // v1-shaped JSON (templates, legacy exports) cannot load into the
-          // flat schema; hoist the real blocks out of their dBlock wrappers.
-          data: hasDBlock
-            ? (initialContent as JSONContent)
-            : unwrapDBlocksInJSON(initialContent as JSONContent),
-          wrapInDBlock: hasDBlock,
-        }),
-      );
+      // v1-shaped JSON (templates, legacy exports) cannot load into the flat
+      // schema; setJSONContent hoists blocks out of their dBlock wrappers.
+      setJSONContent(initialContent as JSONContent, editor);
     }
   };
 
@@ -142,6 +185,40 @@ export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
     return {
       convertJSONContentToYjsEncodedString: (content: JSONContent) => {
         setContent(content, editor, ydoc);
+        return fromUint8Array(Y.encodeStateAsUpdate(ydoc));
+      },
+      convertTabbedJSONContentToYjsEncodedString: (
+        template: TabbedJSONContent,
+      ) => {
+        if (template.tabs.length === 0) {
+          throw new Error('Tabbed template must contain at least one tab');
+        }
+
+        const tabIds = template.tabs.map((_, index) =>
+          index === 0 ? DEFAULT_TAB_ID : uuidv4(),
+        );
+        const tabNodes = getTabsYdocNodes(ydoc);
+
+        setContent(template.tabs[0].content, editor, ydoc);
+        template.tabs.slice(1).forEach((tab, index) => {
+          writeJSONContentToYjsField({
+            content: tab.content,
+            field: tabIds[index + 1],
+            schemaVersion: options?.schemaVersion,
+            ydoc,
+          });
+        });
+
+        ydoc.transact(() => {
+          tabNodes.order.insert(0, tabIds);
+          template.tabs.forEach((tab, index) => {
+            const tabId = tabIds[index];
+            tabNodes.nameById.set(tabId, tab.name);
+            tabNodes.emojiById.set(tabId, tab.emoji);
+          });
+          tabNodes.tabState.set(ACTIVE_TAB_STATE_KEY, tabIds[0]);
+        }, 'self');
+
         return fromUint8Array(Y.encodeStateAsUpdate(ydoc));
       },
       cleanup: () => {

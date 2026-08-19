@@ -11,6 +11,8 @@ import {
   UltimateIcons,
 } from '@fileverse/ui';
 import { getTemplateContent } from './getTemplateContent';
+import type { TabbedJSONContent } from '../hooks/use-headless-editor';
+import { FANFIC_TEMPLATE } from './fanfic-template';
 
 type IconType = LucideIconProps['name'] | string;
 
@@ -18,13 +20,33 @@ type TemplateButtonProps = {
   label: string;
   icon: IconType;
   onClick: () => void;
-  content: JSONContent | null;
+  content: JSONContent | TabbedJSONContent | null;
 }[];
 
 type TemplateConfig = {
   id: string;
   label: string;
   icon: IconType;
+  tabbedContent?: TabbedJSONContent;
+};
+
+const TODO_TEMPLATE: TemplateConfig = {
+  id: 'todo-list',
+  label: 'To-do',
+  icon: 'ListChecks',
+};
+
+const BREATHE_TEMPLATE: TemplateConfig = {
+  id: 'breathe',
+  label: 'Breathe!',
+  icon: '🧘‍♂️',
+};
+
+const FANFIC_TEMPLATE_CONFIG: TemplateConfig = {
+  id: 'fanfic',
+  label: 'Fanfic',
+  icon: '✍️',
+  tabbedContent: FANFIC_TEMPLATE,
 };
 
 const MORE_TEMPLATES: TemplateConfig[] = [
@@ -50,29 +72,21 @@ const MORE_TEMPLATES: TemplateConfig[] = [
   },
 ];
 
-const QUICK_TEMPLATES: TemplateConfig[] = [
-  {
-    id: 'todo-list',
-    label: 'To-do',
-    icon: 'ListChecks',
-  },
-  {
-    id: 'breathe',
-    label: 'Breathe!',
-    icon: '🧘‍♂️',
-  },
-];
-
 const createTemplateButton = (
   config: TemplateConfig,
   addTemplate: (template: JSONContent) => void,
+  addTabbedTemplate?: (template: TabbedJSONContent) => void,
 ) => {
-  const content = getTemplateContent(config.id);
+  const content = config.tabbedContent ?? getTemplateContent(config.id);
   return {
     label: config.label,
     icon: config.icon,
     onClick: () => {
-      if (content) addTemplate(content);
+      if (config.tabbedContent) {
+        addTabbedTemplate?.(config.tabbedContent);
+      } else if (content && content.type !== 'tabbed-doc') {
+        addTemplate(content);
+      }
     },
     content,
   };
@@ -80,13 +94,24 @@ const createTemplateButton = (
 
 const createMoreTemplates = (
   addTemplate: (template: JSONContent) => void,
+  enableFanficTemplate = false,
 ): TemplateButtonProps =>
-  MORE_TEMPLATES.map((config) => createTemplateButton(config, addTemplate));
+  (enableFanficTemplate
+    ? [TODO_TEMPLATE, ...MORE_TEMPLATES]
+    : MORE_TEMPLATES
+  ).map((config) => createTemplateButton(config, addTemplate));
 
 const createTemplateButtons = (
   addTemplate: (template: JSONContent) => void,
+  addTabbedTemplate?: (template: TabbedJSONContent) => void,
+  enableFanficTemplate = false,
 ): TemplateButtonProps =>
-  QUICK_TEMPLATES.map((config) => createTemplateButton(config, addTemplate));
+  (enableFanficTemplate
+    ? [BREATHE_TEMPLATE, FANFIC_TEMPLATE_CONFIG]
+    : [TODO_TEMPLATE, BREATHE_TEMPLATE]
+  ).map((config) =>
+    createTemplateButton(config, addTemplate, addTabbedTemplate),
+  );
 
 const renderIcon = (icon: IconType, className?: string) => {
   if (

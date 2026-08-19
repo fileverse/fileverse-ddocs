@@ -268,6 +268,11 @@ export interface DdocProps extends CommentAccountProps {
   handleCommentButtonClick?: (e: Editor) => void;
   showCommentButton?: boolean;
   disableBottomToolbar?: boolean;
+  /**
+   * Replaces the default To-do quick template with the Fanfic template.
+   * Disabled by default so hosts must explicitly opt in where Fanfic is available.
+   */
+  enableFanficTemplate?: boolean;
   onError?: (error: string) => void;
   setCharacterCount?: React.Dispatch<SetStateAction<number>>;
   setWordCount?: React.Dispatch<SetStateAction<number>>;
