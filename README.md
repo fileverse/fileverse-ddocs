@@ -2,25 +2,20 @@
 [ddocs.new](http://ddocs.new/) is your privacy-focused, open-source alternative to Google Docs that is as feature-complete and fast. It is an end-to-end encrypted and sovereign document editor for multiplayer collaboration 💛
 
 
-dDocs enables secure, real-time and asynchronous collaboration without compromising user privacy. Powerful features include:
+dDocs enables secure, real-time and asynchronous collaboration without compromising user privacy.
 
+
+## 𓆣 Features:
+- End-to-end encryption
 - Markdown and LaTeX support
-
-- Dark mode and custom themes
-
-- Offline editing
-
+- Dark mode and color themes
+- Offline/online editing (continue writing and opening older docs even with no WiFi)
 - Suggestion mode and commenting
-
 - Cross-device sync (desktop and mobile)
-
 - Zero-knowledge powered granular permissions and social recovery
-
 - Version history
-
 - MermaidJS diagram support
-
-- End-to-end encrypted, programmable API optimised for AI agents
+- End-to-end encrypted, programmable API optimised for agents (opt-in)
 
 <img width="2308" height="1458" alt="image" src="https://github.com/user-attachments/assets/32875e2e-b30b-431b-bbb6-74ce96f21141" />
 
