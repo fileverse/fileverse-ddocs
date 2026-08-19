@@ -1,5 +1,7 @@
 import { Extension, type CommandProps } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { isChangeOrigin } from '@tiptap/extension-collaboration';
 
 export type ParagraphSpacingAttrs = {
   /** Space above the block, in pt. `null` unsets it; omit to leave as-is. */
@@ -151,6 +153,127 @@ export const ParagraphSpacing = Extension.create({
                 ...node.attrs,
                 spaceBefore: null,
               });
+              modified = true;
+            });
+          });
+
+          return modified ? tr : null;
+        },
+      }),
+
+      // Wrapping a block into a list (toggleBulletList, the `- ` input rule,
+      // a slash command, paste) keeps the paragraph's attributes and gives the
+      // new listItem none. The paragraph then renders a margin that nothing
+      // can reach: setParagraphSpacing skips a paragraph inside a listItem,
+      // and so do readSpacingSelection/readEffectiveSpacing — so the dialog
+      // never shows the value, the toggles never see it, and setting spacing
+      // on the item adds a SECOND gap on top of it.
+      //
+      // The item owns the gap, so move it there. Ranges come from the step
+      // maps like the plugin above, which keeps this off the hot path.
+      //
+      // Local edits only, matching blockId's plugin: a peer running this same
+      // extension normalised its own edit before sending it, so re-doing the
+      // work here would only race that peer and put a write triggered by
+      // someone else's edit on OUR undo stack. Every way the bad shape is
+      // produced — wrapping a block into a list, pasting, importing — is a
+      // local transaction, so the guard costs nothing real.
+      new Plugin({
+        key: new PluginKey('paragraphSpacingListOwnership'),
+        appendTransaction: (transactions, _oldState, newState) => {
+          if (transactions.some(isChangeOrigin)) return null;
+
+          const ranges: [number, number][] = [];
+          transactions.forEach((transaction) => {
+            if (!transaction.docChanged) return;
+            transaction.steps.forEach((step) => {
+              step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+                ranges.push([newStart, newEnd]);
+              });
+            });
+          });
+          if (!ranges.length) return null;
+
+          const tr = newState.tr;
+          const docSize = newState.doc.content.size;
+          const seen = new Set<number>();
+          let modified = false;
+
+          ranges.forEach(([start, end]) => {
+            const from = Math.max(0, Math.min(start, docSize));
+            const to = Math.max(0, Math.min(end, docSize));
+
+            newState.doc.nodesBetween(from, to, (item, itemPos) => {
+              if (item.type.name !== 'listItem') return;
+              // Overlapping step ranges can visit one item twice.
+              if (seen.has(itemPos)) return;
+              seen.add(itemPos);
+
+              // Only the gaps at the item's OWN edges belong to the item:
+              // the first child's top margin and the last child's bottom one.
+              // An interior gap — between two paragraphs inside one item — is
+              // something a listItem cannot express, so it stays where it is.
+              // Clearing it too would silently destroy authored spacing on
+              // every open, since this runs over the whole document on load.
+              //
+              // Both guards also check the child is a paragraph AND is the
+              // item's first/last child: an item ending in a nested list would
+              // otherwise move that paragraph's gap below the whole sublist.
+              let firstChild: [number, ProseMirrorNode] | null = null;
+              let lastChild: [number, ProseMirrorNode] | null = null;
+              item.forEach((child, offset, index) => {
+                const entry: [number, ProseMirrorNode] = [
+                  itemPos + 1 + offset,
+                  child,
+                ];
+                if (index === 0) firstChild = entry;
+                if (index === item.childCount - 1) lastChild = entry;
+              });
+
+              const lifted: Record<string, number> = {};
+              // pos -> the attributes to null out there. A single-paragraph
+              // item is its own first AND last child, so both edges have to
+              // merge into one setNodeMarkup rather than overwrite each other.
+              const cleared = new Map<number, Set<string>>();
+
+              const takeEdge = (
+                entry: [number, ProseMirrorNode] | null,
+                attribute: 'spaceBefore' | 'spaceAfter',
+              ) => {
+                if (!entry) return;
+                const [childPos, child] = entry;
+                if (child.type.name !== 'paragraph') return;
+                if (child.attrs[attribute] === null) return;
+                // An attribute the item already carries wins: that is the one
+                // the dialog and the toggles read back.
+                if (item.attrs[attribute] === null) {
+                  lifted[attribute] = child.attrs[attribute];
+                }
+                const attributes = cleared.get(childPos) ?? new Set<string>();
+                attributes.add(attribute);
+                cleared.set(childPos, attributes);
+              };
+
+              takeEdge(firstChild, 'spaceBefore');
+              takeEdge(lastChild, 'spaceAfter');
+              if (!cleared.size) return;
+
+              cleared.forEach((attributes, childPos) => {
+                const child = newState.doc.nodeAt(childPos);
+                if (!child) return;
+                const patch: Record<string, null> = {};
+                attributes.forEach((attribute) => (patch[attribute] = null));
+                tr.setNodeMarkup(childPos, undefined, {
+                  ...child.attrs,
+                  ...patch,
+                });
+              });
+              if (Object.keys(lifted).length) {
+                tr.setNodeMarkup(itemPos, undefined, {
+                  ...item.attrs,
+                  ...lifted,
+                });
+              }
               modified = true;
             });
           });

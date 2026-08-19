@@ -44,6 +44,59 @@ needs the same parent-awareness. That logic is currently triplicated across
 `editor-utils.tsx:288-296` — centralise it rather than copying the bug a fourth
 time.
 
+### The list item owns the gap, and has to be made to
+
+Skipping the nested paragraph on write is only half of it. **Wrapping** a block
+into a list — `toggleBulletList`, the `- ` input rule, a slash command, a paste
+— keeps the paragraph's attributes and gives the new `listItem` none. The
+margin then renders on the inner `<p>`, where nothing can reach it: the command
+skips it, and so do `readSpacingSelection` and `readEffectiveSpacing`. The
+dialog never shows the value, the toggles never see it, and setting spacing on
+the item stacks a **second** gap on top of the first. Reproduced identically on
+both schemas.
+
+The `paragraphSpacingListOwnership` plugin moves it, and the exact rule matters:
+
+- `spaceBefore` is taken only from the item's **first child**, `spaceAfter` only
+  from its **last child**, and only when that child is a paragraph. "Last
+  paragraph" is not the same as "last child" — an item ending in a nested list
+  would otherwise have that paragraph's bottom gap pushed below the whole
+  sublist.
+- An attribute the item already carries **wins**; that is the one the dialog and
+  the toggles read back.
+- **Interior spacing is left alone.** The gap between two paragraphs inside one
+  item is neither of the item's edges and a `listItem` cannot express it, so
+  lifting the edges and clearing everything else would silently delete authored
+  values. Those interior values are not reachable from the UI, but they are not
+  produced by it either — they arrive by paste or import, and destroying them
+  is worse than leaving them.
+
+Ranges come from the step maps, like the heading-boundary plugin, so this stays
+off the hot path. It is also **local-edit only** (`isChangeOrigin`), matching
+`blockId`'s plugin: a peer running this same extension normalised its own edit
+before sending it, so repeating the work here would race that peer and put a
+write triggered by someone else's edit on our undo stack.
+
+That guard means it does **not** heal a document as it loads over
+collaboration — and the primary open path *is* collaborative
+(`use-tab-editor.tsx` applies a Yjs update; `setContent` is only the fallback
+for content that is not Yjs-encoded). This is deliberate rather than a gap:
+every way the bad shape is produced — wrapping a block into a list, pasting,
+importing — is a local transaction, so it is normalised at the moment it is
+created and never reaches the shared document.
+
+**Known, not fixed — one family, not one case.** Spacing is dropped whenever the
+node that owned it stops existing: unwrapping a spaced item back to a paragraph
+(`toggleBulletList` off), and converting a spaced bullet to a task item, which
+is the same thing because `taskItem` is not one of the spacing types. Recovering
+it would mean correlating against `oldState` inside the same appendTransaction.
+Defensible as-is; if it is ever "fixed", fix the family, not one member.
+
+**Task lists have the opposite ownership model** for the same reason: with
+`taskItem` outside `types` and outside the parent skip, a task item's gap lives
+on its inner `<p>` while a bullet's lives on the `<li>`. Self-consistent, but do
+not assume the two behave alike.
+
 ### Enter carry-over
 
 Paragraph → paragraph inherits both attributes.
@@ -139,19 +192,24 @@ projected state bag — so the "which half" reading has to come from
 not in the `useMemo` body: writing a margin moves nothing else in that snapshot,
 so a memo-only reading would leave the label stuck on the half already taken.
 
-That is what made this expensive, since the selector runs per transaction and
-`readEffectiveSpacing` calls `getComputedStyle` (a forced style recalc) per
-selected block. Two changes make it affordable, both pinned by tests in
-`utils/typography.test.ts`:
+That is what made this expensive, since `readEffectiveSpacing` calls
+`getComputedStyle` — a forced style recalc — per selected block. Three things
+make it affordable, each pinned by a test:
 
-- the DOM is consulted only for an edge with **no attribute** to answer with —
-  `nodeDOM` alone is a map lookup and costs nothing;
-- the walk stops measuring once **both edges are already `'mixed'`**, since no
+- **The selector is wrapped in `useCallback`** (`use-editor-commands.ts`). This
+  is load-bearing, not tidiness: `useEditorState` memoises on selector identity,
+  so an inline arrow is a fresh selector every render and the snapshot is
+  recomputed **per render** rather than per transaction. This hook renders
+  alongside the consumer's menu bar, which has no memo boundary (nav doc §9), so
+  the unmemoised version paid a style recalc on every unrelated re-render.
+- The DOM is consulted only for an edge with **no attribute** to answer with —
+  `nodeDOM` alone is a map lookup and costs nothing.
+- The walk stops measuring once **both edges are already `'mixed'`**, since no
   later block can change that, which bounds a drag-select across a long
   document.
 
-The common case — a collapsed cursor — was always one block, so typing costs at
-most one style read per transaction.
+The common case — a collapsed cursor — is one block, so typing costs at most one
+style read per transaction.
 
 ### There is no single default spacing
 

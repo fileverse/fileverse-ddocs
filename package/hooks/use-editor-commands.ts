@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Editor, useEditorState } from '@tiptap/react';
 import {
   insertCommands,
@@ -175,9 +175,15 @@ export const useEditorCommands = (
     useCommentStoreOptional(selectInlineCommentAvailable) ?? false;
 
   // Flat, comparable snapshot — no functions, so deepEqual can gate renders.
-  const state = useEditorState({
-    editor,
-    selector: ({ editor: e }: { editor: Editor | null }) => {
+  //
+  // useCallback is load-bearing, not tidiness: useEditorState memoises on the
+  // selector identity, so an inline arrow is a fresh selector every render and
+  // the whole snapshot is recomputed per render rather than per transaction.
+  // readEffectiveSpacing below reads getComputedStyle — a forced style recalc —
+  // and this hook renders with the consumer's menu bar, which has no memo
+  // boundary. Same reasoning as the module-scope selectors above.
+  const selector = useCallback(
+    ({ editor: e }: { editor: Editor | null }) => {
       if (!e || e.isDestroyed) return null;
       // Which half of the add/remove toggle each edge should offer. Read here
       // rather than at dispatch time so the menu LABEL flips as soon as the
@@ -219,7 +225,10 @@ export const useEditorCommands = (
           hasTextTargetAtSelection(e),
       };
     },
-  });
+    [handleInlineComment, inlineCommentAvailable],
+  );
+
+  const state = useEditorState({ editor, selector });
 
   return useMemo(() => {
     const disabled: EditorCommand = { run: () => {}, isEnabled: false };

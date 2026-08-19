@@ -155,6 +155,25 @@ describe('useEditorCommands', () => {
     expect(result.current['format.spaceBefore'].current).toBe('add');
   });
 
+  // The spacing reading calls getComputedStyle, a forced style recalc. This
+  // hook renders alongside the consumer's menu bar, which has no memo
+  // boundary, so a selector that re-runs per render (an inline arrow) would
+  // pay that cost on every unrelated re-render rather than per transaction.
+  it('does not re-read layout on renders with no transaction', () => {
+    editor.commands.setTextSelection(3);
+    const { rerender } = renderHook(() => useEditorCommands(editor));
+
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    try {
+      rerender();
+      rerender();
+      rerender();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('returns disabled no-op commands for a null editor', () => {
     const { result } = renderHook(() => useEditorCommands(null));
     expect(result.current['format.bold'].isEnabled).toBe(false);
