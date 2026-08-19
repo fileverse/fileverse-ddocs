@@ -47,7 +47,6 @@ import { CommonMarkBold, CommonMarkItalic } from './commonmark-emphasis';
 import HorizontalRule from './horizontal-rule';
 import ColumnExtension from './multi-column';
 import { FlatColumn } from './multi-column/column';
-import CustomKeymap from './custom-keymap';
 import { CollapsibleHeading } from './collapsible-heading';
 import { Color } from '@tiptap/extension-color';
 import { Iframe } from './iframe';
@@ -492,7 +491,6 @@ export const defaultExtensions = ({
         Document,
       ]),
   ...SuperchargedTableExtensions,
-  CustomKeymap,
   Iframe.configure({ ipfsImageFetchFn, fetchV1ImageFn }),
   EmbeddedTweet,
   actionButton.configure({
