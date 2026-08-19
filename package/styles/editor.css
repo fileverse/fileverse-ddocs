@@ -65,7 +65,17 @@
     margin-top: 0;
     margin-bottom: 0.5rem;
 
-    &:last-child {
+    /* :where() is load-bearing — it keeps this at (0,1,1) instead of (0,2,1).
+       This reset is for the last paragraph of a semantic container (a quote, a
+       callout, a list item), but in v1 EVERY top-level paragraph is also a
+       last child: the dBlock node view wraps it as
+       `[data-type=d-block] > [data-node-view-content] > p`, alone in that div.
+       At (0,2,1) it therefore outranked the v1 block rule below, which is only
+       (0,2,0), and zeroed the gap under every v1 paragraph — measured in
+       Chrome as 0px where it should be 24px. jsdom resolves this cascade
+       differently and reports 24px either way, so no jsdom test can catch it;
+       block-rhythm.test.ts asserts the `:where()` on the CSS source instead. */
+    &:where(:last-child) {
       margin-bottom: 0;
     }
   }

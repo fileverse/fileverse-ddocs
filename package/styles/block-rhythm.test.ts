@@ -47,6 +47,23 @@ describe('editor block rhythm', () => {
     expect(find('.ProseMirror >> & > p', 'margin-top')?.value).toBe('0');
   });
 
+  // The v1 dBlock node view wraps every top-level paragraph as
+  // `[data-type=d-block] > [data-node-view-content] > p`, alone in that div, so
+  // EVERY v1 paragraph is also a :last-child. A bare `&:last-child` here
+  // compiles to (0,2,1) and outranks the v1 block rule at (0,2,0), which
+  // zeroed the gap under every v1 paragraph. Measured in Chrome against this
+  // stylesheet: 0px with `:last-child`, 24px with `:where(:last-child)`.
+  // jsdom resolves that contest the other way and reports 24px for both, so a
+  // rendered test cannot catch it — this source assertion is the only guard.
+  it('keeps the nested-paragraph last-child reset specificity-neutral', () => {
+    expect(
+      find('.ProseMirror >> p >> &:where(:last-child)', 'margin-bottom')?.value,
+    ).toBe('0');
+    expect(find('.ProseMirror >> p >> &:last-child', 'margin-bottom')).toBe(
+      undefined,
+    );
+  });
+
   it('gives nested paragraphs a bottom gap and no top margin', () => {
     expect(find('.ProseMirror >> p', 'margin-top')?.value).toBe('0');
     expect(find('.ProseMirror >> p', 'margin-bottom')?.value).toBe('0.5rem');

@@ -12,6 +12,7 @@ import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 // spacing attribute.
 const V1_RULES = `
   .ProseMirror p { margin-bottom: 8px; }
+  .ProseMirror p:where(:last-child) { margin-bottom: 0px; }
   .ProseMirror > [data-type='d-block'] { margin-bottom: 0px; }
   .ProseMirror > [data-type='d-block'] > * { margin-bottom: 0px; }
   .ProseMirror > [data-type='d-block'] > * > * { margin-bottom: 24px; }
@@ -67,10 +68,14 @@ describe('v1 block rhythm', () => {
     expect(marginBottom(pm.querySelector('h2'))).toBe('24px');
   });
 
-  it('leaves genuinely nested paragraphs on the smaller default', () => {
+  // dBlock > div > ul > li > p is deeper than `> * > *`, so the block rule
+  // misses it and the nested-paragraph rules decide. It is its item's only
+  // child, so the last-child reset applies and the item owns the gap instead.
+  // Confirmed in Chrome against the real stylesheet: 0px, and unchanged by
+  // the :where() fix — only top-level v1 paragraphs moved (0px -> 24px).
+  it('lets the list item own the gap, not the paragraph inside it', () => {
     const pm = mountV1('<ul><li><p>item</p></li></ul>');
 
-    // dBlock > div > ul > li > p — deeper than `> * > *`, so untouched.
-    expect(marginBottom(pm.querySelector('li p'))).toBe('8px');
+    expect(marginBottom(pm.querySelector('li p'))).toBe('0px');
   });
 });
