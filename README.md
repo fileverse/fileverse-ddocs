@@ -1,10 +1,6 @@
 # dDocs Editor
 [ddocs.new](http://ddocs.new/) is your privacy-focused, open-source alternative to Google Docs that is as feature-complete and fast. It is an end-to-end encrypted and sovereign document editor for multiplayer collaboration 💛
 
-
-dDocs enables secure, real-time and asynchronous collaboration without compromising user privacy.
-
-
 ## 𓆏 Features:
 - End-to-end encryption
 - Real-time and asynchronous collaboration
