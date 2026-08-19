@@ -318,7 +318,13 @@ body {
 }
 
 li > ol {
-  counter-reset: list;
+  /* `list-item` must stay in this reset: the UA stylesheet sets
+     `counter-reset: list-item` on every ol/ul, and Firefox derives ordered-list
+     numbering from that counter (Chromium/WebKit compute it in layout instead).
+     Resetting only `list` here replaced the implicit reset, so nested items
+     incremented the OUTER list's counter and the parent numbering skipped
+     (1, a, b, 4). */
+  counter-reset: list list-item;
   margin: 0;
 }
 
@@ -336,7 +342,8 @@ li > ol > li:before {
 
 /* Level 3 nested items to use Roman numerals */
 li > ol > li > ol {
-  counter-reset: sublist;
+  /* see the note on `li > ol` above */
+  counter-reset: sublist list-item;
 }
 
 li > ol > li > ol > li {
