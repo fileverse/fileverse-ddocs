@@ -95,7 +95,7 @@ describe('slides toolbar button on empty content', () => {
   });
 });
 
-describe('Copy to AO3 HTML export', () => {
+describe('Copy HTML (AO3 ready) export', () => {
   let editor: Editor;
 
   afterEach(() => {
@@ -131,7 +131,7 @@ describe('Copy to AO3 HTML export', () => {
       },
     );
     const option = result.current.exportOptions.find(
-      (item) => item?.title === 'Copy to AO3 (HTML)',
+      (item) => item?.title === 'Copy HTML (AO3 ready)',
     );
     return { result, option, onError, onHtmlExport };
   };
@@ -159,7 +159,7 @@ describe('Copy to AO3 HTML export', () => {
     expect(copy).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledOnce();
     expect(toast).toHaveBeenCalledWith({
-      title: 'HTML copied. Paste it into AO3’s HTML editor.',
+      title: 'HTML copied.',
       toastType: 'mini',
       variant: 'success',
       iconType: 'icon',

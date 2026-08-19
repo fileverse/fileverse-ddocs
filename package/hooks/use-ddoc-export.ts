@@ -44,7 +44,7 @@ const useDdocExport = ({
   );
 
   const getOptionFormat = useCallback((title: string) => {
-    if (title === 'Copy to AO3 (HTML)') return 'ao3-html';
+    if (title === 'Copy HTML (AO3 ready)') return 'ao3-html';
     if (title.includes('(.pdf)')) return 'pdf';
     // Check "with CSS" before "(.md)" — its title contains both.
     if (title.includes('with CSS')) return 'md-css';

@@ -878,7 +878,7 @@ export const useEditorToolbar = ({
     },
     {
       icon: 'FileText',
-      title: 'Copy to AO3 (HTML)',
+      title: 'Copy HTML (AO3 ready)',
       onClick: async () => {
         if (!editor) return;
         await copyAo3Html(() => editor.commands.exportHtmlContent());
