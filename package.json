@@ -2,13 +2,17 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "4.6.5",
+  "version": "4.6.5-alpha.0",
   "main": "dist/index.es.js",
   "module": "dist/index.es.js",
   "exports": {
     ".": {
       "import": "./dist/index.es.js",
       "types": "./dist/index.d.ts"
+    },
+    "./headless-editor-utils": {
+      "import": "./dist/headless-editor-utils.es.js",
+      "types": "./dist/headless-editor-utils.d.ts"
     },
     "./styles": "./dist/style.css",
     "./types": "./dist/package/types.d.ts"
