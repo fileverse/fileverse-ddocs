@@ -31,7 +31,9 @@ export const PageBreakNodeView: React.FC<NodeViewProps> = ({
 
   return (
     <NodeViewWrapper
-      className={cn('flex relative w-full h-full justify-center items-center')}
+      className={cn(
+        'flex relative w-[calc(100%+var(--padding-r)+var(--padding-l))] -translate-x-[var(--padding-l)] color-bg-secondary h-full justify-center items-center',
+      )}
       style={pageBreakStyle}
     >
       <br

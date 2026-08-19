@@ -258,6 +258,15 @@ export const DBlockDragHandle = ({
   // that widens after positioning (chevron appearing for a heading) grows
   // rightward over the block's text. Constant width keeps `left` stable.
   const isHeadingHovered = Boolean(meta?.isHeading);
+  // A page break renders full-bleed (it spans the container's horizontal
+  // padding — the gutter this cluster lives in) and carries its own
+  // hover-revealed Remove control, so it gets no block controls at all.
+  // Deliberate trade-off: the grip is the drag source (`draggable` +
+  // `data-drag-handle`, see components/buttons GripButton), so dropping it
+  // also drops drag-to-reorder and the block menu for page breaks —
+  // rescueLeafBlockDragStart above is then unreachable from the UI for this
+  // node type (it still serves the other childless blocks it names).
+  const isPageBreakHovered = hovered?.node.type.name === 'pageBreak';
   // "Comment and suggest" on a shared link is preview mode with an EDITABLE
   // editor (use-tab-editor's readyState only drops on preview WITHOUT
   // suggest), so this cluster is the only chrome that can show there — the
@@ -320,7 +329,12 @@ export const DBlockDragHandle = ({
       <div
         ref={clusterRef}
         aria-label="block-controls"
-        className="flex h-6 items-center justify-end gap-0.5 pr-2"
+        className={cn('flex h-6 items-center justify-end gap-0.5 pr-2')}
+        style={
+          isPageBreakHovered
+            ? { visibility: 'hidden', pointerEvents: 'none' }
+            : undefined
+        }
       >
         {shouldShowEditingControls ? (
           <>
