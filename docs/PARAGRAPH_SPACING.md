@@ -366,6 +366,57 @@ is missing. Fixing it means a `patch-package` fork or an upstream PR; deferred.
    `margin` shorthand, so an inline `margin-top` alone leaves the print
    stylesheet's `margin-bottom: 12px` in force. Convert to longhands. Eyeball the
    print output afterward — those values were tuned by hand.
+3. **The first paragraph of a multi-paragraph paste lost its block attributes**
+   (TEC-2701 D1, reported by two testers against a Google Docs paste). The
+   clipboard was never the problem — all three paragraphs parse with the right
+   values. ProseMirror's slice arrives with `openStart > 0`, which merges the
+   first pasted block's *inline* content into the block at the cursor; that
+   block keeps its own attributes, so line height, spacing and alignment were
+   all dropped for it while every later paragraph kept them. Predates this
+   feature — line height alone reproduces it — but spacing rides the same
+   mechanism.
+
+   (`openStart` is 1 for a flat multi-block paste and 2 on v1, where
+   prosemirror-view's own `normalizeSiblings` wraps the bare paragraphs into
+   `dBlock` at doc level. Neither number is universal: a single-block paste is
+   1 on v1 too, and pasting into a table cell gives 1 with bare paragraphs.)
+
+   Fixed in `transformPasted`: when the target paragraph is empty — or is fully
+   selected, and so about to be — there is nothing to merge with, so the slice
+   start is marked closed (`openStart = 0`) and the pasted block simply becomes
+   that block. Pasting into a block that has text still merges, which is
+   correct mid-sentence. `gdocs-paste.test.ts` pins both sides on both schemas.
+
+   Three scoping decisions, each deliberate and each pinned by a test:
+
+   - **Drops are excluded.** `transformPasted` is ProseMirror's *drop* hook as
+     well, and there the insertion point is the mouse — an external drop
+     resolves its context from `$mouse`, not the caret. Without the guard, a
+     drop while the caret sat in an empty paragraph split whatever paragraph
+     the pointer landed in. jsdom cannot complete a real drop (no
+     `elementFromPoint`), so the tests cover the guard's two reachable halves
+     and the rest rests on prosemirror-view's source.
+   - **Paragraphs only, not every textblock.** An empty *heading* is a block
+     the user deliberately created; letting the pasted paragraph become it
+     silently discarded the level.
+   - **Full-selection replace is included.** Selecting a whole paragraph and
+     pasting over it leaves the same empty target and lost the same
+     attributes.
+
+   **[LIMIT]** If the clipboard's `text/plain` looks like markdown, `handlePaste`
+   takes the markdown branch and the HTML — attributes and all — is discarded
+   before ProseMirror sees it. There the loss is worse than the bug above:
+   **every** paragraph comes back at the default, not just the first. `isMarkdown`
+   is a loose heuristic (any `*…*`, any backtick run, any `[…](…)`, a leading
+   `-`/`>`/`*`), so ordinary prose trips it. Pre-existing routing, unchanged
+   here, and worth its own ticket rather than a silent footnote.
+
+   Testing a paste in jsdom needs a `ClipboardEvent` double, and its `getData`
+   must return `''` for types it is not serving: a fake that answers everything
+   feeds the plain text to `@tiptap/extension-code-block`'s `vscode-editor-data`
+   probe, which `JSON.parse`s it and throws. Give it a realistic `text/plain`
+   too — `handlePaste` inspects that first, so an empty one silently exercises
+   a different route than production.
 
 ## DOCX import
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import MarkdownIt from 'markdown-it';
-import { Plugin } from 'prosemirror-state';
+import { Plugin, TextSelection } from 'prosemirror-state';
 import DOMPurify from 'dompurify';
 import {
   Fragment,
@@ -851,16 +851,33 @@ const MarkdownPasteHandler = (
     },
 
     addProseMirrorPlugins() {
+      // transformPasted is ProseMirror's DROP hook as well as its paste hook
+      // (prosemirror-view editHandlers.drop). On a drop the insertion point is
+      // the MOUSE, not the caret, so the openStart override below must not run
+      // — keying it off the selection there would split whatever paragraph the
+      // pointer landed in. handleDOMEvents.drop runs before editHandlers.drop,
+      // so this flag is set in time and cleared once the drop has been handled.
+      let dropInFlight = false;
+
       return [
         new Plugin({
           props: {
+            handleDOMEvents: {
+              drop: () => {
+                dropInFlight = true;
+                queueMicrotask(() => {
+                  dropInFlight = false;
+                });
+                return false;
+              },
+            },
             // Non-markdown clipboard HTML goes through ProseMirror's native
             // paste, which faithfully keeps the stacks of empty <p> that
             // sites like Wikipedia put between sections. Collapse interior
             // runs of empty paragraphs to one; the first and last slice
             // children are never touched (they can be open-ended and merge
             // into surrounding blocks).
-            transformPasted: (slice) => {
+            transformPasted: (slice, view) => {
               const isEmptyParagraphChild = (node: PMNode) => {
                 if (node.type.name === 'paragraph')
                   return node.childCount === 0;
@@ -873,26 +890,57 @@ const MarkdownPasteHandler = (
               };
 
               const total = slice.content.childCount;
-              if (total < 3) return slice;
 
-              const kept: PMNode[] = [];
-              let previousWasEmpty = false;
-              slice.content.forEach((child, _offset, index) => {
-                const isEmpty = isEmptyParagraphChild(child);
-                const isEdge = index === 0 || index === total - 1;
-                if (!isEdge && isEmpty && previousWasEmpty) {
-                  return;
-                }
-                previousWasEmpty = isEmpty;
-                kept.push(child);
-              });
+              let content = slice.content;
+              if (total >= 3) {
+                const kept: PMNode[] = [];
+                let previousWasEmpty = false;
+                slice.content.forEach((child, _offset, index) => {
+                  const isEmpty = isEmptyParagraphChild(child);
+                  const isEdge = index === 0 || index === total - 1;
+                  if (!isEdge && isEmpty && previousWasEmpty) {
+                    return;
+                  }
+                  previousWasEmpty = isEmpty;
+                  kept.push(child);
+                });
+                if (kept.length !== total) content = Fragment.fromArray(kept);
+              }
 
-              if (kept.length === total) return slice;
-              return new Slice(
-                Fragment.fromArray(kept),
-                slice.openStart,
-                slice.openEnd,
-              );
+              // An open slice start makes ProseMirror merge the first pasted
+              // block's INLINE content into the block at the cursor, which
+              // keeps its own attributes — so the first paragraph of a Google
+              // Docs paste silently lost its line height, spacing and
+              // alignment while every later one kept them.
+              //
+              // Only when the target block is empty: there is nothing to merge
+              // with, and the pasted block should simply become that block.
+              // Pasting into a block that has text still merges, which is what
+              // you want mid-sentence.
+              // Scoped to PARAGRAPHS, not every textblock: an empty heading
+              // is a block the user deliberately created, and letting the
+              // pasted paragraph become it would silently drop the level.
+              // Widened past `selection.empty` to any text selection covering
+              // its whole paragraph — pasting over a fully selected paragraph
+              // leaves the same empty target and lost the same attributes.
+              const { selection } = view.state;
+              const { $from, $to } = selection;
+              const targetIsEmptied =
+                selection instanceof TextSelection &&
+                $from.parent === $to.parent &&
+                $from.parent.type === view.state.schema.nodes.paragraph &&
+                $from.parentOffset === 0 &&
+                $to.parentOffset === $to.parent.content.size;
+
+              const openStart =
+                !dropInFlight && targetIsEmptied && content.childCount > 0
+                  ? 0
+                  : slice.openStart;
+
+              if (content === slice.content && openStart === slice.openStart) {
+                return slice;
+              }
+              return new Slice(content, openStart, slice.openEnd);
             },
             handlePaste: (view, event) => {
               const clipboardData = event.clipboardData;
