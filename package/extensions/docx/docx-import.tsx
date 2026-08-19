@@ -107,7 +107,13 @@ export const DocxFileHandler = Extension.create({
                 extractedHtml,
               );
 
-              await handleMarkdownContent(view, spacedHtml, ipfsImageUploadFn);
+              // A blank line the author typed is content — which is why
+              // mammoth is asked for them above. handleMarkdownContent strips
+              // empty paragraphs by default (markdown-it invents its own), so
+              // opt out here or the whole ignoreEmptyParagraphs pass is undone.
+              await handleMarkdownContent(view, spacedHtml, ipfsImageUploadFn, {
+                preserveEmptyParagraphs: true,
+              });
               onDocxImport?.();
             } catch (err: any) {
               console.error(err);

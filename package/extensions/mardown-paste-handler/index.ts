@@ -1476,7 +1476,16 @@ export async function handleMarkdownContent(
   view: any,
   content: string,
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>,
-  options?: { breaks?: boolean; replaceAll?: boolean },
+  options?: {
+    breaks?: boolean;
+    replaceAll?: boolean;
+    /** Keep authored blank lines. DOCX import sets this: a blank line the
+     *  author typed is content, and mammoth is asked to emit it
+     *  (ignoreEmptyParagraphs: false) precisely so it survives. Markdown
+     *  paste leaves it off — markdown-it emits stray empty paragraphs of its
+     *  own that nobody typed. */
+    preserveEmptyParagraphs?: boolean;
+  },
 ) {
   // Remove YAML frontmatter before parsing
   let cleanMarkdown = stripFrontmatter(content);
@@ -1529,15 +1538,17 @@ export async function handleMarkdownContent(
   const parser = new DOMParser();
   const doc = parser.parseFromString(convertedHtml, 'text/html');
 
-  // Remove <p> if it's empty
-  const topLevelPs = doc.querySelectorAll('body > p');
-  topLevelPs.forEach((p) => {
-    if (p.childNodes.length === 0) {
-      if (p.textContent === '') {
-        p.remove();
+  // Remove <p> if it's empty — unless the caller authored those blanks.
+  if (!options?.preserveEmptyParagraphs) {
+    const topLevelPs = doc.querySelectorAll('body > p');
+    topLevelPs.forEach((p) => {
+      if (p.childNodes.length === 0) {
+        if (p.textContent === '') {
+          p.remove();
+        }
       }
-    }
-  });
+    });
+  }
 
   // Replace <aside class="callout"> with <aside data-type="callout">
   const calloutAsides = doc.querySelectorAll('aside.callout');
@@ -1764,7 +1775,10 @@ export async function handleMarkdownContent(
   let previousWasEmptyParagraph = false;
   proseMirrorNodes.forEach((child: PMNode) => {
     if (isEmptyParagraphBlock(child)) {
-      if (!previousWasEmptyParagraph) {
+      // Runs collapse for pasted web HTML, where the stacks are junk. A DOCX
+      // has no such thing: every empty w:p is an Enter the author pressed, so
+      // three blank lines must import as three.
+      if (options?.preserveEmptyParagraphs || !previousWasEmptyParagraph) {
         newChildren.push(child);
       }
       previousWasEmptyParagraph = true;

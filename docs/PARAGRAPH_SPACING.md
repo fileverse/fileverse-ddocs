@@ -448,8 +448,22 @@ and hard to trace; no spacing is not.
 
 `ignoreEmptyParagraphs: false` is required for that alignment to hold — mammoth
 drops empty paragraphs by default, which desynchronised a 38-paragraph test
-document by 3. It also means blank lines an author typed now survive import,
-which is a behaviour change to every DOCX import, not just spaced ones.
+document by 3.
+
+**It was not enough on its own, and the first version of this note was wrong**
+(TEC-2701 H3: "blank lines did not survive"). DOCX import finishes through
+`handleMarkdownContent`, which deleted every empty top-level `<p>` and then
+collapsed any surviving run to one — both correct for their original purpose,
+which is pasted web HTML full of stacks of empty `<p>` that nobody typed. A
+DOCX has no such thing: every empty `w:p` is an Enter the author pressed.
+
+Both steps are now gated on a `preserveEmptyParagraphs` option that only the
+DOCX importer passes, so markdown paste is untouched. Blank lines survive,
+runs included — three blank lines import as three.
+`docx/docx-blank-lines.test.ts` drives real mammoth over a real archive on
+both schemas, and pins the default-off behaviour so the gate cannot be
+widened by accident. Still a behaviour change to every DOCX import, not just
+spaced ones.
 
 **Known gaps:** `w:contextualSpacing` ("don't add space between paragraphs of
 the same style") has no equivalent in the model and is ignored. `w:lineRule`
