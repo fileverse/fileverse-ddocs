@@ -5,7 +5,7 @@
 dDocs enables secure, real-time and asynchronous collaboration without compromising user privacy.
 
 
-## 𓆣 Features:
+## 𓆏 Features:
 - End-to-end encryption
 - Markdown and LaTeX support
 - Dark mode and color themes
