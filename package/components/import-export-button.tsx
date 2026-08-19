@@ -117,7 +117,7 @@ const ImportExportButton = ({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <div className="flex items-center space-x-2">
-                <LucideIcon name="FileExport" className="w-5 h-5" />
+                <LucideIcon name="FileImport" className="w-5 h-5" />
                 <span className="text-body-sm">Export</span>
               </div>
             </DropdownMenuSubTrigger>
@@ -161,7 +161,7 @@ const ImportExportButton = ({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <div className="flex items-center space-x-2">
-                <LucideIcon name="FileImport" className="w-5 h-5" />
+                <LucideIcon name="FileExport" className="w-5 h-5" />
                 <span className="text-body-sm">Import</span>
               </div>
             </DropdownMenuSubTrigger>

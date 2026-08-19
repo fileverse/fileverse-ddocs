@@ -45,11 +45,11 @@ vi.mock('../hooks/use-ddoc-export', () => ({
   useDdocExport: () => ({
     formatSelectOptions: [
       { id: 'html', label: 'Web page (.html)' },
-      { id: 'ao3-html', label: 'Copy HTML (AO3 ready)' },
+      { id: 'ao3-html', label: 'Copy HTML' },
     ],
     handleExport: mocks.handleExport,
     getOptionFormat: (title: string) =>
-      title === 'Copy HTML (AO3 ready)' ? 'ao3-html' : 'html',
+      title === 'Copy HTML' ? 'ao3-html' : 'html',
   }),
 }));
 
@@ -91,7 +91,7 @@ describe('ImportExportButton AO3 modal routing', () => {
         exportOptions={[
           {
             icon: 'FileText',
-            title: 'Copy HTML (AO3 ready)',
+            title: 'Copy HTML',
             onClick: vi.fn(),
             isActive: false,
           },

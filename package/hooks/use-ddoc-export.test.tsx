@@ -37,7 +37,7 @@ describe('useDdocExport AO3 copy routing', () => {
         exportOptions: [
           {
             icon: 'FileText',
-            title: 'Copy HTML (AO3 ready)',
+            title: 'Copy HTML',
             onClick,
             isActive: false,
           },
@@ -46,7 +46,7 @@ describe('useDdocExport AO3 copy routing', () => {
       }),
     );
 
-    expect(result.current.getOptionFormat('Copy HTML (AO3 ready)')).toBe(
+    expect(result.current.getOptionFormat('Copy HTML')).toBe(
       'ao3-html',
     );
 
@@ -96,7 +96,7 @@ describe('useDdocExport AO3 copy routing', () => {
         exportOptions: [
           {
             icon: 'FileText',
-            title: 'Copy HTML (AO3 ready)',
+            title: 'Copy HTML',
             onClick,
             isActive: false,
           },

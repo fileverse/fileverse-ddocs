@@ -95,7 +95,7 @@ describe('slides toolbar button on empty content', () => {
   });
 });
 
-describe('Copy HTML (AO3 ready) export', () => {
+describe('Copy HTML export', () => {
   let editor: Editor;
 
   afterEach(() => {
@@ -131,7 +131,7 @@ describe('Copy HTML (AO3 ready) export', () => {
       },
     );
     const option = result.current.exportOptions.find(
-      (item) => item?.title === 'Copy HTML (AO3 ready)',
+      (item) => item?.title === 'Copy HTML',
     );
     return { result, option, onError, onHtmlExport };
   };
