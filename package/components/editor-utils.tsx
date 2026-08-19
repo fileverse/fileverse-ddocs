@@ -850,7 +850,6 @@ export const useEditorToolbar = ({
     {
       icon: 'FileText',
       title: 'Web page (.html)',
-      subtitle: 'AO3 compatible',
       onClick: async (name?: string) => {
         if (editor) {
           const editorContent = editor.getJSON();
