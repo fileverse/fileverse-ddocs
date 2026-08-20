@@ -785,7 +785,7 @@
   list-style-position: inside;
 
   > p[style*='text-align: right'] {
-    display: inline-block;
+    display: inline;
   }
 
   > :is(ul, ol) {
@@ -796,8 +796,9 @@
 .ProseMirror
   :is(ul, ol):not([data-type='taskList'])
   > li[dir='rtl']
-  > p[dir='rtl'] {
+  > p[dir='rtl'][style*='text-align: left'] {
   display: inline-block;
+  max-width: calc(100% - 1.5rem);
 }
 
 .ProseMirror
