@@ -785,12 +785,19 @@
   list-style-position: inside;
 
   > p[style*='text-align: right'] {
-    display: inline;
+    display: inline-block;
   }
 
   > :is(ul, ol) {
     text-align: start;
   }
+}
+
+.ProseMirror
+  :is(ul, ol):not([data-type='taskList'])
+  > li[dir='rtl']
+  > p[dir='rtl'] {
+  display: inline-block;
 }
 
 .ProseMirror
