@@ -138,6 +138,7 @@ export function buildPickerEntries(
 // here for backward compatibility).
 export * from '../utils/typography';
 import { getFontSizeOptions, getLineHeightOptions } from '../utils/typography';
+import { getSpacingToggles } from './editor-toolbar/spacing-toggles';
 
 export const ERR_MSG_MAP = {
   IMAGE_SIZE: 'Image size should be less than 10MB',
@@ -1962,16 +1963,19 @@ export const FontSizePicker = ({
 };
 
 export const LineHeightPicker = ({
+  editor,
   setVisibility,
   elementRef,
   currentLineHeight,
   onSetLineHeight,
+  onOpenCustomSpacing,
 }: {
   editor: Editor;
   elementRef: React.RefObject<HTMLDivElement>;
   setVisibility: Dispatch<SetStateAction<IEditorTool>>;
   currentLineHeight?: string;
   onSetLineHeight: (lineHeight: string) => void;
+  onOpenCustomSpacing?: () => void;
 }) => {
   const lineHeightOptions = getLineHeightOptions();
 
@@ -2011,6 +2015,38 @@ export const LineHeightPicker = ({
           </span>
         </button>
       ))}
+
+      {onOpenCustomSpacing ? (
+        <>
+          <div className="w-full my-1 h-[1px] color-bg-default-hover" />
+          {getSpacingToggles(editor).map((toggle) => (
+            <button
+              key={toggle.edge}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                toggle.onSelect();
+                setVisibility(IEditorTool.NONE);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm color-text-default transition min-w-[120px] hover:color-bg-default-hover"
+            >
+              <div className="w-4" />
+              <span className="font-medium">{toggle.label}</span>
+            </button>
+          ))}
+          <div className="w-full my-1 h-[1px] color-bg-default-hover" />
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onOpenCustomSpacing();
+              setVisibility(IEditorTool.NONE);
+            }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm color-text-default transition min-w-[120px] hover:color-bg-default-hover"
+          >
+            <div className="w-4" />
+            <span className="font-medium">Custom spacing</span>
+          </button>
+        </>
+      ) : null}
     </div>
   );
 };

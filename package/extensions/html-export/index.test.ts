@@ -18,6 +18,20 @@ describe('sanitizeHtmlExportBody', () => {
     );
   });
 
+  // The whole of TEC-2701 reaches an export through this one attribute, which
+  // the allow-list mostly inherits from a constant named for Mermaid SVGs.
+  // Nothing else pins the property, so trimming that constant would strip
+  // every block style from an export with the SVG tests still green.
+  it('preserves the block styling that carries spacing into an export', () => {
+    const html = sanitizeHtmlExportBody(
+      '<p style="margin-top: 12pt; margin-bottom: 8pt; line-height: 138%;">one</p>',
+    );
+
+    expect(html).toContain('margin-top: 12pt');
+    expect(html).toContain('margin-bottom: 8pt');
+    expect(html).toContain('line-height: 138%');
+  });
+
   it('preserves Mermaid SVG paths', () => {
     const html = sanitizeHtmlExportBody(
       '<svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>',

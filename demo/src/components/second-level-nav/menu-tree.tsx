@@ -3,6 +3,7 @@
 // capability projection) minus consumer-only items (version history, rename,
 // move-to, delete, templates, copy-as-markdown, local LLM, backup key, Help,
 // Themes). Predicates reference ctx.caps.* only — never roles.
+import { spacingToggleLabel } from '../../../../package/components/editor-toolbar/spacing-toggles';
 import type { MenuBarTree, MenuContext } from './menu-types';
 
 const canEdit = (c: MenuContext) => c.caps.canEdit;
@@ -618,15 +619,51 @@ export const demoMenuTree: MenuBarTree = [
         label: 'Line height',
         icon: 'UnfoldVertical',
         visibleWhen: canEdit,
-        children: ['1', '1.15', '1.5', '2', '2.5', '3'].map((v) => ({
-          id: `format.lineHeight.${v.replace('.', '_')}`,
-          kind: 'radio' as const,
-          label: v,
-          value: v,
-          action: 'format.lineHeight',
-          state: (c: MenuContext) =>
-            c.state['format.lineHeight']?.current === v,
-        })),
+        children: [
+          ...['1', '1.15', '1.5', '2', '2.5', '3'].map((v) => ({
+            id: `format.lineHeight.${v.replace('.', '_')}`,
+            kind: 'radio' as const,
+            label: v,
+            value: v,
+            action: 'format.lineHeight',
+            state: (c: MenuContext) =>
+              c.state['format.lineHeight']?.current === v,
+          })),
+          { id: 'format.lineHeight.sep', kind: 'separator' },
+          // Label comes from the registry's `current` ('add' | 'remove'), so
+          // the item reads the same way the toolbar dropdown does.
+          {
+            id: 'format.lineHeight.spaceBefore',
+            kind: 'action',
+            label: (c: MenuContext) =>
+              spacingToggleLabel(
+                'before',
+                c.state['format.spaceBefore']?.current === 'add'
+                  ? 'add'
+                  : 'remove',
+              ),
+            action: 'format.spaceBefore',
+          },
+          {
+            id: 'format.lineHeight.spaceAfter',
+            kind: 'action',
+            label: (c: MenuContext) =>
+              spacingToggleLabel(
+                'after',
+                c.state['format.spaceAfter']?.current === 'add'
+                  ? 'add'
+                  : 'remove',
+              ),
+            action: 'format.spaceAfter',
+          },
+          { id: 'format.lineHeight.sep2', kind: 'separator' },
+          {
+            id: 'format.lineHeight.custom',
+            kind: 'action',
+            label: 'Custom spacing',
+            action: 'format.customSpacing',
+          },
+        ],
       },
       {
         id: 'format.lists',

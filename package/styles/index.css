@@ -317,6 +317,16 @@ body {
   border-radius: 10px;
 }
 
+input[type='number'].buttonless {
+  appearance: textfield;
+}
+
+input[type='number'].buttonless::-webkit-outer-spin-button,
+input[type='number'].buttonless::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 li > ol {
   /* `list-item` must stay in this reset: the UA stylesheet sets
      `counter-reset: list-item` on every ol/ul, and Firefox derives ordered-list

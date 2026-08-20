@@ -8,6 +8,7 @@ import {
   CommentStoreContext,
   createCommentStore,
 } from '../stores/comment-store';
+import { useCustomSpacingStore } from '../stores/custom-spacing-store';
 
 describe('useEditorCommands', () => {
   let editor: Editor;
@@ -72,6 +73,33 @@ describe('useEditorCommands', () => {
     expect(result.current['format.direction'].current).toBe('rtl');
   });
 
+  it('keeps list marker direction independent from text alignment', () => {
+    editor.commands.setContent('<ul><li><p>hello</p></li></ul>');
+    editor.commands.setTextSelection(4);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.align'].run('right'));
+    expect(editor.isActive('paragraph', { textAlign: 'right' })).toBe(true);
+    expect(editor.isActive('listItem', { dir: 'rtl' })).toBe(false);
+
+    act(() => result.current['format.direction'].run('rtl'));
+    expect(editor.isActive('listItem', { dir: 'rtl' })).toBe(true);
+  });
+
+  it('keeps task checkbox direction independent from text alignment', () => {
+    editor.commands.setContent('<p>hello</p>');
+    editor.commands.setTextSelection(3);
+    editor.commands.toggleTaskList();
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.align'].run('right'));
+    expect(editor.isActive('paragraph', { textAlign: 'right' })).toBe(true);
+    expect(editor.isActive('taskItem', { dir: 'rtl' })).toBe(false);
+
+    act(() => result.current['format.direction'].run('rtl'));
+    expect(editor.isActive('taskItem', { dir: 'rtl' })).toBe(true);
+  });
+
   it('edit.delete removes the selection and tracks enablement', () => {
     const { result } = renderHook(() => useEditorCommands(editor));
     expect(result.current['edit.delete'].isEnabled).toBe(true); // selectAll in setup
@@ -98,6 +126,79 @@ describe('useEditorCommands', () => {
     const { result } = renderHook(() => useEditorCommands(editor));
     act(() => result.current['insert.mermaid'].run());
     expect(editor.isActive('codeBlock', { language: 'mermaid' })).toBe(true);
+  });
+
+  it('format.customSpacing opens the shared dialog through the store', () => {
+    useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
+    const { result } = renderHook(() => useEditorCommands(editor));
+    act(() => result.current['format.customSpacing'].run());
+    expect(useCustomSpacingStore.getState().isCustomSpacingOpen).toBe(true);
+    useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
+  });
+
+  // The pair the second-level nav renders in its Line height submenu. In
+  // jsdom no stylesheet applies, so an untouched paragraph has no gap and the
+  // toggle offers "add" first; in the browser editor.css supplies the gap and
+  // the same read offers "remove" first (see spacing-toggles.test.ts).
+  //
+  // makeEditor builds the v1 schema, so the spacing attribute lands on the
+  // paragraph INSIDE the dBlock — reading doc.firstChild.attrs here would
+  // read the wrapper and pass vacuously.
+  const spacedParagraph = () => editor.state.doc.firstChild?.firstChild?.attrs;
+
+  it('format.spaceBefore reports the toggle half and writes 12pt', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    expect(result.current['format.spaceBefore'].current).toBe('add');
+    act(() => result.current['format.spaceBefore'].run());
+
+    expect(spacedParagraph()?.spaceBefore).toBe(12);
+  });
+
+  // The reason the reading lives in the useEditorState snapshot rather than
+  // being computed at dispatch: writing a margin moves nothing else in that
+  // snapshot, so a memo-only reading would leave the menu label stuck on the
+  // half that was already taken.
+  it('format.spaceBefore flips to remove once a gap exists', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+    act(() => result.current['format.spaceBefore'].run());
+
+    expect(result.current['format.spaceBefore'].current).toBe('remove');
+
+    act(() => result.current['format.spaceBefore'].run());
+    expect(spacedParagraph()?.spaceBefore).toBe(0);
+  });
+
+  it('format.spaceAfter drives the bottom margin independently', () => {
+    editor.commands.setTextSelection(3);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.spaceAfter'].run());
+
+    expect(spacedParagraph()?.spaceAfter).toBe(12);
+    expect(spacedParagraph()?.spaceBefore).toBeNull();
+    expect(result.current['format.spaceBefore'].current).toBe('add');
+  });
+
+  // The spacing reading calls getComputedStyle, a forced style recalc. This
+  // hook renders alongside the consumer's menu bar, which has no memo
+  // boundary, so a selector that re-runs per render (an inline arrow) would
+  // pay that cost on every unrelated re-render rather than per transaction.
+  it('does not re-read layout on renders with no transaction', () => {
+    editor.commands.setTextSelection(3);
+    const { rerender } = renderHook(() => useEditorCommands(editor));
+
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    try {
+      rerender();
+      rerender();
+      rerender();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('returns disabled no-op commands for a null editor', () => {

@@ -245,6 +245,38 @@ export const useExportHeadlessEditorContent = (
         },
         isActive: false,
       },
+      // Mirrors the option in editor-utils.tsx. Without it the headless lane
+      // produces different output from the toolbar for the same document:
+      // block styles (spacing, alignment, line height) and inline styles are
+      // only emitted when includeStyles is on.
+      {
+        icon: 'FileOutput',
+        title: 'Markdown with CSS (.md)',
+        subtitle: 'Keeps colors, fonts & highlights',
+        onClick: async (name?: string) => {
+          const tempEditor = createTempEditorForActiveTab();
+          if (!tempEditor) return;
+
+          try {
+            const fileName =
+              name ||
+              ddocExportSession.exportName ||
+              extractTabTitle(tempEditor.getJSON()) ||
+              'Untitled';
+            const generateDownloadUrl =
+              await tempEditor.commands.exportMarkdownFile({
+                title: fileName,
+                includeStyles: true,
+              });
+            if (generateDownloadUrl) {
+              triggerUrlDownload(generateDownloadUrl, `${fileName}.md`);
+            }
+          } finally {
+            tempEditor.destroy();
+          }
+        },
+        isActive: false,
+      },
       {
         icon: 'FileText',
         title: 'OpenDocument (.odt)',

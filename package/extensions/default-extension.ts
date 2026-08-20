@@ -98,6 +98,7 @@ import { TypographyPersistence } from './typography-persistence';
 import { CustomCodeBlockLowlight } from './code-block/custom-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { LineHeight } from './line-height';
+import { ParagraphSpacing } from './paragraph-spacing';
 
 import { Emoji } from './emoji/emoji';
 
@@ -310,7 +311,7 @@ export const defaultExtensions = ({
     orderedList: {
       HTMLAttributes: {
         class:
-          'flex flex-col items-start list-decimal list-outside space-y-2 !ml-[1.25rem]',
+          'flex flex-col items-start list-decimal list-outside !ml-[1.25rem]',
       },
     },
     blockquote: {
@@ -383,6 +384,7 @@ export const defaultExtensions = ({
   }),
   FontSize,
   LineHeight,
+  ParagraphSpacing,
   Typography,
   TextAlign.configure({
     types: ['heading', 'paragraph'],
@@ -409,7 +411,7 @@ export const defaultExtensions = ({
   Color,
   TaskList.configure({
     HTMLAttributes: {
-      class: 'not-prose space-y-2 !ml-0',
+      class: 'not-prose !ml-0',
     },
   }),
   TaskItem.configure({
@@ -420,7 +422,7 @@ export const defaultExtensions = ({
   }),
   BulletList.configure({
     HTMLAttributes: {
-      class: 'not-prose space-y-2 !ml-[1.25rem]',
+      class: 'not-prose !ml-[1.25rem]',
     },
   }),
   ListItem.configure({

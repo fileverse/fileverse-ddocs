@@ -1,4 +1,5 @@
 import { Editor } from '@tiptap/core';
+import { ownsSpacingAt } from '../extensions/paragraph-spacing';
 
 // Font-size and line-height helpers, extracted verbatim from
 // components/editor-utils.tsx so hooks can use them without importing the
@@ -37,9 +38,35 @@ export const uiValueToPercentage = (uiValue: string): string => {
   return `${Math.round(num * LINE_HEIGHT_BASE)}%`;
 };
 
+/**
+ * CSS line-height comes in three shapes and ddoc stores percentages, so the
+ * attribute needs one meaning. A unitless ratio is exactly percentage / 100,
+ * so it normalises losslessly — Google Docs pastes `line-height:1.38`, which
+ * is `138%`. Absolute units cannot become a ratio without knowing the font
+ * size, so they are passed through untouched rather than guessed at.
+ */
+export const normalizeLineHeight = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  const trimmed = value.replace(/['"]+/g, '').trim();
+  if (!trimmed) return null;
+  if (trimmed.endsWith('%')) return trimmed;
+  if (/^-?\d*\.?\d+$/.test(trimmed)) {
+    return `${Math.round(Number.parseFloat(trimmed) * 100)}%`;
+  }
+  return trimmed;
+};
+
 export const percentageToUiValue = (percentage: string): string => {
-  const num = parseFloat(percentage.replace('%', ''));
-  return (num / LINE_HEIGHT_BASE).toString();
+  // Normalise first: documents pasted before line-height normalisation still
+  // hold a bare ratio, and dividing that by 120 as though it were a percentage
+  // is what collapsed 1.38 to 1%.
+  const normalized = normalizeLineHeight(percentage);
+  if (!normalized?.endsWith('%')) return '';
+  const num = Number.parseFloat(normalized.replace('%', ''));
+  if (Number.isNaN(num)) return '';
+  return String(Number((num / LINE_HEIGHT_BASE).toFixed(4)));
 };
 
 export const LINE_HEIGHT_OPTIONS = [
@@ -52,6 +79,83 @@ export const LINE_HEIGHT_OPTIONS = [
 ];
 
 export const getLineHeightOptions = () => LINE_HEIGHT_OPTIONS;
+
+// Paragraph-spacing bounds. Freeform pt input, so the field needs a sane
+// ceiling; 0 stays a legal value (it kills the CSS default gap).
+export const SPACING_MIN_PT = 0;
+export const SPACING_MAX_PT = 100;
+
+/**
+ * What "Add space before/after paragraph" writes, matching Google Docs.
+ *
+ * A real value rather than null: null would hand the block back to the
+ * stylesheet, and the toggle only offers "Add" when the stylesheet is already
+ * giving it nothing — so restoring null would leave the gap at zero and the
+ * menu item would appear to do nothing.
+ */
+export const SPACING_ADD_PT = 12;
+
+const SPACING_TYPES = ['paragraph', 'heading', 'listItem'];
+
+/** A value shared by every block in the selection, or `'mixed'`. */
+export type SpacingReading<T> = T | 'mixed';
+
+export type SpacingSelection = {
+  spaceBefore: SpacingReading<number | null>;
+  spaceAfter: SpacingReading<number | null>;
+  lineHeight: SpacingReading<string | null>;
+};
+
+/**
+ * Read spacing across the current selection, the single place the dialog and
+ * any read-back should use. `'mixed'` means the selected blocks disagree — the
+ * caller must render that as an empty field and leave the attribute alone on
+ * apply, rather than stamping one block's value onto the rest.
+ */
+export const readSpacingSelection = (
+  editor: Editor | null,
+): SpacingSelection => {
+  const empty: SpacingSelection = {
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+  };
+  if (!editor) return empty;
+
+  const seen: Record<keyof SpacingSelection, Set<unknown>> = {
+    spaceBefore: new Set(),
+    spaceAfter: new Set(),
+    lineHeight: new Set(),
+  };
+
+  const { from, to } = editor.state.selection;
+  editor.state.doc.nodesBetween(from, to, (node, pos, parent) => {
+    if (!SPACING_TYPES.includes(node.type.name)) return;
+    // The list item owns the spacing, so its inner paragraph must not drag the
+    // reading to 'mixed'. Mirrors setParagraphSpacing.
+    if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
+      return;
+    }
+    // Nor may an enclosing item: a cursor in a sub-bullet reports every
+    // ancestor item, whose spacing is not what the dialog is reading.
+    if (!ownsSpacingAt(node, pos, from, to)) return;
+    seen.spaceBefore.add(node.attrs.spaceBefore ?? null);
+    seen.spaceAfter.add(node.attrs.spaceAfter ?? null);
+    seen.lineHeight.add(node.attrs.lineHeight ?? null);
+  });
+
+  const collapse = <T>(values: Set<unknown>): SpacingReading<T | null> => {
+    if (values.size === 0) return null;
+    if (values.size > 1) return 'mixed';
+    return [...values][0] as T | null;
+  };
+
+  return {
+    spaceBefore: collapse<number>(seen.spaceBefore),
+    spaceAfter: collapse<number>(seen.spaceAfter),
+    lineHeight: collapse<string>(seen.lineHeight),
+  };
+};
 
 export const getCurrentLineHeight = (
   editor: Editor | null,
@@ -67,3 +171,96 @@ export const getCurrentLineHeight = (
   }
   return currentLineHeight || '1.15';
 };
+
+const PT_PER_PX = 0.75;
+
+/**
+ * getComputedStyle returns resolved pixels in a browser. jsdom does no layout
+ * and hands back whatever the stylesheet said, so anything that is not px is
+ * treated as unknown rather than parsed into a wrong number.
+ */
+const computedPxToPt = (value: string | undefined): number => {
+  if (!value || !value.endsWith('px')) return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isNaN(parsed) ? 0 : Math.round(parsed * PT_PER_PX);
+};
+
+export type EffectiveSpacing = {
+  spaceBefore: SpacingReading<number>;
+  spaceAfter: SpacingReading<number>;
+};
+
+/**
+ * The spacing a block actually renders with: its explicit attribute when set,
+ * otherwise whatever the stylesheet resolves to.
+ *
+ * Read from the rendered DOM because there is no single default to hardcode —
+ * the gap depends on viewport, schema version, element type, and whether the
+ * block is the first or last child. Both the "add/remove space" menu items and
+ * the custom spacing dialog need the real number, not the attribute.
+ */
+export const readEffectiveSpacing = (
+  editor: Editor | null,
+): EffectiveSpacing => {
+  const seen = {
+    spaceBefore: new Set<number>(),
+    spaceAfter: new Set<number>(),
+  };
+  if (!editor) return { spaceBefore: 0, spaceAfter: 0 };
+
+  const { from, to } = editor.state.selection;
+  editor.state.doc.nodesBetween(from, to, (node, pos, parent) => {
+    if (!SPACING_TYPES.includes(node.type.name)) return;
+    if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
+      return;
+    }
+    if (!ownsSpacingAt(node, pos, from, to)) return;
+    // Both edges already disagree — every remaining block collapses to
+    // 'mixed' whatever it reads, so stop paying for style recalcs. This is
+    // what makes the reading affordable in a per-transaction selector: a
+    // drag-select across a long document stops measuring almost immediately.
+    if (seen.spaceBefore.size > 1 && seen.spaceAfter.size > 1) return false;
+
+    // getComputedStyle forces a style recalc, so it is called only for the
+    // edges that have no attribute to answer with. nodeDOM itself is a map
+    // lookup and costs nothing.
+    let computed: CSSStyleDeclaration | undefined;
+    const measure = () => {
+      if (!computed) {
+        const dom = editor.view.nodeDOM(pos);
+        if (dom instanceof HTMLElement) computed = window.getComputedStyle(dom);
+      }
+      return computed;
+    };
+
+    seen.spaceBefore.add(
+      node.attrs.spaceBefore ?? computedPxToPt(measure()?.marginTop),
+    );
+    seen.spaceAfter.add(
+      node.attrs.spaceAfter ?? computedPxToPt(measure()?.marginBottom),
+    );
+  });
+
+  const collapse = (values: Set<number>): SpacingReading<number> => {
+    if (values.size === 0) return 0;
+    if (values.size > 1) return 'mixed';
+    return [...values][0];
+  };
+
+  return {
+    spaceBefore: collapse(seen.spaceBefore),
+    spaceAfter: collapse(seen.spaceAfter),
+  };
+};
+
+/**
+ * Which half of the Google-Docs-style toggle to offer.
+ *
+ * "Add space before paragraph" only appears once the block genuinely has no
+ * gap — the stylesheet's default counts, so a fresh paragraph offers "Remove"
+ * first. A mixed selection counts as having a gap, since removing is the
+ * action that leaves every block in the same state.
+ */
+export const spacingToggleAction = (
+  effective: SpacingReading<number>,
+): 'add' | 'remove' => (effective === 0 ? 'add' : 'remove');

@@ -4,6 +4,7 @@ import mammoth from 'mammoth';
 import { inlineLoader } from '../../utils/inline-loader';
 import { IpfsImageUploadResponse } from '../../types';
 import { handleMarkdownContent } from '../mardown-paste-handler';
+import { readDocxSpacingFromArchive } from './docx-spacing';
 
 declare module '@tiptap/core' {
   interface Commands {
@@ -83,6 +84,10 @@ export const DocxFileHandler = Extension.create({
               const { value: extractedHtml } = await mammoth.convertToHtml(
                 { arrayBuffer },
                 {
+                  // Off by default. Empty paragraphs must survive for the
+                  // spacing pass below to line up one-to-one with the w:p
+                  // elements — and a blank line the author typed is content.
+                  ignoreEmptyParagraphs: false,
                   convertImage: (mammoth as any).images.inline(
                     async (element: any) => {
                       const buffer = await element.read('base64');
@@ -95,11 +100,20 @@ export const DocxFileHandler = Extension.create({
                 },
               );
 
-              await handleMarkdownContent(
-                view,
+              // Mammoth is a semantic converter and drops w:spacing entirely,
+              // so the spacing is read from the same buffer and zipped back on.
+              const spacedHtml = await readDocxSpacingFromArchive(
+                arrayBuffer,
                 extractedHtml,
-                ipfsImageUploadFn,
               );
+
+              // A blank line the author typed is content — which is why
+              // mammoth is asked for them above. handleMarkdownContent strips
+              // empty paragraphs by default (markdown-it invents its own), so
+              // opt out here or the whole ignoreEmptyParagraphs pass is undone.
+              await handleMarkdownContent(view, spacedHtml, ipfsImageUploadFn, {
+                preserveEmptyParagraphs: true,
+              });
               onDocxImport?.();
             } catch (err: any) {
               console.error(err);
