@@ -1,4 +1,5 @@
 import { Editor } from '@tiptap/core';
+import { ownsSpacingAt } from '../extensions/paragraph-spacing';
 
 // Font-size and line-height helpers, extracted verbatim from
 // components/editor-utils.tsx so hooks can use them without importing the
@@ -128,13 +129,16 @@ export const readSpacingSelection = (
   };
 
   const { from, to } = editor.state.selection;
-  editor.state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+  editor.state.doc.nodesBetween(from, to, (node, pos, parent) => {
     if (!SPACING_TYPES.includes(node.type.name)) return;
     // The list item owns the spacing, so its inner paragraph must not drag the
     // reading to 'mixed'. Mirrors setParagraphSpacing.
     if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
       return;
     }
+    // Nor may an enclosing item: a cursor in a sub-bullet reports every
+    // ancestor item, whose spacing is not what the dialog is reading.
+    if (!ownsSpacingAt(node, pos, from, to)) return;
     seen.spaceBefore.add(node.attrs.spaceBefore ?? null);
     seen.spaceAfter.add(node.attrs.spaceAfter ?? null);
     seen.lineHeight.add(node.attrs.lineHeight ?? null);
@@ -210,6 +214,7 @@ export const readEffectiveSpacing = (
     if (node.type.name === 'paragraph' && parent?.type.name === 'listItem') {
       return;
     }
+    if (!ownsSpacingAt(node, pos, from, to)) return;
     // Both edges already disagree — every remaining block collapses to
     // 'mixed' whatever it reads, so stop paying for style recalcs. This is
     // what makes the reading affordable in a per-transaction selector: a

@@ -80,6 +80,9 @@ export const ParagraphSpacing = Extension.create({
           ) {
             return;
           }
+          // `return`, never `return false`: a container we skip still has to
+          // be descended into to reach the item the cursor is really in.
+          if (!ownsSpacingAt(node, pos, from, to)) return;
           tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch });
         });
 
@@ -284,6 +287,43 @@ export const ParagraphSpacing = Extension.create({
     ];
   },
 });
+
+/**
+ * Whether a block the selection passes through is one the selection is really
+ * IN, rather than a container wrapped around it.
+ *
+ * nodesBetween reports every ancestor spanning the range. That is harmless for
+ * paragraphs and headings, which cannot nest — but a list item holds its
+ * sublist inside it, so a cursor in a sub-bullet also reports the parent item,
+ * the grandparent item, and so on to the top of the list. Left unchecked, one
+ * "add space" puts a gap on every bullet up the chain, and reading back drags
+ * the dialog to 'mixed' and flips the Add/Remove toggle using an ancestor's
+ * value.
+ *
+ * An item owns the selection only where the range touches its OWN content — a
+ * direct textblock child. A range that merely passes through a non-textblock
+ * child (the nested list) belongs to the item inside it, not to this one.
+ *
+ * Written against node shape rather than node names so it holds for any
+ * nesting container, in either schema version.
+ */
+export const ownsSpacingAt = (
+  node: ProseMirrorNode,
+  pos: number,
+  from: number,
+  to: number,
+): boolean => {
+  // A textblock's content is inline: a range inside it is inside the block.
+  if (node.isTextblock) return true;
+
+  let owns = false;
+  node.forEach((child, offset) => {
+    if (owns || !child.isTextblock) return;
+    const start = pos + 1 + offset;
+    if (from <= start + child.nodeSize && to >= start) owns = true;
+  });
+  return owns;
+};
 
 const parsePt = (value: string | null | undefined): number | null => {
   if (!value) return null;

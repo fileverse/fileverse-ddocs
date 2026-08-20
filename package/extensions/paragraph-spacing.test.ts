@@ -109,6 +109,43 @@ describe('paragraphSpacing', () => {
     );
   });
 
+  // nodesBetween reports every ancestor spanning the selection. A list item
+  // wraps its sublist, so a cursor in a sub-bullet reports the parent item too
+  // — and one "add space" used to put the gap on every bullet up the chain.
+  it('spaces only the sub-bullet the cursor is in, not its parent item', () => {
+    const editor = track(
+      makeEditor(
+        '<ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(13); // inside "inner"
+
+    editor.commands.setParagraphSpacing({ spaceAfter: 12 });
+
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>outer</p><ul><li style="margin-bottom: 12pt;">' +
+        '<p>inner</p></li></ul></li></ul>',
+    );
+  });
+
+  // The parent is skipped for being a mere container, not for being a parent:
+  // once the selection reaches its own paragraph, it is a target again.
+  it('spaces both items when the selection covers both levels', () => {
+    const editor = track(
+      makeEditor(
+        '<ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.selectAll();
+
+    editor.commands.setParagraphSpacing({ spaceAfter: 12 });
+
+    expect(editor.getHTML()).toBe(
+      '<ul><li style="margin-bottom: 12pt;"><p>outer</p>' +
+        '<ul><li style="margin-bottom: 12pt;"><p>inner</p></li></ul></li></ul>',
+    );
+  });
+
   it('leaves the other attribute alone when only one key is passed', () => {
     const editor = track(makeEditor('<p>one</p>'));
     editor.commands.setTextSelection(2);

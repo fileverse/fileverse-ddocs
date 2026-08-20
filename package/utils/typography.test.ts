@@ -87,6 +87,22 @@ describe('readSpacingSelection', () => {
     expect(readSpacingSelection(editor).spaceBefore).toBe(12);
   });
 
+  // Same rule again, one level up: an enclosing item is not part of the
+  // reading, or a sub-bullet inherits its parent's value into the dialog and
+  // reads 'mixed' when its own spacing is plainly unset.
+  it('ignores an enclosing item when the cursor is in a sub-bullet', () => {
+    const editor = track(
+      makeEditor(
+        '<ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(4); // inside "outer"
+    editor.commands.setParagraphSpacing({ spaceAfter: 30 });
+    editor.commands.setTextSelection(13); // inside "inner"
+
+    expect(readSpacingSelection(editor).spaceAfter).toBe(null);
+  });
+
   it('reports mixed line heights', () => {
     const editor = track(makeEditor('<p>one</p><p>two</p>'));
     editor.commands.setTextSelection(2);
