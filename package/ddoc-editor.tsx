@@ -925,7 +925,7 @@ const DdocEditor = forwardRef(
               >
                 <div
                   className={cn(
-                    'flex min-h-[100%] items-start',
+                    'flex min-h-full items-start',
                     // Split View: wrap to the right pane's width (no min-w-max),
                     // so there's no horizontal scroll.
                     !isMobile && !isSplitViewActive && 'min-w-max',
@@ -936,6 +936,26 @@ const DdocEditor = forwardRef(
                       'editor-main-lane flex-grow min-w-0 flex overflow-visible items-stretch',
                       shouldScroll ? 'justify-start' : 'justify-center',
                       isMobile && 'w-full',
+                      !isSplitViewActive &&
+                        !isPreviewMode &&
+                        !isFocusMode &&
+                        (isNavbarVisible
+                          ? '-mt-[1.5rem] md:!mt-[0.8rem]'
+                          : null),
+                      !isSplitViewActive && isPreviewMode && 'md:!mt-[1rem]',
+                      {
+                        'md:!mt-[0.7rem]':
+                          !isSplitViewActive && !isPreviewMode && !isFocusMode,
+                      },
+                      {
+                        '-mt-[1.5rem] md:!mt-[0.7rem]':
+                          !isSplitViewActive &&
+                          !isNavbarVisible &&
+                          !isPreviewMode,
+                      },
+                      // Split View: no full-screen top spacing.
+                      isSplitViewActive && 'mt-0',
+                      isFocusMode && 'mt-[48px]',
                     )}
                     data-zoom-below-100={zoom < 1 ? 'true' : 'false'}
                     style={{
@@ -945,7 +965,9 @@ const DdocEditor = forwardRef(
                           // flows inside the right pane's own scroll box.
                           isSplitViewActive
                           ? 'auto'
-                          : `calc(100dvh - 108px - ${footerHeight || '0px'})`,
+                          : isNavbarVisible
+                            ? `calc(100dvh - (var(--navbar) + var(--toolbar)))`
+                            : `calc(100dvh - var(--toolbar))`,
                     }}
                   >
                     <div
@@ -981,30 +1003,6 @@ const DdocEditor = forwardRef(
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
                             'color-bg-default',
-                          !isSplitViewActive &&
-                            !isPreviewMode &&
-                            !isFocusMode &&
-                            (isNavbarVisible
-                              ? '-mt-[1.5rem] md:!mt-[0.8rem]'
-                              : null),
-                          !isSplitViewActive &&
-                            isPreviewMode &&
-                            'md:!mt-[1rem]',
-                          {
-                            'md:!mt-[0.7rem]':
-                              !isSplitViewActive &&
-                              !isPreviewMode &&
-                              !isFocusMode,
-                          },
-                          {
-                            '-mt-[1.5rem] md:!mt-[0.7rem]':
-                              !isSplitViewActive &&
-                              !isNavbarVisible &&
-                              !isPreviewMode,
-                          },
-                          // Split View: no full-screen top spacing.
-                          isSplitViewActive && 'mt-0',
-                          isFocusMode && 'mt-[48px]',
                         )}
                         style={{
                           ...(isMobile
@@ -1435,7 +1433,7 @@ const DdocEditor = forwardRef(
       >
         <div
           className={cn(
-            'w-full',
+            'w-full [--navbar:64px] max-lg:[--navbar:46px] [--toolbar:44px] max-mobile:[--toolbar:52px]',
             !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
           )}
           style={{
@@ -1447,9 +1445,9 @@ const DdocEditor = forwardRef(
                   : `calc(100dvh - ${footerHeight || '0px'})`
                 : !isPreviewMode
                   ? isNavbarVisible
-                    ? `calc(100dvh - 108px - ${footerHeight || '0px'})`
-                    : `calc(100dvh - 52px - ${footerHeight || '0px'})`
-                  : `calc(100dvh - 52px - ${footerHeight || '0px'})`,
+                    ? `calc(100dvh - (var(--toolbar) + var(--navbar)))`
+                    : `calc(100dvh - var(--toolbar))`
+                  : `calc(100dvh - var(--toolbar))`,
           }}
         >
           {/* Author's custom CSS escape hatch. The author writes bare selectors
@@ -1466,7 +1464,7 @@ const DdocEditor = forwardRef(
             id="editor-canvas"
             onMouseDown={handleFocusModeMouseDown}
             className={cn(
-              'h-[100%] flex w-full relative [--navbar:64px] max-lg:[--navbar:46px] [--toolbar:44px] max-mobile:[--toolbar:52px]',
+              'h-[100%] flex w-full relative',
               // Split View: the right-pane wrapper owns the scroll, not the canvas.
               isSplitViewActive ? 'overflow-hidden' : 'overflow-auto',
               !isPreviewMode &&

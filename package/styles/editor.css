@@ -566,7 +566,7 @@
   > .d-block-preview-controls {
   position: absolute;
   right: 100%;
-  top: 2px;
+  top: min(12%, 12px);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -653,7 +653,7 @@
   .ProseMirror [data-type='d-block'] > .d-block-preview-controls {
     position: absolute;
     right: 100%;
-    top: 2px;
+    top: min(12%, 12px);
     display: flex;
     align-items: center;
     gap: 2px;
@@ -661,7 +661,8 @@
     visibility: visible;
   }
 
-  .ProseMirror :is(h1, h2, h3, h4, h5, h6):has(> .d-block-preview-controls-flat) {
+  .ProseMirror
+    :is(h1, h2, h3, h4, h5, h6):has(> .d-block-preview-controls-flat) {
     position: relative;
   }
 
