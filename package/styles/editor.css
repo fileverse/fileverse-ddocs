@@ -872,6 +872,14 @@
 }
 
 .ProseMirror
+  :is(ul, ol):not([data-type='taskList'])
+  > li[dir='rtl']
+  > p[dir='rtl'][style*='text-align: left'] {
+  display: inline-block;
+  max-width: calc(100% - 1.5rem);
+}
+
+.ProseMirror
   li
   > ol
   > li:has(> p[style*='text-align: right'])::before {
