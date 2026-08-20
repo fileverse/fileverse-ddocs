@@ -1,4 +1,4 @@
-# dDocs Editor
+# Fileverse dDocs
 [ddocs.new](http://ddocs.new/) is your privacy-focused, open-source alternative to Google Docs. It is an end-to-end encrypted document editor that is optimized for multiplayer collaboration without compromising on speed or people's control over their data.
 
 ## 𓆏 Features include:
