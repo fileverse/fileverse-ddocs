@@ -59,14 +59,23 @@
 
   p {
     line-height: 1.5;
-    margin-top: 0.5rem;
+    /* Bottom-only: a block owns the gap below it. Two margins per gap collapse
+       to the larger, which made an authored spaceAfter smaller than the next
+       block's top margin do nothing at all. */
+    margin-top: 0;
     margin-bottom: 0.5rem;
 
-    &:first-child {
-      margin-top: 0;
-    }
-
-    &:last-child {
+    /* :where() is load-bearing — it keeps this at (0,1,1) instead of (0,2,1).
+       This reset is for the last paragraph of a semantic container (a quote, a
+       callout, a list item), but in v1 EVERY top-level paragraph is also a
+       last child: the dBlock node view wraps it as
+       `[data-type=d-block] > [data-node-view-content] > p`, alone in that div.
+       At (0,2,1) it therefore outranked the v1 block rule below, which is only
+       (0,2,0), and zeroed the gap under every v1 paragraph — measured in
+       Chrome as 0px where it should be 24px. jsdom resolves this cascade
+       differently and reports 24px either way, so no jsdom test can catch it;
+       block-rhythm.test.ts asserts the `:where()` on the CSS source instead. */
+    &:where(:last-child) {
       margin-bottom: 0;
     }
   }
@@ -79,33 +88,95 @@
     margin-top: 1.5rem;
   }
 
-  /* Flat v2 rhythm: match v1's effective uniform 24px block gap. prose-lg
-     gives headings 48px margins; v1 never shows them (margins collapse
-     through the wrapper rows), so v2 pins headings to the same 1.5rem as
-     paragraphs. */
-  &[data-schema-version='2'] {
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6 {
-      margin-top: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
+  /* Uniform 24px block gap. prose-lg gives headings 48px margins; v1 used to
+     hide them because margins collapsed through the dBlock wrapper rows, so
+     this pin was v2-only. Bottom-only spacing collapses nothing, which would
+     expose them in v1 — hence pinned for both schema versions. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
   }
 
   & > p {
-    margin-top: 1.5rem;
+    margin-top: 0;
     margin-bottom: 1.5rem;
-
-    &:first-child {
-      margin-top: 0;
-    }
 
     &:last-child {
       margin-bottom: 0;
     }
+  }
+
+  /* v1 wraps every block twice — dBlock row > div > block — so `.ProseMirror
+     > *` puts the gap on the outer wrapper while authored spacing renders on
+     the block itself. A parent's bottom margin collapses with its last child's
+     and the larger wins, so the wrapper's default floored anything set below
+     it. The gap therefore belongs to the same element the attribute does, and
+     both wrappers carry none and let it collapse out through them (neither has
+     padding or a border, so it does). Structural rather than gated on
+     data-schema-version: dBlocks only exist in v1, and this then holds
+     wherever the editor DOM renders without that attribute. */
+  & > [data-type='d-block'] {
+    margin-bottom: 0;
+
+    > * {
+      margin-bottom: 0;
+
+      > * {
+        margin-bottom: 1.5rem;
+      }
+    }
+
+    &:last-child > * > * {
+      margin-bottom: 0;
+    }
+  }
+
+  /* A list owns no vertical gap; its ITEMS do — the same "a block owns the gap
+     below it" rule everything else follows. Lists used to be the one exception:
+     Tailwind's `space-y-2` put the gap on the NEXT item's margin-top, and the
+     block gap below the list sat on the <ul> itself. Neither is reachable from
+     the `listItem` attribute that Add/Remove space and the dialog write to, so
+     "remove space after" on a bullet was a silent no-op (TEC-2701 A9.5).
+
+     The last item carries the block gap the container used to hold, which is
+     what lets "remove space after" on the final bullet close the gap after the
+     whole list. Google Docs models it the same way: an item IS a paragraph, and
+     there is no separate spacing object for the container. */
+  :is(ul, ol) {
+    margin-bottom: 0;
+
+    > li {
+      margin-bottom: 0.5rem;
+    }
+  }
+
+  /* Flat v2: the list is a direct child of the editor. */
+  & > :is(ul, ol) > li:last-child {
+    margin-bottom: 1.5rem;
+  }
+
+  & > :is(ul, ol):last-child > li:last-child {
+    margin-bottom: 0;
+  }
+
+  /* v1 wraps twice, and the block rule above is (0,2,0) — the plain
+     `:is(ul, ol)` reset is only (0,1,1) and would lose to it, so the container
+     has to be zeroed again at matching specificity. */
+  & > [data-type='d-block'] > * > :is(ul, ol) {
+    margin-bottom: 0;
+
+    > li:last-child {
+      margin-bottom: 1.5rem;
+    }
+  }
+
+  & > [data-type='d-block']:last-child > * > :is(ul, ol) > li:last-child {
+    margin-bottom: 0;
   }
 
   .media-node-view {
@@ -766,9 +837,16 @@
   width: 1000vw;
 }
 
-.ProseMirror > * + * {
-  margin-top: 1.5em;
+/* Every child, not `* + *`: the gap now hangs below each block, so the first
+   one needs it too — it was only skipped because a top margin would have
+   pushed the document down. */
+.ProseMirror > * {
+  margin-top: 0;
   margin-bottom: 1.5em;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 .ProseMirror ul,
 .ProseMirror ol {

@@ -87,7 +87,12 @@ export const sanitizeHtmlExportBody = (html: string): string =>
       'tfoot',
       ...MERMAID_SVG_TAGS,
     ],
-    ALLOWED_ATTR: ['href', 'src', 'alt', ...MERMAID_SVG_ATTRS],
+    // `style` is listed explicitly even though MERMAID_SVG_ATTRS already
+    // carries it: block styling (paragraph spacing, alignment, line height)
+    // reaches an export through this one attribute, and inheriting it from a
+    // list named for Mermaid SVGs makes it look incidental. Naming it here
+    // keeps narrowing that list from silently stripping every block style.
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'style', ...MERMAID_SVG_ATTRS],
     FORBID_ATTR: ['data-toc-id', 'data-tight'],
   });
 

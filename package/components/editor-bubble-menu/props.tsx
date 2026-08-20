@@ -87,3 +87,26 @@ export const shouldShow = ({ editor }: { editor: Editor }) => {
 // the mobile native-selection fallback.
 export const shouldShowIgnoringFocus = (editor: Editor) =>
   shouldShowBubbleMenu(editor, true);
+
+/**
+ * Whether the bubble menu should take itself out of the way.
+ *
+ * It floats at an inline `z-index: 61` while @fileverse/ui dialogs stack at
+ * `z-50`, so a modal cannot paint over it — anything that owns the screen has
+ * to hide the menu explicitly or it overlaps the dialog.
+ */
+export const isBubbleMenuHidden = ({
+  isCommentOpen,
+  isLinkPopupOpen,
+  isBubbleMenuSuppressed,
+  isCustomSpacingOpen,
+}: {
+  isCommentOpen: boolean;
+  isLinkPopupOpen: boolean;
+  isBubbleMenuSuppressed: boolean;
+  isCustomSpacingOpen: boolean;
+}) =>
+  isCommentOpen ||
+  isLinkPopupOpen ||
+  isBubbleMenuSuppressed ||
+  isCustomSpacingOpen;

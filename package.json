@@ -2,7 +2,7 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "4.7.5",
+  "version": "4.7.6",
   "main": "dist/index.es.js",
   "module": "dist/index.es.js",
   "exports": {
@@ -99,6 +99,7 @@
     "highlight.js": "^11.11.1",
     "html2pdf.js": "^0.14.0",
     "js-base64": "^3.7.7",
+    "jszip": "^3.10.1",
     "katex": "^0.16.11",
     "lib0": "^0.2.95",
     "lowlight": "^3.3.0",
