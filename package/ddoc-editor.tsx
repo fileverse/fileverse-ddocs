@@ -1377,7 +1377,7 @@ const DdocEditor = forwardRef(
                 <LucideIcon name="MessageSquareText" size="sm" />
               </Button>
             )}
-            {!isPreviewMode && !disableBottomToolbar && (
+            {!isPreviewMode && !disableBottomToolbar && !isFocusMode && (
               <div
                 className={cn(
                   'flex mobile:hidden items-center w-full h-[52px] fixed left-0 z-10 px-4 color-bg-default transition-all duration-300 ease-in-out border-b border-color-default',
