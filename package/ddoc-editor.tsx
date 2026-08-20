@@ -673,7 +673,7 @@ const DdocEditor = forwardRef(
       editor.commands.focus();
     }, [isFocusMode, editor]);
 
-    const isMobile = useMediaQuery('(max-width: 768px)');
+    const isMobile = useMediaQuery('(max-width: 850px)');
     const tabCommentCounts = useMemo(() => {
       return (initialComments || []).reduce<Record<string, number>>(
         (acc, comment) => {
@@ -880,52 +880,6 @@ const DdocEditor = forwardRef(
               />
             )}
             <div
-              className={cn(
-                'editor-left-rail',
-                shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
-                !isMobile && 'flex-[1_0_263px]',
-                !isPreviewMode &&
-                  !isFocusMode &&
-                  isNavbarVisible &&
-                  '-mt-[1.5rem] md:!mt-[0.8rem]',
-                isPreviewMode && 'md:!mt-[1rem]',
-                { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
-                {
-                  '-mt-[1.5rem] md:!mt-[0.7rem]':
-                    !isNavbarVisible && !isPreviewMode,
-                },
-                isFocusMode && 'mt-[48px]',
-                isFocusMode && !showTOC && shouldHideRight && 'hidden',
-              )}
-            >
-              {editor && shouldRenderDocumentOutline && (
-                <DocumentOutline
-                  editor={editor}
-                  hasToC={true}
-                  items={tocItems}
-                  setItems={setTocItems}
-                  showTOC={showTOC}
-                  setShowTOC={setShowTOC}
-                  isPreviewMode={isPreviewMode || !isNavbarVisible}
-                  orientation={documentStyling?.orientation}
-                  tabs={tabs}
-                  setTabs={setTabs}
-                  activeTabId={activeTabId}
-                  setActiveTabId={setActiveTabId}
-                  createTab={createTab}
-                  renameTab={renameTab}
-                  duplicateTab={duplicateTab}
-                  orderTab={orderTab}
-                  deleteTab={deleteTab}
-                  ydoc={ydoc}
-                  tabCommentCounts={tabCommentCounts}
-                  tabConfig={tabConfig}
-                  isConnected={isConnected}
-                  isFocusMode={isFocusMode}
-                />
-              )}
-            </div>
-            <div
               ref={editorScrollContainerRef}
               data-editor-scroll-container="true"
               className={cn(
@@ -936,6 +890,55 @@ const DdocEditor = forwardRef(
                 isLandscapeMode && 'mx-[24px]',
               )}
             >
+              {/* Both rails live INSIDE this scroller so it keeps spanning the full
+                  width — its scrollbar then sits at the container edge, not beside
+                  the page — while the rails split the leftover space symmetrically. */}
+              <div
+                className={cn(
+                  'editor-left-rail',
+                  shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
+                  !isMobile && 'max-w-[263px] w-full',
+                  !isPreviewMode &&
+                    !isFocusMode &&
+                    isNavbarVisible &&
+                    '-mt-[1.5rem] md:!mt-[0.8rem]',
+                  isPreviewMode && 'md:!mt-[1rem]',
+                  { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                  {
+                    '-mt-[1.5rem] md:!mt-[0.7rem]':
+                      !isNavbarVisible && !isPreviewMode,
+                  },
+                  isFocusMode && 'mt-[48px]',
+                  isFocusMode && !showTOC && shouldHideRight && 'hidden',
+                )}
+              >
+                {editor && shouldRenderDocumentOutline && (
+                  <DocumentOutline
+                    editor={editor}
+                    hasToC={true}
+                    items={tocItems}
+                    setItems={setTocItems}
+                    showTOC={showTOC}
+                    setShowTOC={setShowTOC}
+                    isPreviewMode={isPreviewMode || !isNavbarVisible}
+                    orientation={documentStyling?.orientation}
+                    tabs={tabs}
+                    setTabs={setTabs}
+                    activeTabId={activeTabId}
+                    setActiveTabId={setActiveTabId}
+                    createTab={createTab}
+                    renameTab={renameTab}
+                    duplicateTab={duplicateTab}
+                    orderTab={orderTab}
+                    deleteTab={deleteTab}
+                    ydoc={ydoc}
+                    tabCommentCounts={tabCommentCounts}
+                    tabConfig={tabConfig}
+                    isConnected={isConnected}
+                    isFocusMode={isFocusMode}
+                  />
+                )}
+              </div>
               {/* Split View: drop w-full — inside the flex scroll container it
                   pins this to the fixed page width and leaves dead space; letting
                   it size naturally lets the content fill the pane. */}
@@ -1345,7 +1348,7 @@ const DdocEditor = forwardRef(
               <div
                 className={cn(
                   'editor-right-rail',
-                  !isMobile && 'flex-[1_1_263px]',
+                  !isMobile && 'max-w-[263px] w-full',
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
