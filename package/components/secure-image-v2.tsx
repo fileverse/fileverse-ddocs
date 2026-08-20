@@ -1,6 +1,33 @@
 import { useState, useEffect, forwardRef } from 'react';
 import { Skeleton } from '@fileverse/ui';
 import { IpfsImageFetchPayload } from '../types.ts';
+import {
+  normalizeSvgDimensions,
+  readFileText,
+} from '../utils/svg-normalize.ts';
+
+/**
+ * Already-stored SVGs can't be rewritten (the encrypted bytes are pinned),
+ * so dimensionless ones — which Firefox renders at 0 height — are pinned
+ * again at render time: swap the decrypted blob for one whose root carries
+ * concrete width/height. Fail-open: any error keeps the original URL.
+ */
+const normalizeSvgObjectUrl = async (
+  file: File,
+  originalUrl: string,
+): Promise<string> => {
+  try {
+    const normalized = normalizeSvgDimensions(await readFileText(file));
+    if (!normalized) return originalUrl;
+    const url = URL.createObjectURL(
+      new Blob([normalized], { type: 'image/svg+xml' }),
+    );
+    URL.revokeObjectURL(originalUrl);
+    return url;
+  } catch {
+    return originalUrl;
+  }
+};
 
 type Props = {
   encryptionKey: string;
@@ -53,7 +80,11 @@ export const SecureImageV2 = forwardRef<HTMLImageElement, Props>(
               mimeType,
               authTag,
             });
-            currentObjectUrl = result.url;
+            currentObjectUrl =
+              result.file?.type === 'image/svg+xml' ||
+              mimeType === 'image/svg+xml'
+                ? await normalizeSvgObjectUrl(result.file, result.url)
+                : result.url;
             // add check before setting state
             // in order to prevent react errors / warning that occurs when you set state when component is unmounting
             if (isMounted) {

@@ -2,6 +2,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { IMG_UPLOAD_SETTINGS } from '../../../components/editor-utils';
 import { startImageUpload } from '../../../utils/upload-images.tsx';
 import { validateImageExtension } from '../../../utils/check-image-type.ts';
+import { normalizeSvgFile } from '../../../utils/svg-normalize.ts';
 import { IpfsImageUploadResponse } from '../../../types.ts';
 
 export type UploadFnType = (image: File) => Promise<string>;
@@ -140,7 +141,7 @@ export const getMediaPasteDropPlugin = (
               view.dispatch(transaction);
             };
 
-            reader.readAsDataURL(imageOrVideo);
+            reader.readAsDataURL(await normalizeSvgFile(imageOrVideo));
           }
         });
 
