@@ -98,7 +98,8 @@ export type ThemeKey =
   | 'dark'
   | 'theme-sepia'
   | 'theme-pink'
-  | 'theme-green';
+  | 'theme-green'
+  | 'theme-ultra-dark';
 
 export interface ThemeVariantValue {
   light: string;

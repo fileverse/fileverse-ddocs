@@ -116,7 +116,8 @@
   --color-editor-neutral-14: #808080;
 }
 .dark,
-.theme-green {
+.theme-green,
+.theme-ultra-dark {
   --color-editor-rose: #ff6161;
   --color-editor-rose-1: #ff9999;
   --color-editor-rose-2: #ffd1d1;
@@ -222,6 +223,89 @@
   --color-editor-neutral-12: #8f8f8f;
   --color-editor-neutral-13: #878787;
   --color-editor-neutral-14: #808080;
+}
+
+/*
+ * Ultra Dark keeps the established dark-theme semantics while lowering the
+ * document canvas to the #0a0a0a surface used by the hosted dDocs preview.
+ * The complete token set makes the theme safe to mount without depending on
+ * an additional `.dark` ancestor.
+ */
+.theme-ultra-dark {
+  /* Button */
+  --color-button-default: 0, 0%, 20%, 1;
+  --color-button-default-hover: 0, 0%, 27%, 1;
+  --color-button-secondary: 0, 0%, 4%, 1;
+  --color-button-secondary-hover: 0, 0%, 12%, 1;
+  --color-button-disabled: 0, 0%, 16%, 1;
+  --color-button-danger: 354, 96%, 59%, 1;
+  --color-button-danger-hover: 354, 84%, 42%, 1;
+  --color-button-floating: 0, 0%, 16%, 1;
+  --color-button-floating-hover: 0, 0%, 22%, 1;
+
+  /* Text */
+  --color-text-default: 0, 0%, 91%, 1;
+  --color-text-secondary: 0, 0%, 65%, 1;
+  --color-text-disabled: 0, 0%, 46%, 1;
+  --color-text-danger: 354, 100%, 70%, 1;
+  --color-text-success: 126, 67%, 45%, 1;
+  --color-text-inverse: 0, 0%, 91%, 1;
+  --color-text-link: 251, 100%, 83%, 1;
+  --color-text-on-brand: 0, 0%, 10%, 1;
+
+  /* Background */
+  --color-bg-default: 0, 0%, 4%, 1; /* #0a0a0a */
+  --color-bg-default-hover: 0, 0%, 12%, 1;
+  --color-bg-default-active: 50, 74%, 54%, 1;
+  --color-bg-default-selected: 0, 0%, 15%, 1;
+  --color-bg-secondary: 0, 0%, 2%, 1;
+  --color-bg-secondary-hover: 0, 0%, 10%, 1;
+  --color-bg-disabled: 0, 0%, 35%, 1;
+  --color-bg-brand: 50, 74%, 54%, 1;
+  --color-bg-brand-hover: 50, 60%, 45%, 1;
+  --color-bg-brand-light: 57, 92%, 76%, 1;
+  --color-bg-danger: 354, 84%, 42%, 1;
+  --color-bg-danger-light: 356, 100%, 97%, 1;
+  --color-bg-default-inverse: 0, 0%, 91%, 1;
+  --color-bg-tertiary: 0, 0%, 15%, 1;
+  --color-bg-success: 128, 59%, 20%, 1;
+  --color-bg-success-light: 128, 59%, 20%, 1;
+  --color-bg-info-light: 254, 100%, 73%, 0.16;
+
+  /* Border */
+  --color-border-default: 0, 0%, 37%, 1;
+  --color-border-hover: 0, 0%, 46%, 1;
+  --color-border-light: 0, 0%, 53%, 1;
+  --color-border-active: 0, 0%, 91%, 1;
+  --color-border-focused: 254, 100%, 73%, 1;
+  --color-border-danger: 354, 100%, 70%, 1;
+  --color-border-warning: 22, 89%, 62%, 1;
+  --color-border-success: 126, 74%, 73%, 1;
+  --color-border-info: 254, 100%, 73%, 1;
+  --color-border-disabled: 0, 0%, 46%, 1;
+
+  /* Icon */
+  --color-icon-default: 0, 0%, 100%, 1;
+  --color-icon-default-hover: 0, 0%, 91%, 1;
+  --color-icon-brand: 50, 74%, 54%, 1;
+  --color-icon-secondary: 0, 0%, 65%, 1;
+  --color-icon-disabled: 0, 0%, 35%, 1;
+  --color-icon-inverse: 207, 8%, 23%, 1;
+  --color-icon-danger: 354, 100%, 70%, 1;
+  --color-icon-warning: 22, 89%, 62%, 1;
+  --color-icon-info: 254, 100%, 73%, 1;
+  --color-icon-success: 126, 74%, 73%, 1;
+  --color-icon-on-brand: 0, 0%, 10%, 1;
+
+  /* Tooltip and comments */
+  --color-bg-tooltip: 0, 0%, 91%, 1;
+  --color-text-tooltip: 0, 0%, 4%, 1;
+  --color-inline-comment: 128, 59%, 20%, 1;
+  --color-inline-comment-active: 127, 69%, 29%, 1;
+
+  /* Utility */
+  --color-bg-transparent: 0, 0%, 100%, 0.06;
+  --color-utility-overlay: 0, 0%, 0%, 0.8;
 }
 ul,
 ol {

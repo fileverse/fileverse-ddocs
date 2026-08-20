@@ -663,7 +663,11 @@ export const getResponsiveColor = (
   try {
     if (color.startsWith('var(--color-editor-')) return color;
     const colorObj = Color(color);
-    if (theme === 'dark' || theme === 'theme-green') {
+    if (
+      theme === 'dark' ||
+      theme === 'theme-green' ||
+      theme === 'theme-ultra-dark'
+    ) {
       if (colorObj.isDark()) {
         if (colorObj.black() === 100) return colorObj.negate().hex(); // if the color is hard black, turn to white
         return lightenBy(colorObj, 0.5);
