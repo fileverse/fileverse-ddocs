@@ -341,7 +341,7 @@ li > ol > li:before {
   counter-increment: list;
   content: counter(list, lower-alpha) '. ';
   position: absolute;
-  left: -1.4em;
+  inset-inline-start: -1.4em;
 }
 
 /* Level 3 nested items to use Roman numerals */
@@ -358,7 +358,7 @@ li > ol > li > ol > li:before {
   counter-increment: sublist;
   content: counter(sublist, lower-roman) '. ';
   position: absolute;
-  left: -1.4em;
+  inset-inline-start: -1.4em;
 }
 
 .tooltip:before {

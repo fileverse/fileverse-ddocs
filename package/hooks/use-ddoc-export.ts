@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/react';
 import { JSONContent } from '@tiptap/core';
 import * as Y from 'yjs';
 import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
-import { IEditorToolElement } from '../components/editor-utils';
+import { CopyAo3Html, IEditorToolElement } from '../components/editor-utils';
 import { Tab } from '../components/tabs/utils/tab-utils';
 import { stripFrontmatter } from '../extensions/mardown-paste-handler';
 import { extractTitleFromContent } from '../utils/extract-title-from-content';
@@ -17,6 +17,7 @@ interface UseDdocExportArgs {
   tabs: Tab[];
   ydoc: Y.Doc | null;
   exportOptions: (IEditorToolElement | null)[];
+  copyAo3Html?: CopyAo3Html;
 }
 
 const useDdocExport = ({
@@ -24,6 +25,7 @@ const useDdocExport = ({
   tabs,
   ydoc,
   exportOptions,
+  copyAo3Html,
 }: UseDdocExportArgs) => {
   const normalizeTabTitle = useCallback(
     (title?: string) => (title || 'Untitled').replace(/\s+/g, ' ').trim(),
@@ -42,6 +44,7 @@ const useDdocExport = ({
   );
 
   const getOptionFormat = useCallback((title: string) => {
+    if (title === 'Copy HTML') return 'ao3-html';
     if (title.includes('(.pdf)')) return 'pdf';
     // Check "with CSS" before "(.md)" — its title contains both.
     if (title.includes('with CSS')) return 'md-css';
@@ -182,7 +185,7 @@ const useDdocExport = ({
     [createTempEditorForTab, editor, getTitle, normalizeTabTitle, tabs, ydoc],
   );
 
-  const exportAllTabsAsHtml = useCallback(
+  const downloadAllTabsAsHtmlFile = useCallback(
     async (name?: string) => {
       if (!editor || !ydoc || tabs.length === 0) return;
       const baseTitle = name || getTitle();
@@ -227,6 +230,47 @@ const useDdocExport = ({
       ydoc,
     ],
   );
+
+  const copyAllTabsAsAo3Html = useCallback(async () => {
+    if (!editor || !ydoc || tabs.length === 0 || !copyAo3Html) return;
+
+    await copyAo3Html(async () => {
+      const tempEditors: Editor[] = [];
+      try {
+        const allTabHtml: string[] = [];
+
+        for (const tab of tabs) {
+          const tempEditor = createTempEditorForTab(tab.id);
+          if (!tempEditor) continue;
+          tempEditors.push(tempEditor);
+
+          if (tempEditor.isEmpty) continue;
+
+          const bodyHtml = await tempEditor.commands.exportHtmlContent();
+          if (!bodyHtml?.trim()) continue;
+
+          const tabTitle = normalizeTabTitle(tab.name);
+          allTabHtml.push(`<h1>${escapeHtml(tabTitle)}</h1>\n${bodyHtml}`);
+        }
+
+        if (allTabHtml.length === 0) {
+          throw new Error('HTML export returned no tab content');
+        }
+
+        return allTabHtml.join('\n');
+      } finally {
+        tempEditors.forEach((tempEditor) => tempEditor.destroy());
+      }
+    });
+  }, [
+    copyAo3Html,
+    createTempEditorForTab,
+    editor,
+    escapeHtml,
+    normalizeTabTitle,
+    tabs,
+    ydoc,
+  ]);
 
   const exportAllTabsAsText = useCallback(
     async (name?: string) => {
@@ -330,6 +374,10 @@ const useDdocExport = ({
       const isAllTabs = tab === 'all';
 
       if (isAllTabs) {
+        if (format === 'ao3-html') {
+          await copyAllTabsAsAo3Html();
+          return;
+        }
         if (format === 'pdf') {
           await exportAllTabsAsPdf();
           return;
@@ -343,7 +391,7 @@ const useDdocExport = ({
           return;
         }
         if (format === 'html') {
-          await exportAllTabsAsHtml(name);
+          await downloadAllTabsAsHtmlFile(name);
           return;
         }
         if (format === 'txt') {
@@ -361,7 +409,8 @@ const useDdocExport = ({
     },
     [
       editor,
-      exportAllTabsAsHtml,
+      copyAllTabsAsAo3Html,
+      downloadAllTabsAsHtmlFile,
       exportAllTabsAsMarkdown,
       exportAllTabsAsOdt,
       exportAllTabsAsPdf,

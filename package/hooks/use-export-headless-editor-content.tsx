@@ -171,7 +171,6 @@ export const useExportHeadlessEditorContent = (
       {
         icon: 'FileText',
         title: 'Web page (.html)',
-        subtitle: 'AO3 compatible',
         onClick: async (name?: string) => {
           const tempEditor = createTempEditorForActiveTab();
           if (!tempEditor) return;

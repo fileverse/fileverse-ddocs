@@ -73,6 +73,33 @@ describe('useEditorCommands', () => {
     expect(result.current['format.direction'].current).toBe('rtl');
   });
 
+  it('keeps list marker direction independent from text alignment', () => {
+    editor.commands.setContent('<ul><li><p>hello</p></li></ul>');
+    editor.commands.setTextSelection(4);
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.align'].run('right'));
+    expect(editor.isActive('paragraph', { textAlign: 'right' })).toBe(true);
+    expect(editor.isActive('listItem', { dir: 'rtl' })).toBe(false);
+
+    act(() => result.current['format.direction'].run('rtl'));
+    expect(editor.isActive('listItem', { dir: 'rtl' })).toBe(true);
+  });
+
+  it('keeps task checkbox direction independent from text alignment', () => {
+    editor.commands.setContent('<p>hello</p>');
+    editor.commands.setTextSelection(3);
+    editor.commands.toggleTaskList();
+    const { result } = renderHook(() => useEditorCommands(editor));
+
+    act(() => result.current['format.align'].run('right'));
+    expect(editor.isActive('paragraph', { textAlign: 'right' })).toBe(true);
+    expect(editor.isActive('taskItem', { dir: 'rtl' })).toBe(false);
+
+    act(() => result.current['format.direction'].run('rtl'));
+    expect(editor.isActive('taskItem', { dir: 'rtl' })).toBe(true);
+  });
+
   it('edit.delete removes the selection and tracks enablement', () => {
     const { result } = renderHook(() => useEditorCommands(editor));
     expect(result.current['edit.delete'].isEnabled).toBe(true); // selectAll in setup

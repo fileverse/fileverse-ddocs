@@ -853,6 +853,39 @@
   margin-left: 2rem;
   text-wrap: text-wrap;
 }
+
+.ProseMirror
+  :is(ul, ol):not([data-type='taskList'])
+  > li:has(> p[style*='text-align: right']) {
+  width: 100%;
+  max-width: 100%;
+  text-align: right;
+  list-style-position: inside;
+
+  > p[style*='text-align: right'] {
+    display: inline;
+  }
+
+  > :is(ul, ol) {
+    text-align: start;
+  }
+}
+
+.ProseMirror
+  li
+  > ol
+  > li:has(> p[style*='text-align: right'])::before {
+  position: static;
+}
+
+.ProseMirror
+  ul[data-type='taskList']
+  > li:has(> div > p[style*='text-align: right']) {
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+
 .ProseMirror h1,
 .ProseMirror h2,
 .ProseMirror h3 {
@@ -911,13 +944,13 @@
 }
 
 ul[data-type='taskList'] li > label {
-  margin-right: 0.2rem;
+  margin-inline-end: 0.2rem;
   user-select: none;
 }
 
 @media screen and (max-width: 768px) {
   ul[data-type='taskList'] li > label {
-    margin-right: 0.5rem;
+    margin-inline-end: 0.5rem;
   }
 }
 
@@ -932,7 +965,7 @@ ul[data-type='taskList'] li > label input[type='checkbox'] {
   top: 0;
   border: 2px solid #363b3f;
   border-radius: 4px;
-  margin-right: 0.3rem;
+  margin-inline-end: 0.3rem;
   display: inline-grid;
   place-content: center;
   transition: all 0.2s ease;

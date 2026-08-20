@@ -11,7 +11,11 @@ import {
   DropdownMenuItem,
 } from '@fileverse/ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IEditorToolElement, useEditorToolbar } from './editor-utils';
+import {
+  CopyAo3Html,
+  IEditorToolElement,
+  useEditorToolbar,
+} from './editor-utils';
 import { DdocExportModal } from './export-modal';
 import { Editor } from '@tiptap/react';
 import { Tab } from './tabs/utils/tab-utils';
@@ -26,6 +30,7 @@ const ImportExportButton = ({
   editor,
   tabs,
   ydoc,
+  copyAo3Html,
   onRegisterExportTrigger,
 }: {
   fileExportsOpen: boolean;
@@ -35,6 +40,7 @@ const ImportExportButton = ({
   editor: Editor | null;
   tabs: Tab[];
   ydoc: Y.Doc;
+  copyAo3Html: CopyAo3Html;
   onRegisterExportTrigger?:
     | ((trigger: ((format?: string, name?: string) => void) | null) => void)
     | undefined;
@@ -50,6 +56,7 @@ const ImportExportButton = ({
     tabs,
     ydoc,
     exportOptions,
+    copyAo3Html,
   });
 
   const { printHandler } = useEditorToolbar({ editor });
@@ -110,7 +117,7 @@ const ImportExportButton = ({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <div className="flex items-center space-x-2">
-                <LucideIcon name="FileExport" className="w-5 h-5" />
+                <LucideIcon name="FileImport" className="w-5 h-5" />
                 <span className="text-body-sm">Export</span>
               </div>
             </DropdownMenuSubTrigger>
@@ -154,7 +161,7 @@ const ImportExportButton = ({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <div className="flex items-center space-x-2">
-                <LucideIcon name="FileImport" className="w-5 h-5" />
+                <LucideIcon name="FileExport" className="w-5 h-5" />
                 <span className="text-body-sm">Import</span>
               </div>
             </DropdownMenuSubTrigger>

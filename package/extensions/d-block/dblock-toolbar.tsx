@@ -8,6 +8,7 @@ import {
   renderTemplateButtons,
 } from '../../utils/template-utils';
 import { unwrapDBlocksInJSON } from '../../utils/block-schema';
+import type { TabbedJSONContent } from '../../hooks/use-headless-editor';
 import {
   DEFAULT_DBLOCK_RUNTIME_STATE,
   type DBlockRuntimeState,
@@ -88,9 +89,13 @@ export const getTemplateTarget = (
 
 const DBlockTemplateOverlay = ({
   editor,
+  enableFanficTemplate,
+  onApplyTabbedTemplate,
   runtimeState,
 }: {
   editor: Editor | null;
+  enableFanficTemplate: boolean;
+  onApplyTabbedTemplate?: (template: TabbedJSONContent) => void;
   runtimeState: DBlockRuntimeState;
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -142,12 +147,17 @@ const DBlockTemplateOverlay = ({
   );
 
   const templateButtons = useMemo(
-    () => createTemplateButtons(addTemplate),
-    [addTemplate],
+    () =>
+      createTemplateButtons(
+        addTemplate,
+        onApplyTabbedTemplate,
+        enableFanficTemplate,
+      ),
+    [addTemplate, enableFanficTemplate, onApplyTabbedTemplate],
   );
   const moreTemplates = useMemo(
-    () => createMoreTemplates(addTemplate),
-    [addTemplate],
+    () => createMoreTemplates(addTemplate, enableFanficTemplate),
+    [addTemplate, enableFanficTemplate],
   );
 
   const toggleAllTemplates = useCallback(() => {
@@ -201,17 +211,21 @@ const DBlockTemplateOverlay = ({
 export const DBlockToolbarProvider = ({
   children,
   editor,
+  enableFanficTemplate = false,
   runtimeState = DEFAULT_DBLOCK_RUNTIME_STATE,
   isPreviewEditor = false,
+  onApplyTabbedTemplate,
   onCopyHeadingLink,
 }: {
   children: React.ReactNode;
   editor: Editor | null;
+  enableFanficTemplate?: boolean;
   runtimeState?: DBlockRuntimeState;
   // Feeds the cluster's copy-link slot, which covers the editable-preview
   // states (comment & suggest); the CSS-gated node-view/decoration controls
   // cover the non-editable ones. See DBlockDragHandle.
   onCopyHeadingLink?: (link: string) => void;
+  onApplyTabbedTemplate?: (template: TabbedJSONContent) => void;
   // Statically read-only surfaces (PreviewDdocEditor: blog preview, version
   // history) must never mount block chrome. The read-only heading
   // affordances live inside the node view, and the upstream DragHandle
@@ -238,7 +252,12 @@ export const DBlockToolbarProvider = ({
           onCopyHeadingLink={onCopyHeadingLink}
         />
       ) : null}
-      <DBlockTemplateOverlay editor={editor} runtimeState={runtimeState} />
+      <DBlockTemplateOverlay
+        editor={editor}
+        enableFanficTemplate={enableFanficTemplate}
+        runtimeState={runtimeState}
+        onApplyTabbedTemplate={onApplyTabbedTemplate}
+      />
     </>
   );
 };
