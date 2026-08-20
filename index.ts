@@ -3,6 +3,11 @@ export { PreviewDdocEditor } from './package/preview-ddoc-editor';
 export { handleContentPrint } from './package/utils/handle-print';
 export { DdocExportModal } from './package/components/export-modal';
 export { useHeadlessEditor } from './package/hooks/use-headless-editor';
+export type {
+  TabbedJSONContent,
+  TabbedJSONContentTab,
+} from './package/hooks/use-headless-editor';
+export { FANFIC_TEMPLATE } from './package/utils/fanfic-template';
 export { useEditorCommands } from './package/hooks/use-editor-commands';
 export type {
   EditorCommand,

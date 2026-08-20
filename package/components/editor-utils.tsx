@@ -33,6 +33,7 @@ import {
   TextAreaFieldV2,
   TextField,
   Tooltip,
+  toast,
   useTheme,
 } from '@fileverse/ui';
 import { useMediaQuery } from 'usehooks-ts';
@@ -53,6 +54,7 @@ import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getContrastColor } from '../utils/color-utils';
 import { parseHeadingLink } from '../utils/heading-link';
 import { setShowReplacePopoverWithData } from '../extensions/search-replace/utils';
+import copy from 'copy-to-clipboard';
 
 export interface IEditorToolElement {
   icon: any;
@@ -65,6 +67,8 @@ export interface IEditorToolElement {
   notVisible?: number;
   disabled?: boolean;
 }
+
+export type CopyAo3Html = (getHtml: () => Promise<string>) => Promise<boolean>;
 
 const fontStack = {
   Arial: 'Arial, Arial, Helvetica, sans-serif',
@@ -764,6 +768,45 @@ export const useEditorToolbar = ({
     },
   ];
 
+  const copyAo3Html: CopyAo3Html = useCallback(
+    async (getHtml) => {
+      try {
+        const html = await getHtml();
+        if (!html) throw new Error('HTML export returned no content');
+
+        let copied = false;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(html);
+            copied = true;
+          }
+        } catch {
+          // Fall through to the execCommand-based package fallback.
+        }
+
+        if (!copied) {
+          copied = copy(html, { format: 'text/plain' });
+        }
+
+        if (!copied) throw new Error('Clipboard write failed');
+
+        toast({
+          title: 'HTML copied.',
+          toastType: 'mini',
+          variant: 'success',
+          iconType: 'icon',
+        });
+        return true;
+      } catch {
+        onError?.(
+          'Couldn’t copy HTML. Check clipboard permissions and try again.',
+        );
+        return false;
+      }
+    },
+    [onError],
+  );
+
   const exportOptions: Array<IEditorToolElement | null> = [
     {
       icon: 'FileExport',
@@ -807,7 +850,6 @@ export const useEditorToolbar = ({
     {
       icon: 'FileText',
       title: 'Web page (.html)',
-      subtitle: 'AO3 compatible',
       onClick: async (name?: string) => {
         if (editor) {
           const editorContent = editor.getJSON();
@@ -830,6 +872,16 @@ export const useEditorToolbar = ({
           }
         }
         onHtmlExport?.();
+      },
+      isActive: false,
+    },
+    {
+      icon: 'FileText',
+      title: 'Copy HTML',
+      subtitle: 'Format ready for AO3',
+      onClick: async () => {
+        if (!editor) return;
+        await copyAo3Html(() => editor.commands.exportHtmlContent());
       },
       isActive: false,
     },
@@ -1103,6 +1155,7 @@ export const useEditorToolbar = ({
     undoRedoTools,
     toolbar,
     exportOptions,
+    copyAo3Html,
     printHandler,
     importOptions,
     bottomToolbar,
