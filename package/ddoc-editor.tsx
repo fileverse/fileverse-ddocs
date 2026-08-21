@@ -897,7 +897,8 @@ const DdocEditor = forwardRef(
                 className={cn(
                   'editor-left-rail',
                   shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
-                  !isMobile && 'max-w-[263px] w-full',
+                  !isMobile &&
+                    'max-w-[263px] w-full sticky top-0 self-start z-[2]',
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
