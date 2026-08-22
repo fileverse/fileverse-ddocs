@@ -1,6 +1,10 @@
 import { EditorContent, isTextSelection } from '@tiptap/react';
 import { EditorBubbleMenu } from './components/editor-bubble-menu/editor-bubble-menu';
 import { DdocProps } from './types';
+import {
+  resolveImageFetchFn,
+  resolveImageUploadFn,
+} from './utils/storage-adapter';
 import type { CollaborationProps } from './sync-local/types';
 
 // A LIVE collaboration session (peers/presence — what users know as "real-time
@@ -96,7 +100,8 @@ const DdocEditor = forwardRef(
       handleCommentButtonClick,
       showCommentButton,
       ensResolutionUrl,
-      ipfsImageUploadFn,
+      imageUploadFn,
+      ipfsImageUploadFn: ipfsImageUploadFnProp,
       disableBottomToolbar,
       enableFanficTemplate = false,
       onError,
@@ -168,7 +173,8 @@ const DdocEditor = forwardRef(
       onCopyHeadingLink,
       tabConfig,
       footerHeight,
-      ipfsImageFetchFn,
+      imageFetchFn,
+      ipfsImageFetchFn: ipfsImageFetchFnProp,
       fetchV1ImageFn,
       activeModel,
       maxTokens,
@@ -180,6 +186,16 @@ const DdocEditor = forwardRef(
     }: DdocProps,
     ref,
   ) => {
+    // Resolve the storage-agnostic image fns (preferred) against the
+    // deprecated ipfs-prefixed ones; internals keep the legacy interface.
+    const ipfsImageUploadFn = useMemo(
+      () => resolveImageUploadFn(imageUploadFn, ipfsImageUploadFnProp),
+      [imageUploadFn, ipfsImageUploadFnProp],
+    );
+    const ipfsImageFetchFn = useMemo(
+      () => resolveImageFetchFn(imageFetchFn, ipfsImageFetchFnProp),
+      [imageFetchFn, ipfsImageFetchFnProp],
+    );
     const { isFocusMode, toggleFocusMode } = useFocusMode({
       isFocusMode: isFocusModeProp,
       onFocusModeChange,
