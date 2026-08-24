@@ -100,6 +100,7 @@ const TiptapToolBar = ({
     undoRedoTools,
     importOptions,
     exportOptions,
+    copyAo3Html,
     fileExportsOpen,
     setFileExportsOpen,
   } = useEditorToolbar({
@@ -197,6 +198,7 @@ const TiptapToolBar = ({
                   editor={editor}
                   tabs={tabs}
                   ydoc={ydoc}
+                  copyAo3Html={copyAo3Html}
                   onRegisterExportTrigger={onRegisterExportTrigger}
                 />,
                 'markdown-dropdown-transition',
@@ -358,6 +360,7 @@ const TiptapToolBar = ({
                                     <LineHeightDropdown
                                       key={moreTool.title}
                                       tool={moreTool}
+                                      editor={editor}
                                       currentLineHeight={currentLineHeight}
                                       onSetLineHeight={onSetLineHeight}
                                     />
@@ -427,6 +430,7 @@ const TiptapToolBar = ({
                   ? slideUpTransition(
                       <LineHeightDropdown
                         tool={tool}
+                        editor={editor}
                         currentLineHeight={currentLineHeight}
                         onSetLineHeight={onSetLineHeight}
                       />,

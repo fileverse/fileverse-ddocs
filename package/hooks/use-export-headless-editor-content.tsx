@@ -171,7 +171,6 @@ export const useExportHeadlessEditorContent = (
       {
         icon: 'FileText',
         title: 'Web page (.html)',
-        subtitle: 'AO3 compatible',
         onClick: async (name?: string) => {
           const tempEditor = createTempEditorForActiveTab();
           if (!tempEditor) return;
@@ -236,6 +235,38 @@ export const useExportHeadlessEditorContent = (
             const generateDownloadUrl =
               await tempEditor.commands.exportMarkdownFile({
                 title: fileName,
+              });
+            if (generateDownloadUrl) {
+              triggerUrlDownload(generateDownloadUrl, `${fileName}.md`);
+            }
+          } finally {
+            tempEditor.destroy();
+          }
+        },
+        isActive: false,
+      },
+      // Mirrors the option in editor-utils.tsx. Without it the headless lane
+      // produces different output from the toolbar for the same document:
+      // block styles (spacing, alignment, line height) and inline styles are
+      // only emitted when includeStyles is on.
+      {
+        icon: 'FileOutput',
+        title: 'Markdown with CSS (.md)',
+        subtitle: 'Keeps colors, fonts & highlights',
+        onClick: async (name?: string) => {
+          const tempEditor = createTempEditorForActiveTab();
+          if (!tempEditor) return;
+
+          try {
+            const fileName =
+              name ||
+              ddocExportSession.exportName ||
+              extractTabTitle(tempEditor.getJSON()) ||
+              'Untitled';
+            const generateDownloadUrl =
+              await tempEditor.commands.exportMarkdownFile({
+                title: fileName,
+                includeStyles: true,
               });
             if (generateDownloadUrl) {
               triggerUrlDownload(generateDownloadUrl, `${fileName}.md`);

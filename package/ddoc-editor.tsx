@@ -55,6 +55,7 @@ import { EditorProvider } from './context/editor-context';
 import { fadeInTransition, slideUpTransition } from './components/motion-div';
 import { PreviewContentLoader } from './components/preview-content-loader';
 import { EmbedSettings } from './extensions/twitter-embed/embed-settings';
+import { CustomSpacingDialogHost } from './components/editor-toolbar/custom-spacing-dialog';
 import {
   DEFAULT_TAB_ID,
   DEFAULT_TAB_NAME,
@@ -74,6 +75,8 @@ import { SplitViewMarkdownPane } from './components/split-view/split-view-markdo
 import { SplitViewRightHeader } from './components/split-view/split-view-right-header';
 import { useMarkdownSync } from './hooks/use-markdown-sync';
 import { useSplitResize } from './hooks/use-split-resize';
+import { applyTabbedTemplate } from './utils/apply-tabbed-template';
+import type { TabbedJSONContent } from './hooks/use-headless-editor';
 
 const DdocEditor = forwardRef(
   (
@@ -95,6 +98,7 @@ const DdocEditor = forwardRef(
       ensResolutionUrl,
       ipfsImageUploadFn,
       disableBottomToolbar,
+      enableFanficTemplate = false,
       onError,
       setCharacterCount,
       setWordCount,
@@ -304,6 +308,7 @@ const DdocEditor = forwardRef(
       storeApiRef,
       dBlockRuntimeState,
       isSchemaUnsupported,
+      flushPendingUpdate,
     } = useDdocEditor({
       documentStyling,
       ipfsImageFetchFn,
@@ -361,6 +366,20 @@ const DdocEditor = forwardRef(
         tabs.find((tab) => tab.id === (activeTabId || DEFAULT_TAB_ID))?.name ||
         DEFAULT_TAB_NAME,
       [activeTabId, tabs],
+    );
+
+    const handleApplyTabbedTemplate = useCallback(
+      (template: TabbedJSONContent) => {
+        if (!editor || editor.isDestroyed || !activeTabId) return;
+        applyTabbedTemplate({
+          activeTabId,
+          editor,
+          flushPendingUpdate,
+          template,
+          ydoc,
+        });
+      },
+      [activeTabId, editor, flushPendingUpdate, ydoc],
     );
 
     // All tabs share a single scroll container (editorScrollContainerRef), so
@@ -654,7 +673,7 @@ const DdocEditor = forwardRef(
       editor.commands.focus();
     }, [isFocusMode, editor]);
 
-    const isMobile = useMediaQuery('(max-width: 768px)');
+    const isMobile = useMediaQuery('(max-width: 850px)');
     const tabCommentCounts = useMemo(() => {
       return (initialComments || []).reduce<Record<string, number>>(
         (acc, comment) => {
@@ -861,52 +880,6 @@ const DdocEditor = forwardRef(
               />
             )}
             <div
-              className={cn(
-                'editor-left-rail',
-                shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
-                !isMobile && 'flex-[1_0_263px]',
-                !isPreviewMode &&
-                  !isFocusMode &&
-                  isNavbarVisible &&
-                  '-mt-[1.5rem] md:!mt-[0.8rem]',
-                isPreviewMode && 'md:!mt-[1rem]',
-                { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
-                {
-                  '-mt-[1.5rem] md:!mt-[0.7rem]':
-                    !isNavbarVisible && !isPreviewMode,
-                },
-                isFocusMode && 'mt-[48px]',
-                isFocusMode && !showTOC && shouldHideRight && 'hidden',
-              )}
-            >
-              {editor && shouldRenderDocumentOutline && (
-                <DocumentOutline
-                  editor={editor}
-                  hasToC={true}
-                  items={tocItems}
-                  setItems={setTocItems}
-                  showTOC={showTOC}
-                  setShowTOC={setShowTOC}
-                  isPreviewMode={isPreviewMode || !isNavbarVisible}
-                  orientation={documentStyling?.orientation}
-                  tabs={tabs}
-                  setTabs={setTabs}
-                  activeTabId={activeTabId}
-                  setActiveTabId={setActiveTabId}
-                  createTab={createTab}
-                  renameTab={renameTab}
-                  duplicateTab={duplicateTab}
-                  orderTab={orderTab}
-                  deleteTab={deleteTab}
-                  ydoc={ydoc}
-                  tabCommentCounts={tabCommentCounts}
-                  tabConfig={tabConfig}
-                  isConnected={isConnected}
-                  isFocusMode={isFocusMode}
-                />
-              )}
-            </div>
-            <div
               ref={editorScrollContainerRef}
               data-editor-scroll-container="true"
               className={cn(
@@ -917,6 +890,56 @@ const DdocEditor = forwardRef(
                 isLandscapeMode && 'mx-[24px]',
               )}
             >
+              {/* Both rails live INSIDE this scroller so it keeps spanning the full
+                  width — its scrollbar then sits at the container edge, not beside
+                  the page — while the rails split the leftover space symmetrically. */}
+              <div
+                className={cn(
+                  'editor-left-rail',
+                  shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
+                  !isMobile &&
+                    'max-w-[263px] w-full sticky top-0 self-start z-[2]',
+                  !isPreviewMode &&
+                    !isFocusMode &&
+                    isNavbarVisible &&
+                    '-mt-[1.5rem] md:!mt-[0.8rem]',
+                  isPreviewMode && 'md:!mt-[1rem]',
+                  { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                  {
+                    '-mt-[1.5rem] md:!mt-[0.7rem]':
+                      !isNavbarVisible && !isPreviewMode,
+                  },
+                  isFocusMode && 'mt-[48px]',
+                  isFocusMode && !showTOC && shouldHideRight && 'hidden',
+                )}
+              >
+                {editor && shouldRenderDocumentOutline && (
+                  <DocumentOutline
+                    editor={editor}
+                    hasToC={true}
+                    items={tocItems}
+                    setItems={setTocItems}
+                    showTOC={showTOC}
+                    setShowTOC={setShowTOC}
+                    isPreviewMode={isPreviewMode || !isNavbarVisible}
+                    orientation={documentStyling?.orientation}
+                    tabs={tabs}
+                    setTabs={setTabs}
+                    activeTabId={activeTabId}
+                    setActiveTabId={setActiveTabId}
+                    createTab={createTab}
+                    renameTab={renameTab}
+                    duplicateTab={duplicateTab}
+                    orderTab={orderTab}
+                    deleteTab={deleteTab}
+                    ydoc={ydoc}
+                    tabCommentCounts={tabCommentCounts}
+                    tabConfig={tabConfig}
+                    isConnected={isConnected}
+                    isFocusMode={isFocusMode}
+                  />
+                )}
+              </div>
               {/* Split View: drop w-full — inside the flex scroll container it
                   pins this to the fixed page width and leaves dead space; letting
                   it size naturally lets the content fill the pane. */}
@@ -925,7 +948,7 @@ const DdocEditor = forwardRef(
               >
                 <div
                   className={cn(
-                    'flex min-h-[100%] items-start',
+                    'flex min-h-full items-start',
                     // Split View: wrap to the right pane's width (no min-w-max),
                     // so there's no horizontal scroll.
                     !isMobile && !isSplitViewActive && 'min-w-max',
@@ -936,6 +959,26 @@ const DdocEditor = forwardRef(
                       'editor-main-lane flex-grow min-w-0 flex overflow-visible items-stretch',
                       shouldScroll ? 'justify-start' : 'justify-center',
                       isMobile && 'w-full',
+                      !isSplitViewActive &&
+                        !isPreviewMode &&
+                        !isFocusMode &&
+                        (isNavbarVisible
+                          ? '-mt-[1.5rem] md:!mt-[0.8rem]'
+                          : null),
+                      !isSplitViewActive && isPreviewMode && 'md:!mt-[1rem]',
+                      {
+                        'md:!mt-[0.7rem]':
+                          !isSplitViewActive && !isPreviewMode && !isFocusMode,
+                      },
+                      {
+                        '-mt-[1.5rem] md:!mt-[0.7rem]':
+                          !isSplitViewActive &&
+                          !isNavbarVisible &&
+                          !isPreviewMode,
+                      },
+                      // Split View: no full-screen top spacing.
+                      isSplitViewActive && 'mt-0',
+                      isFocusMode && 'mt-[48px]',
                     )}
                     data-zoom-below-100={zoom < 1 ? 'true' : 'false'}
                     style={{
@@ -945,7 +988,9 @@ const DdocEditor = forwardRef(
                           // flows inside the right pane's own scroll box.
                           isSplitViewActive
                           ? 'auto'
-                          : `calc(100dvh - 108px - ${footerHeight || '0px'})`,
+                          : isNavbarVisible
+                            ? `calc(100dvh - (var(--navbar) + var(--toolbar)))`
+                            : `calc(100dvh - var(--toolbar))`,
                     }}
                   >
                     <div
@@ -981,30 +1026,6 @@ const DdocEditor = forwardRef(
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
                             'color-bg-default',
-                          !isSplitViewActive &&
-                            !isPreviewMode &&
-                            !isFocusMode &&
-                            (isNavbarVisible
-                              ? '-mt-[1.5rem] md:!mt-[0.8rem]'
-                              : null),
-                          !isSplitViewActive &&
-                            isPreviewMode &&
-                            'md:!mt-[1rem]',
-                          {
-                            'md:!mt-[0.7rem]':
-                              !isSplitViewActive &&
-                              !isPreviewMode &&
-                              !isFocusMode,
-                          },
-                          {
-                            '-mt-[1.5rem] md:!mt-[0.7rem]':
-                              !isSplitViewActive &&
-                              !isNavbarVisible &&
-                              !isPreviewMode,
-                          },
-                          // Split View: no full-screen top spacing.
-                          isSplitViewActive && 'mt-0',
-                          isFocusMode && 'mt-[48px]',
                         )}
                         style={{
                           ...(isMobile
@@ -1088,6 +1109,10 @@ const DdocEditor = forwardRef(
                                   }
                                 />
                                 <EmbedSettings editor={editor} />
+                                {/* The only instance — the toolbar dropdown,
+                                    the bubble menu and a host app's menu all
+                                    open it through the store. */}
+                                <CustomSpacingDialogHost editor={editor} />
                               </>
                             )}
 
@@ -1211,8 +1236,14 @@ const DdocEditor = forwardRef(
                                     )}
                                     <DBlockToolbarProvider
                                       editor={editor}
+                                      enableFanficTemplate={
+                                        enableFanficTemplate
+                                      }
                                       runtimeState={
                                         splitAwareDBlockRuntimeState
+                                      }
+                                      onApplyTabbedTemplate={
+                                        handleApplyTabbedTemplate
                                       }
                                       onCopyHeadingLink={onCopyHeadingLink}
                                     >
@@ -1318,7 +1349,7 @@ const DdocEditor = forwardRef(
               <div
                 className={cn(
                   'editor-right-rail',
-                  !isMobile && 'flex-[1_1_263px]',
+                  !isMobile && 'max-w-[263px] w-full',
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
@@ -1350,7 +1381,7 @@ const DdocEditor = forwardRef(
                 <LucideIcon name="MessageSquareText" size="sm" />
               </Button>
             )}
-            {!isPreviewMode && !disableBottomToolbar && (
+            {!isPreviewMode && !disableBottomToolbar && !isFocusMode && (
               <div
                 className={cn(
                   'flex mobile:hidden items-center w-full h-[52px] fixed left-0 z-10 px-4 color-bg-default transition-all duration-300 ease-in-out border-b border-color-default',
@@ -1435,7 +1466,7 @@ const DdocEditor = forwardRef(
       >
         <div
           className={cn(
-            'w-full',
+            'w-full [--navbar:64px] max-lg:[--navbar:46px] [--toolbar:44px] max-mobile:[--toolbar:52px]',
             !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
           )}
           style={{
@@ -1447,9 +1478,9 @@ const DdocEditor = forwardRef(
                   : `calc(100dvh - ${footerHeight || '0px'})`
                 : !isPreviewMode
                   ? isNavbarVisible
-                    ? `calc(100dvh - 108px - ${footerHeight || '0px'})`
-                    : `calc(100dvh - 52px - ${footerHeight || '0px'})`
-                  : `calc(100dvh - 52px - ${footerHeight || '0px'})`,
+                    ? `calc(100dvh - (var(--toolbar) + var(--navbar)))`
+                    : `calc(100dvh - var(--toolbar))`
+                  : `calc(100dvh - var(--toolbar))`,
           }}
         >
           {/* Author's custom CSS escape hatch. The author writes bare selectors
@@ -1466,7 +1497,7 @@ const DdocEditor = forwardRef(
             id="editor-canvas"
             onMouseDown={handleFocusModeMouseDown}
             className={cn(
-              'h-[100%] flex w-full relative [--navbar:64px] max-lg:[--navbar:46px] [--toolbar:44px] max-mobile:[--toolbar:52px]',
+              'h-[100%] flex w-full relative',
               // Split View: the right-pane wrapper owns the scroll, not the canvas.
               isSplitViewActive ? 'overflow-hidden' : 'overflow-auto',
               !isPreviewMode &&

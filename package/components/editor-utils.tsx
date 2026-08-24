@@ -33,6 +33,7 @@ import {
   TextAreaFieldV2,
   TextField,
   Tooltip,
+  toast,
   useTheme,
 } from '@fileverse/ui';
 import { useMediaQuery } from 'usehooks-ts';
@@ -53,6 +54,7 @@ import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getContrastColor } from '../utils/color-utils';
 import { parseHeadingLink } from '../utils/heading-link';
 import { setShowReplacePopoverWithData } from '../extensions/search-replace/utils';
+import copy from 'copy-to-clipboard';
 
 export interface IEditorToolElement {
   icon: any;
@@ -65,6 +67,8 @@ export interface IEditorToolElement {
   notVisible?: number;
   disabled?: boolean;
 }
+
+export type CopyAo3Html = (getHtml: () => Promise<string>) => Promise<boolean>;
 
 const fontStack = {
   Arial: 'Arial, Arial, Helvetica, sans-serif',
@@ -134,6 +138,7 @@ export function buildPickerEntries(
 // here for backward compatibility).
 export * from '../utils/typography';
 import { getFontSizeOptions, getLineHeightOptions } from '../utils/typography';
+import { getSpacingToggles } from './editor-toolbar/spacing-toggles';
 
 export const ERR_MSG_MAP = {
   IMAGE_SIZE: 'Image size should be less than 10MB',
@@ -764,6 +769,45 @@ export const useEditorToolbar = ({
     },
   ];
 
+  const copyAo3Html: CopyAo3Html = useCallback(
+    async (getHtml) => {
+      try {
+        const html = await getHtml();
+        if (!html) throw new Error('HTML export returned no content');
+
+        let copied = false;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(html);
+            copied = true;
+          }
+        } catch {
+          // Fall through to the execCommand-based package fallback.
+        }
+
+        if (!copied) {
+          copied = copy(html, { format: 'text/plain' });
+        }
+
+        if (!copied) throw new Error('Clipboard write failed');
+
+        toast({
+          title: 'HTML copied.',
+          toastType: 'mini',
+          variant: 'success',
+          iconType: 'icon',
+        });
+        return true;
+      } catch {
+        onError?.(
+          'Couldn’t copy HTML. Check clipboard permissions and try again.',
+        );
+        return false;
+      }
+    },
+    [onError],
+  );
+
   const exportOptions: Array<IEditorToolElement | null> = [
     {
       icon: 'FileExport',
@@ -807,7 +851,6 @@ export const useEditorToolbar = ({
     {
       icon: 'FileText',
       title: 'Web page (.html)',
-      subtitle: 'AO3 compatible',
       onClick: async (name?: string) => {
         if (editor) {
           const editorContent = editor.getJSON();
@@ -830,6 +873,16 @@ export const useEditorToolbar = ({
           }
         }
         onHtmlExport?.();
+      },
+      isActive: false,
+    },
+    {
+      icon: 'FileText',
+      title: 'Copy HTML',
+      subtitle: 'Format ready for AO3',
+      onClick: async () => {
+        if (!editor) return;
+        await copyAo3Html(() => editor.commands.exportHtmlContent());
       },
       isActive: false,
     },
@@ -1103,6 +1156,7 @@ export const useEditorToolbar = ({
     undoRedoTools,
     toolbar,
     exportOptions,
+    copyAo3Html,
     printHandler,
     importOptions,
     bottomToolbar,
@@ -1909,16 +1963,19 @@ export const FontSizePicker = ({
 };
 
 export const LineHeightPicker = ({
+  editor,
   setVisibility,
   elementRef,
   currentLineHeight,
   onSetLineHeight,
+  onOpenCustomSpacing,
 }: {
   editor: Editor;
   elementRef: React.RefObject<HTMLDivElement>;
   setVisibility: Dispatch<SetStateAction<IEditorTool>>;
   currentLineHeight?: string;
   onSetLineHeight: (lineHeight: string) => void;
+  onOpenCustomSpacing?: () => void;
 }) => {
   const lineHeightOptions = getLineHeightOptions();
 
@@ -1958,6 +2015,38 @@ export const LineHeightPicker = ({
           </span>
         </button>
       ))}
+
+      {onOpenCustomSpacing ? (
+        <>
+          <div className="w-full my-1 h-[1px] color-bg-default-hover" />
+          {getSpacingToggles(editor).map((toggle) => (
+            <button
+              key={toggle.edge}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                toggle.onSelect();
+                setVisibility(IEditorTool.NONE);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm color-text-default transition min-w-[120px] hover:color-bg-default-hover"
+            >
+              <div className="w-4" />
+              <span className="font-medium">{toggle.label}</span>
+            </button>
+          ))}
+          <div className="w-full my-1 h-[1px] color-bg-default-hover" />
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onOpenCustomSpacing();
+              setVisibility(IEditorTool.NONE);
+            }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1 text-sm color-text-default transition min-w-[120px] hover:color-bg-default-hover"
+          >
+            <div className="w-4" />
+            <span className="font-medium">Custom spacing</span>
+          </button>
+        </>
+      ) : null}
     </div>
   );
 };

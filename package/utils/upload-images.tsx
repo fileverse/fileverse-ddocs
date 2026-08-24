@@ -9,6 +9,7 @@ import { IMG_UPLOAD_SETTINGS } from '../components/editor-utils';
 import { arrayBufferToBase64, decryptImage, fetchImage } from './security';
 import { toByteArray } from 'base64-js';
 import { IpfsImageUploadResponse } from '../types';
+import { normalizeSvgFile } from './svg-normalize';
 
 const uploadKey = new PluginKey('upload-image');
 
@@ -131,6 +132,12 @@ export async function startImageUpload(
     const { schema } = view.state;
     const placeholder = findPlaceholder(view.state, id);
     if (placeholder == null) return;
+
+    // Dimensionless SVGs (width="100%", no height) render at 0 height in
+    // Firefox — pin concrete dimensions before the file is stored. Must run
+    // AFTER the placeholder is planted: the placeholder is the only thing
+    // keeping the insert position valid across this await.
+    file = await normalizeSvgFile(file);
 
     if (ipfsImageUploadFn) {
       const { ipfsUrl, encryptionKey, nonce, ipfsHash, authTag } =

@@ -51,9 +51,7 @@ export const getHeadlessExtensions = (options?: {
     ...defaultExtensions({
       onError: () => null,
       schemaVersion: options?.schemaVersion,
-    }).filter(
-      (extension) => extension.name !== 'characterCount',
-    ),
+    }).filter((extension) => extension.name !== 'characterCount'),
     customTextInputRules,
     PageBreak,
     Collaboration.configure({ document: ydoc }),

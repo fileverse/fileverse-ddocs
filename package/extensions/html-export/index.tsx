@@ -16,11 +16,85 @@ import {
 // Define the command type
 declare module '@tiptap/core' {
   interface Commands {
+    exportHtmlContent: {
+      exportHtmlContent: () => any;
+    };
     exportHtmlFile: {
       exportHtmlFile: (props?: { title?: string }) => any;
     };
   }
 }
+
+const buildHtmlExportBody = async (
+  editor: Editor,
+  ipfsImageFetchFn?: (
+    _data: IpfsImageFetchPayload,
+  ) => Promise<{ url: string; file: File }>,
+  fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>,
+): Promise<string> => {
+  const originalDoc: any = editor.state.doc;
+
+  const docWithEmbedImageContent: any =
+    await searchForSecureImageNodeAndEmbedImageContent(
+      originalDoc,
+      ipfsImageFetchFn,
+      fetchV1ImageFn,
+    );
+
+  const temporalEditor = getTemporaryEditor(
+    editor,
+    docWithEmbedImageContent.toJSON(),
+  );
+
+  try {
+    const rawHtml = temporalEditor.getHTML();
+    const inlineHtml = await renderMermaidBlocks(rawHtml);
+    return sanitizeHtmlExportBody(inlineHtml);
+  } finally {
+    temporalEditor.destroy();
+  }
+};
+
+export const sanitizeHtmlExportBody = (html: string): string =>
+  DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p',
+      'h1',
+      'h2',
+      'h3',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'pre',
+      'code',
+      'strong',
+      'em',
+      'u',
+      's',
+      'mark',
+      'span',
+      'br',
+      'hr',
+      'a',
+      'img',
+      'table',
+      'tbody',
+      'tr',
+      'td',
+      'th',
+      'thead',
+      'tfoot',
+      ...MERMAID_SVG_TAGS,
+    ],
+    // `style` is listed explicitly even though MERMAID_SVG_ATTRS already
+    // carries it: block styling (paragraph spacing, alignment, line height)
+    // reaches an export through this one attribute, and inheriting it from a
+    // list named for Mermaid SVGs makes it look incidental. Naming it here
+    // keeps narrowing that list from silently stripping every block style.
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'style', ...MERMAID_SVG_ATTRS],
+    FORBID_ATTR: ['data-toc-id', 'data-tight'],
+  });
 
 const HtmlExportExtension = (
   ipfsImageFetchFn?: (
@@ -33,6 +107,25 @@ const HtmlExportExtension = (
 
     addCommands() {
       return {
+        exportHtmlContent:
+          () =>
+          async ({ editor }: { editor: Editor }): Promise<string> => {
+            const { showLoader, removeLoader } = inlineLoader(
+              editor,
+              'Preparing HTML ...',
+            );
+            const loader = showLoader();
+
+            try {
+              return await buildHtmlExportBody(
+                editor,
+                ipfsImageFetchFn,
+                fetchV1ImageFn,
+              );
+            } finally {
+              removeLoader(loader);
+            }
+          },
         exportHtmlFile:
           (props?: { title?: string }) =>
           async ({ editor }: { editor: Editor }): Promise<string> => {
@@ -40,123 +133,40 @@ const HtmlExportExtension = (
               editor,
               'Exporting HTML file ...',
             );
-
             const loader = showLoader();
 
-            const originalDoc: any = editor.state.doc;
-
-            const docWithEmbedImageContent: any =
-              await searchForSecureImageNodeAndEmbedImageContent(
-                originalDoc,
+            try {
+              const bodyHtml = await buildHtmlExportBody(
+                editor,
                 ipfsImageFetchFn,
                 fetchV1ImageFn,
               );
-
-            const temporalEditor = getTemporaryEditor(
-              editor,
-              docWithEmbedImageContent.toJSON(),
-            );
-
-            const rawHtml = temporalEditor.getHTML();
-            const inlineHtml = await renderMermaidBlocks(rawHtml);
-
-            // Hooks are global on the DOMPurify instance — remove in a
-            // finally so this empty-element pruning can't leak into every
-            // later sanitize (it would even delete an svg's empty <path>s).
-            DOMPurify.addHook('afterSanitizeElements', (node: any) => {
-              if (
-                node.nodeType === 1 &&
-                node.tagName !== 'BR' &&
-                !node.textContent.trim() &&
-                !node.children.length
-              ) {
-                node.parentNode?.removeChild(node);
-              }
-            });
-
-            // Sanitize HTML content using the utility function
-            let cleanHtml: string;
-            try {
-              cleanHtml = DOMPurify.sanitize(inlineHtml, {
-                ALLOWED_TAGS: [
-                  'p',
-                  'h1',
-                  'h2',
-                  'h3',
-                  'ul',
-                  'ol',
-                  'li',
-                  'blockquote',
-                  'pre',
-                  'code',
-                  'strong',
-                  'em',
-                  'u',
-                  's',
-                  'mark',
-                  'span',
-                  'br',
-                  'hr',
-                  'a',
-                  'img',
-                  'table',
-                  'tbody',
-                  'tr',
-                  'td',
-                  'th',
-                  'thead',
-                  'tfoot',
-                  ...MERMAID_SVG_TAGS,
-                ],
-                ALLOWED_ATTR: ['href', ...MERMAID_SVG_ATTRS],
-                FORBID_ATTR: ['data-toc-id', 'data-tight'],
-              });
-            } finally {
-              DOMPurify.removeHook('afterSanitizeElements');
-            }
-
-            // Build metadata dynamically from props
-            const metadata = {
-              title: props?.title || 'Untitled',
-              date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-            };
-
-            // The document's custom CSS (author-supplied). sanitizeCustomCss
-            // scopes it to `body` (the export's document root, mirroring the
-            // editor's `.ProseMirror`) AND strips injection vectors — breakout,
-            // url()/@import exfiltration, position:fixed overlays. The returned
-            // string is already `body { … }`-wrapped and safe to embed. Injected
-            // AFTER DOMPurify (which sanitizes the body only), so it survives.
-            const styleTag = sanitizeCustomCss(
-              editor.storage?.markdownPasteHandler?.customCSS || '',
-              'body',
-            );
-            const styleBlock = styleTag
-              ? `\n      <style>\n${styleTag}\n      </style>`
-              : '';
-
-            // Create a clean HTML document (no classes/IDs); the only styling is
-            // the author's custom CSS, when present.
-            const htmlContent = `
+              const styleTag = sanitizeCustomCss(
+                editor.storage?.markdownPasteHandler?.customCSS || '',
+                'body',
+              );
+              const styleBlock = styleTag
+                ? `\n      <style>\n${styleTag}\n      </style>`
+                : '';
+              const title = props?.title || 'Untitled';
+              const htmlContent = `
   <html>
     <head>
-      <title>${metadata.title}</title>${styleBlock}
+      <title>${title}</title>${styleBlock}
     </head>
     <body>
-      ${cleanHtml}
+      ${bodyHtml}
     </body>
   </html>
 `;
-
-            const formattedHtml = await prettifyHtml(htmlContent);
-            const blob = new Blob([formattedHtml], {
-              type: 'text/html;charset=utf-8',
-            });
-            const downloadUrl = URL.createObjectURL(blob);
-
-            temporalEditor.destroy();
-            removeLoader(loader);
-            return downloadUrl;
+              const documentHtml = await prettifyHtml(htmlContent);
+              const blob = new Blob([documentHtml], {
+                type: 'text/html;charset=utf-8',
+              });
+              return URL.createObjectURL(blob);
+            } finally {
+              removeLoader(loader);
+            }
           },
       };
     },

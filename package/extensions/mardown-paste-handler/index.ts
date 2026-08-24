@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Editor, Extension, InputRule } from '@tiptap/core';
 import MarkdownIt from 'markdown-it';
-import { Plugin } from 'prosemirror-state';
+import { Plugin, TextSelection } from 'prosemirror-state';
 import DOMPurify from 'dompurify';
 import {
   Fragment,
@@ -12,6 +12,7 @@ import {
 import markdownItFootnote from 'markdown-it-footnote';
 import TurndownService from 'turndown';
 import { arrayBufferToBase64, decryptImage } from '../../utils/security';
+import { DEFAULT_LINE_HEIGHT } from '../line-height';
 import { toByteArray } from 'base64-js';
 import { inlineLoader } from '../../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../../types';
@@ -77,25 +78,59 @@ turndownService.addRule('heading', {
   },
 });
 
-// Text alignment (TextAlign extension, on headings/paragraphs) has no markdown
-// representation, so in styles mode an aligned block is emitted as raw HTML
-// carrying the text-align style. The inner content stays HTML — CommonMark does
-// not parse markdown inside a block-level HTML element — and TipTap's TextAlign
-// reads `style.text-align` back on import. Plain .md export drops alignment
-// (markdown purity). Added after 'heading' so it wins for aligned headings;
-// non-aligned blocks fall through to '#'/paragraph handling. left/start = the
-// visual default, so treated as no alignment.
-turndownService.addRule('alignedBlock', {
+// Block-level styling (alignment from TextAlign, margins from ParagraphSpacing,
+// line-height from LineHeight) has no markdown representation, so in styles mode
+// a styled block is emitted as raw HTML carrying them all. The inner content
+// stays HTML — CommonMark does not parse markdown inside a block-level HTML
+// element — and each extension's parseHTML reads its property back on import.
+// Plain .md export drops block styles (markdown purity).
+//
+// One rule for all three properties, not one rule each: turndown picks a single
+// replacement per node, so competing rules would silently drop whichever lost.
+//
+// Only non-default values are emitted, and that gate is load-bearing. Every
+// block carries a line-height (LineHeight defaults to 138%), so emitting
+// unconditionally would route the entire document through this rule and turn
+// the whole export — and the Split View pane — into raw HTML. left/start is the
+// visual default for alignment, so it counts as unstyled too.
+// Added after 'heading' so it wins for styled headings; unstyled blocks fall
+// through to '#'/paragraph handling.
+const styledBlockDeclarations = (element: HTMLElement): string[] => {
+  const declarations: string[] = [];
+  const align = element.style?.textAlign;
+  if (align && align !== 'left' && align !== 'start') {
+    declarations.push(`text-align: ${align}`);
+  }
+  const marginTop = element.style?.marginTop;
+  if (marginTop) declarations.push(`margin-top: ${marginTop}`);
+  const marginBottom = element.style?.marginBottom;
+  if (marginBottom) declarations.push(`margin-bottom: ${marginBottom}`);
+  const lineHeight = element.style?.lineHeight;
+  if (lineHeight && lineHeight !== DEFAULT_LINE_HEIGHT) {
+    declarations.push(`line-height: ${lineHeight}`);
+  }
+  return declarations;
+};
+
+// No 'LI': the custom 'listItem' rule below is registered later, and turndown
+// checks later rules first, so it always wins for <li>. Carrying list-item
+// spacing would mean emitting the whole <ul>/<ol> as raw HTML rather than a
+// markdown list — a bigger trade than this rule should make on its own.
+// Consequence: list-item spacing does not survive .md export or the Split View
+// round-trip, though it is fine in the editor, HTML export, and PDF.
+const STYLED_BLOCK_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P'];
+
+turndownService.addRule('blockStyle', {
   filter: (node) => {
     if (!emitInlineStyles) return false;
-    if (!['H1', 'H2', 'H3', 'P'].includes(node.nodeName)) return false;
-    const align = (node as HTMLElement).style?.textAlign;
-    return !!align && align !== 'left' && align !== 'start';
+    if (!STYLED_BLOCK_TAGS.includes(node.nodeName)) return false;
+    return styledBlockDeclarations(node as HTMLElement).length > 0;
   },
   replacement: function (_content, node) {
     const el = node as HTMLElement;
     const tag = el.nodeName.toLowerCase();
-    return `\n\n<${tag} style="text-align: ${el.style.textAlign}">${el.innerHTML}</${tag}>\n\n`;
+    const style = styledBlockDeclarations(el).join('; ');
+    return `\n\n<${tag} style="${style}">${el.innerHTML}</${tag}>\n\n`;
   },
 });
 
@@ -816,16 +851,33 @@ const MarkdownPasteHandler = (
     },
 
     addProseMirrorPlugins() {
+      // transformPasted is ProseMirror's DROP hook as well as its paste hook
+      // (prosemirror-view editHandlers.drop). On a drop the insertion point is
+      // the MOUSE, not the caret, so the openStart override below must not run
+      // — keying it off the selection there would split whatever paragraph the
+      // pointer landed in. handleDOMEvents.drop runs before editHandlers.drop,
+      // so this flag is set in time and cleared once the drop has been handled.
+      let dropInFlight = false;
+
       return [
         new Plugin({
           props: {
+            handleDOMEvents: {
+              drop: () => {
+                dropInFlight = true;
+                queueMicrotask(() => {
+                  dropInFlight = false;
+                });
+                return false;
+              },
+            },
             // Non-markdown clipboard HTML goes through ProseMirror's native
             // paste, which faithfully keeps the stacks of empty <p> that
             // sites like Wikipedia put between sections. Collapse interior
             // runs of empty paragraphs to one; the first and last slice
             // children are never touched (they can be open-ended and merge
             // into surrounding blocks).
-            transformPasted: (slice) => {
+            transformPasted: (slice, view) => {
               const isEmptyParagraphChild = (node: PMNode) => {
                 if (node.type.name === 'paragraph')
                   return node.childCount === 0;
@@ -838,26 +890,57 @@ const MarkdownPasteHandler = (
               };
 
               const total = slice.content.childCount;
-              if (total < 3) return slice;
 
-              const kept: PMNode[] = [];
-              let previousWasEmpty = false;
-              slice.content.forEach((child, _offset, index) => {
-                const isEmpty = isEmptyParagraphChild(child);
-                const isEdge = index === 0 || index === total - 1;
-                if (!isEdge && isEmpty && previousWasEmpty) {
-                  return;
-                }
-                previousWasEmpty = isEmpty;
-                kept.push(child);
-              });
+              let content = slice.content;
+              if (total >= 3) {
+                const kept: PMNode[] = [];
+                let previousWasEmpty = false;
+                slice.content.forEach((child, _offset, index) => {
+                  const isEmpty = isEmptyParagraphChild(child);
+                  const isEdge = index === 0 || index === total - 1;
+                  if (!isEdge && isEmpty && previousWasEmpty) {
+                    return;
+                  }
+                  previousWasEmpty = isEmpty;
+                  kept.push(child);
+                });
+                if (kept.length !== total) content = Fragment.fromArray(kept);
+              }
 
-              if (kept.length === total) return slice;
-              return new Slice(
-                Fragment.fromArray(kept),
-                slice.openStart,
-                slice.openEnd,
-              );
+              // An open slice start makes ProseMirror merge the first pasted
+              // block's INLINE content into the block at the cursor, which
+              // keeps its own attributes — so the first paragraph of a Google
+              // Docs paste silently lost its line height, spacing and
+              // alignment while every later one kept them.
+              //
+              // Only when the target block is empty: there is nothing to merge
+              // with, and the pasted block should simply become that block.
+              // Pasting into a block that has text still merges, which is what
+              // you want mid-sentence.
+              // Scoped to PARAGRAPHS, not every textblock: an empty heading
+              // is a block the user deliberately created, and letting the
+              // pasted paragraph become it would silently drop the level.
+              // Widened past `selection.empty` to any text selection covering
+              // its whole paragraph — pasting over a fully selected paragraph
+              // leaves the same empty target and lost the same attributes.
+              const { selection } = view.state;
+              const { $from, $to } = selection;
+              const targetIsEmptied =
+                selection instanceof TextSelection &&
+                $from.parent === $to.parent &&
+                $from.parent.type === view.state.schema.nodes.paragraph &&
+                $from.parentOffset === 0 &&
+                $to.parentOffset === $to.parent.content.size;
+
+              const openStart =
+                !dropInFlight && targetIsEmptied && content.childCount > 0
+                  ? 0
+                  : slice.openStart;
+
+              if (content === slice.content && openStart === slice.openStart) {
+                return slice;
+              }
+              return new Slice(content, openStart, slice.openEnd);
             },
             handlePaste: (view, event) => {
               const clipboardData = event.clipboardData;
@@ -1393,7 +1476,16 @@ export async function handleMarkdownContent(
   view: any,
   content: string,
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>,
-  options?: { breaks?: boolean; replaceAll?: boolean },
+  options?: {
+    breaks?: boolean;
+    replaceAll?: boolean;
+    /** Keep authored blank lines. DOCX import sets this: a blank line the
+     *  author typed is content, and mammoth is asked to emit it
+     *  (ignoreEmptyParagraphs: false) precisely so it survives. Markdown
+     *  paste leaves it off — markdown-it emits stray empty paragraphs of its
+     *  own that nobody typed. */
+    preserveEmptyParagraphs?: boolean;
+  },
 ) {
   // Remove YAML frontmatter before parsing
   let cleanMarkdown = stripFrontmatter(content);
@@ -1446,15 +1538,17 @@ export async function handleMarkdownContent(
   const parser = new DOMParser();
   const doc = parser.parseFromString(convertedHtml, 'text/html');
 
-  // Remove <p> if it's empty
-  const topLevelPs = doc.querySelectorAll('body > p');
-  topLevelPs.forEach((p) => {
-    if (p.childNodes.length === 0) {
-      if (p.textContent === '') {
-        p.remove();
+  // Remove <p> if it's empty — unless the caller authored those blanks.
+  if (!options?.preserveEmptyParagraphs) {
+    const topLevelPs = doc.querySelectorAll('body > p');
+    topLevelPs.forEach((p) => {
+      if (p.childNodes.length === 0) {
+        if (p.textContent === '') {
+          p.remove();
+        }
       }
-    }
-  });
+    });
+  }
 
   // Replace <aside class="callout"> with <aside data-type="callout">
   const calloutAsides = doc.querySelectorAll('aside.callout');
@@ -1681,7 +1775,10 @@ export async function handleMarkdownContent(
   let previousWasEmptyParagraph = false;
   proseMirrorNodes.forEach((child: PMNode) => {
     if (isEmptyParagraphBlock(child)) {
-      if (!previousWasEmptyParagraph) {
+      // Runs collapse for pasted web HTML, where the stacks are junk. A DOCX
+      // has no such thing: every empty w:p is an Enter the author pressed, so
+      // three blank lines must import as three.
+      if (options?.preserveEmptyParagraphs || !previousWasEmptyParagraph) {
         newChildren.push(child);
       }
       previousWasEmptyParagraph = true;

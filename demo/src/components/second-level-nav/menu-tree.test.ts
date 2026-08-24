@@ -154,6 +154,83 @@ describe('demoMenuTree', () => {
     ]);
   });
 
+  it('Format ▸ Line height ends with a Custom spacing action', () => {
+    const format = projectMenu(demoMenuTree, ctxFor('owner')).find(
+      (m) => m.id === 'format',
+    )!;
+    const lineHeight = findNode(format.children, 'format.lineHeight');
+    if (lineHeight?.kind !== 'submenu') throw new Error('expected submenu');
+    // Mirrors the toolbar dropdown and the bubble menu: presets, a divider,
+    // then the dialog opener.
+    expect(lineHeight.children.at(-2)).toMatchObject({ kind: 'separator' });
+    expect(lineHeight.children.at(-1)).toMatchObject({
+      kind: 'action',
+      label: 'Custom spacing',
+      action: 'format.customSpacing',
+      disabled: false,
+    });
+  });
+
+  // This tree and the consumer's must not drift in order or wording — the
+  // demo is the in-repo mirror of it, and it is the only one of the two that
+  // imports spacingToggleLabel rather than authoring the strings.
+  it('Format ▸ Line height carries the spacing toggles, in toolbar order', () => {
+    const format = projectMenu(demoMenuTree, ctxFor('owner')).find(
+      (m) => m.id === 'format',
+    )!;
+    const lineHeight = findNode(format.children, 'format.lineHeight');
+    if (lineHeight?.kind !== 'submenu') throw new Error('expected submenu');
+
+    expect(lineHeight.children.map((c) => c.id)).toEqual([
+      'format.lineHeight.1',
+      'format.lineHeight.1_15',
+      'format.lineHeight.1_5',
+      'format.lineHeight.2',
+      'format.lineHeight.2_5',
+      'format.lineHeight.3',
+      'format.lineHeight.sep',
+      'format.lineHeight.spaceBefore',
+      'format.lineHeight.spaceAfter',
+      'format.lineHeight.sep2',
+      'format.lineHeight.custom',
+    ]);
+  });
+
+  it('Format ▸ Line height spacing labels follow the registry reading', () => {
+    const labelsFor = (state: Record<string, { current?: string | null }>) => {
+      const format = projectMenu(demoMenuTree, {
+        ...ctxFor('owner'),
+        state,
+      }).find((m) => m.id === 'format')!;
+      const lineHeight = findNode(format.children, 'format.lineHeight');
+      if (lineHeight?.kind !== 'submenu') throw new Error('expected submenu');
+      return lineHeight.children
+        .filter((c) => c.id.startsWith('format.lineHeight.space'))
+        .map((c) => ('label' in c ? c.label : ''));
+    };
+
+    expect(
+      labelsFor({
+        'format.spaceBefore': { current: 'add' },
+        'format.spaceAfter': { current: 'add' },
+      }),
+    ).toEqual(['Add space before paragraph', 'Add space after paragraph']);
+
+    expect(
+      labelsFor({
+        'format.spaceBefore': { current: 'remove' },
+        'format.spaceAfter': { current: 'add' },
+      }),
+    ).toEqual(['Remove space before paragraph', 'Add space after paragraph']);
+
+    // No reading yet (null editor → disabled Proxy): fail closed to Remove,
+    // matching the browser default where editor.css already supplies a gap.
+    expect(labelsFor({})).toEqual([
+      'Remove space before paragraph',
+      'Remove space after paragraph',
+    ]);
+  });
+
   it('margins is comingSoon-disabled for owner', () => {
     const format = projectMenu(demoMenuTree, ctxFor('owner')).find(
       (m) => m.id === 'format',

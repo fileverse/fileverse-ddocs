@@ -233,6 +233,22 @@ export const DBlock = Node.create<DBlockOptions>({
         // from the current block and carried onto the block created below it
         const lineHeight = currentNode?.attrs?.lineHeight || null;
         const lineHeightAttr = lineHeight ? { lineHeight } : {};
+        // Paragraph spacing is a node attr too. v2 gets this free from
+        // ProseMirror's split copying attrs; v1 builds the new block's attrs by
+        // hand here, so it has to be carried explicitly.
+        //
+        // spaceBefore is dropped when leaving a heading: Enter at the end of a
+        // heading produces a paragraph, and a heading's section gap landing on
+        // the body text below it would repeat on every Enter. (v2 does the same
+        // via the appendTransaction in paragraph-spacing.ts, which cannot see
+        // this case because v1's new block sits in its own dBlock row.)
+        const isLeavingHeading = currentNode?.type.name === 'heading';
+        const spaceBefore = currentNode?.attrs?.spaceBefore ?? null;
+        const spaceAfter = currentNode?.attrs?.spaceAfter ?? null;
+        const spacingAttrs = {
+          ...(spaceBefore !== null && !isLeavingHeading ? { spaceBefore } : {}),
+          ...(spaceAfter !== null ? { spaceAfter } : {}),
+        };
         const headString = $head.toString();
         const nodePaths = headString.split('/');
         const isAtEndOfTheNode = $head.end() === from;
@@ -308,7 +324,12 @@ export const DBlock = Node.create<DBlockOptions>({
                   content: [
                     {
                       type: 'paragraph',
-                      attrs: { fontFamily, fontSize, ...lineHeightAttr },
+                      attrs: {
+                        fontFamily,
+                        fontSize,
+                        ...lineHeightAttr,
+                        ...spacingAttrs,
+                      },
                     },
                   ],
                 })
@@ -357,7 +378,12 @@ export const DBlock = Node.create<DBlockOptions>({
                 content: [
                   {
                     type: 'paragraph',
-                    attrs: { fontFamily, fontSize, ...lineHeightAttr },
+                    attrs: {
+                      fontFamily,
+                      fontSize,
+                      ...lineHeightAttr,
+                      ...spacingAttrs,
+                    },
                   },
                 ],
               })
@@ -418,7 +444,12 @@ export const DBlock = Node.create<DBlockOptions>({
                   content: [
                     {
                       type: 'paragraph',
-                      attrs: { fontFamily, fontSize, ...lineHeightAttr },
+                      attrs: {
+                        fontFamily,
+                        fontSize,
+                        ...lineHeightAttr,
+                        ...spacingAttrs,
+                      },
                     },
                   ],
                 })
@@ -464,7 +495,12 @@ export const DBlock = Node.create<DBlockOptions>({
                 : [
                     {
                       type: 'paragraph',
-                      attrs: { fontFamily, fontSize, ...lineHeightAttr },
+                      attrs: {
+                        fontFamily,
+                        fontSize,
+                        ...lineHeightAttr,
+                        ...spacingAttrs,
+                      },
                     },
                   ];
 
@@ -489,6 +525,7 @@ export const DBlock = Node.create<DBlockOptions>({
                       fontFamily,
                       fontSize,
                       ...lineHeightAttr,
+                      ...spacingAttrs,
                     });
                   }
                 }

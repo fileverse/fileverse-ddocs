@@ -61,14 +61,12 @@ export const SplitViewRightHeader = ({
         title="Document tabs"
         onClick={onToggleTabsPanel}
       />
-      {/* Right-side actions. Claude AI is a placeholder (disabled); the other
-          two download the markdown / HTML. */}
       <div className="flex items-center gap-1">
         <IconButton
           variant="ghost"
           icon="Sparkles"
           size="sm"
-          title="Claude AI (coming soon)"
+          title="BYOM (coming soon)"
           disabled
         />
         <IconButton
