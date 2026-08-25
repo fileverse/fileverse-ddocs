@@ -53,6 +53,12 @@ const defaultWidthMediaImageRule = rules.find(
     ".print-content-root [data-type='resizable-media'] > img[width='100%']",
 );
 
+const mediaWrapperRule = rules.find(
+  (rule) =>
+    normalizeSelector(rule.selector) ===
+    ".print-content-root [data-type='resizable-media']",
+);
+
 describe('print stylesheet', () => {
   it('finds the rules it means to assert on', () => {
     expect(spacingRules.length).toBeGreaterThan(5);
@@ -90,18 +96,20 @@ describe('print stylesheet', () => {
     expect(declaration(defaultWidthMediaImageRule!.body, 'width')).toBe('auto');
   });
 
+  it('removes the editor-only border from printed media', () => {
+    expect(mediaWrapperRule).toBeDefined();
+    expect(declaration(mediaWrapperRule!.body, 'border')).toBe('none');
+  });
+
   it.each([
     ['start', 'margin-left'],
     ['left', 'margin-left'],
     ['end', 'margin-right'],
     ['right', 'margin-right'],
-  ])(
-    'preserves %s-aligned media images',
-    (alignment, overriddenMargin) => {
-      const rule = mediaImageAlignmentRule(alignment);
+  ])('preserves %s-aligned media images', (alignment, overriddenMargin) => {
+    const rule = mediaImageAlignmentRule(alignment);
 
-      expect(rule).toBeDefined();
-      expect(declaration(rule!.body, overriddenMargin)).toBe('0');
-    },
-  );
+    expect(rule).toBeDefined();
+    expect(declaration(rule!.body, overriddenMargin)).toBe('0');
+  });
 });

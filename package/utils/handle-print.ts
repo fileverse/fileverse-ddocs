@@ -64,6 +64,9 @@ const CONTENT_STYLES = `
     margin-left: auto;
     margin-right: auto;
   }
+  .print-content-root [data-type='resizable-media'] {
+    border: none;
+  }
   .print-content-root [data-type='resizable-media'] > img[width='100%'] {
     width: auto;
   }
