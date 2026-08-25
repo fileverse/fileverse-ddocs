@@ -23,6 +23,7 @@
   /* include /index.ts*/
   "include": [
     "./index.ts",
+    "./headless-editor-utils.ts",
     "package/**/*",
     "demo/src/vite-env.d.ts",
     "demo/src/crypto"

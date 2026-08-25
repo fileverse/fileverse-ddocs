@@ -112,7 +112,7 @@ export const writeJSONContentToYjsField = ({
   editor.destroy();
 };
 
-export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
+export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
   const getEditor = (options?: { schemaVersion?: number }) => {
     const ydoc = new Y.Doc();
 
@@ -407,3 +407,6 @@ export const useHeadlessEditor = (props?: UseHeadlessEditorProps) => {
     getYjsContentFromDocx,
   };
 };
+
+export const useHeadlessEditor = (props?: UseHeadlessEditorProps) =>
+  createHeadlessEditorRuntime(props);

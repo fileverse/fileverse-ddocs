@@ -25,7 +25,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -77,6 +76,7 @@ import { useMarkdownSync } from './hooks/use-markdown-sync';
 import { useSplitResize } from './hooks/use-split-resize';
 import { applyTabbedTemplate } from './utils/apply-tabbed-template';
 import type { TabbedJSONContent } from './hooks/use-headless-editor';
+import { useTabPositionMemory } from './hooks/use-tab-position-memory';
 
 const DdocEditor = forwardRef(
   (
@@ -297,7 +297,7 @@ const DdocEditor = forwardRef(
       tabs,
       setTabs,
       activeTabId,
-      setActiveTabId,
+      setActiveTabId: setActiveTabIdRaw,
       createTab,
       renameTab,
       duplicateTab,
@@ -382,14 +382,20 @@ const DdocEditor = forwardRef(
       [activeTabId, editor, flushPendingUpdate, ydoc],
     );
 
-    // All tabs share a single scroll container (editorScrollContainerRef), so
-    // its scrollTop carries over between tabs. On switch, reset the active tab's
-    // canvas to the top. useLayoutEffect runs before paint to avoid a flash.
-    useLayoutEffect(() => {
-      const el = editorScrollContainerRef.current;
-      if (!el) return;
-      el.scrollTop = 0;
-    }, [activeTabId]);
+    // All tabs share one scroll container; on switch, land on the user's last
+    // position in the incoming tab (TEC-2710, docs/adr/tab-position-restore.md)
+    // instead of hard-resetting to the top.
+    const { switchTab: setActiveTabId } = useTabPositionMemory({
+      editor,
+      activeTabId,
+      ddocId,
+      setActiveTabId: setActiveTabIdRaw,
+      isContentLoading,
+      isNativeMobile,
+      disabled:
+        Boolean(rest.versionHistoryState?.enabled) ||
+        Boolean(isPresentationMode),
+    });
 
     // Split View (markdown left, read-only doc right). Disabled in preview.
     // Desktop-only for v1: two side-by-side panes don't fit below the 960px
