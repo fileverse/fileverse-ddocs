@@ -1408,6 +1408,7 @@ const DdocEditor = forwardRef(
                   isLoading={!editor || isContentLoading}
                   ipfsImageFetchFn={ipfsImageFetchFn}
                   fetchV1ImageFn={fetchV1ImageFn}
+                  fonts={fonts}
                 />
               </div>
             )}

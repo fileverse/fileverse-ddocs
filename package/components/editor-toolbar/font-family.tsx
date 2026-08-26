@@ -6,6 +6,7 @@ import {
 } from '@fileverse/ui';
 import { buildPickerEntries, EditorFontFamily } from '../editor-utils';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import cn from 'classnames';
 import type { Editor } from '@tiptap/core';
 import type { FontDescriptor } from '../../types';
 import { getCurrentFontFamily } from '../../utils/get-current-font-family';
@@ -13,9 +14,16 @@ import { getCurrentFontFamily } from '../../utils/get-current-font-family';
 export const FontFamilyDropdown = ({
   consumerFonts,
   editor,
+  triggerClassName,
+  focusEditor,
+  mobileSheet = false,
 }: {
   consumerFonts?: FontDescriptor[];
   editor: Editor;
+  triggerClassName?: string;
+  focusEditor?: boolean;
+  /** Mobile sheet layout: menu matches trigger width, 8px radius/padding */
+  mobileSheet?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
   const [currentFont, setCurrentFont] = useState('Default');
@@ -67,7 +75,12 @@ export const FontFamilyDropdown = ({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button className="bg-transparent hover:!color-bg-default-hover rounded p-2 h-[30px] flex items-center justify-center gap-2 w-[85px]">
+        <button
+          className={
+            triggerClassName ??
+            'bg-transparent hover:!color-bg-default-hover rounded p-2 h-[30px] flex items-center justify-center gap-2 w-[85px]'
+          }
+        >
           <span
             className="text-body-sm-bold line-clamp-1 break-all"
             style={{
@@ -79,12 +92,21 @@ export const FontFamilyDropdown = ({
           <LucideIcon name="ChevronDown" size="sm" className="min-w-fit" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="p-0 b-0">
+      <DropdownMenuContent
+        className={cn(
+          'p-0 b-0',
+          mobileSheet &&
+            'rounded-lg w-[var(--radix-dropdown-menu-trigger-width)]',
+        )}
+        align={mobileSheet ? 'start' : undefined}
+      >
         <EditorFontFamily
           editor={editor}
           elementRef={contentRef}
           setToolVisibility={() => setOpen(false)}
           fonts={consumerFonts}
+          focusEditor={focusEditor}
+          mobileSheet={mobileSheet}
         />
       </DropdownMenuContent>
     </DropdownMenu>

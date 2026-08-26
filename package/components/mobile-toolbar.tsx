@@ -13,7 +13,11 @@ import {
 import ToolbarButton from '../common/toolbar-button';
 import { AnimatePresence } from 'framer-motion';
 import { fadeInTransition, slideUpTransition } from './motion-div';
-import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../types';
+import {
+  FontDescriptor,
+  IpfsImageFetchPayload,
+  IpfsImageUploadResponse,
+} from '../types';
 import { parseHeadingLink } from '../utils/heading-link';
 
 const MobileToolbar = ({
@@ -26,6 +30,7 @@ const MobileToolbar = ({
   isLoading,
   ipfsImageFetchFn,
   fetchV1ImageFn,
+  fonts,
 }: {
   editor: Editor | null;
   onError?: (errorString: string) => void;
@@ -38,6 +43,7 @@ const MobileToolbar = ({
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
   fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>;
+  fonts?: FontDescriptor[];
 }) => {
   const { toolVisibility, setToolVisibility, bottomToolbar } = useEditorToolbar(
     {
@@ -253,6 +259,7 @@ const MobileToolbar = ({
         isOpen={toolVisibility === IEditorTool.TEXT_FORMATING}
         setIsOpen={(open) => !open && setToolVisibility(IEditorTool.NONE)}
         setToolVisibility={setToolVisibility}
+        fonts={fonts}
       />
       <DynamicModal
         open={toolVisibility === IEditorTool.LINK_POPUP}
