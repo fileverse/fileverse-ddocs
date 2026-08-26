@@ -626,6 +626,12 @@ export const textColors = [
   },
 ];
 
+// Mobile text-formatting sheet shows rows 1, 4 and 7 of the 7x15 palette.
+const TEXT_COLOR_ROW = 15;
+export const mobileTextColors = [0, 3, 6].flatMap((row) =>
+  textColors.slice(row * TEXT_COLOR_ROW, (row + 1) * TEXT_COLOR_ROW),
+);
+
 // Text colors are stored as `var(--color-editor-<name>)`, resolved by
 // theme-scoped CSS variables that only exist inside the editor. Substitute the
 // concrete light-theme hex so standalone exports (markdown, ODT) render outside it.

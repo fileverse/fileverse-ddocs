@@ -19,10 +19,13 @@ import { useEditorCommands } from '../hooks/use-editor-commands';
 import { startImageUpload } from '../utils/upload-images';
 import cn from 'classnames';
 import UtilsModal from './utils-modal';
+import { FontFamilyDropdown } from './editor-toolbar/font-family';
+import { FontSizeDropdown } from './editor-toolbar/font-size';
+import { useEditorStates } from '../hooks/use-editor-states';
 import {
   Carousel,
   CarouselContent,
-  CarouselIndicator,
+  CarouselDots,
   CarouselItem,
 } from '../common/carousel';
 import {
@@ -37,7 +40,7 @@ import {
   useTheme,
 } from '@fileverse/ui';
 import { useMediaQuery } from 'usehooks-ts';
-import { colors, textColors } from '../utils/colors';
+import { colors, mobileTextColors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
 import { useCommentRefs } from '../stores/comment-store-provider';
@@ -89,23 +92,27 @@ const fontStack = {
 type PickerEntry = {
   title: string;
   value: string;
-  command: (editor: Editor) => void;
+  command: (editor: Editor, focus?: boolean) => void;
   preview?: React.ReactNode;
 };
+
+// focus=false keeps the editor blurred (mobile sheet: avoids keyboard flash)
+const fontChain = (editor: Editor, focus: boolean) =>
+  focus ? editor.chain().focus() : editor.chain();
 
 export const baselineFonts: PickerEntry[] = [
   {
     title: 'Default',
     value: 'default',
-    command: (editor: Editor) => {
-      editor.chain().focus().unsetFontFamily().run();
+    command: (editor: Editor, focus = true) => {
+      fontChain(editor, focus).unsetFontFamily().run();
     },
   },
   ...Object.entries(fontStack).map<PickerEntry>(([key, value]) => ({
     title: key,
     value,
-    command: (editor: Editor) => {
-      editor.chain().focus().setFontFamily(value).run();
+    command: (editor: Editor, focus = true) => {
+      fontChain(editor, focus).setFontFamily(value).run();
     },
   })),
 ];
@@ -117,8 +124,8 @@ export function buildPickerEntries(
     title: f.name,
     value: f.family,
     preview: f.preview,
-    command: (editor: Editor) => {
-      editor.chain().focus().setFontFamily(f.family).run();
+    command: (editor: Editor, focus = true) => {
+      fontChain(editor, focus).setFontFamily(f.family).run();
     },
   }));
   const byValue = new Map<string, PickerEntry>();
@@ -1045,7 +1052,7 @@ export const useEditorToolbar = ({
     null,
     {
       icon: 'Type',
-      title: 'Text formating',
+      title: 'Text formatting',
       onClick: () => setToolVisibility(IEditorTool.TEXT_FORMATING),
       isActive: toolVisibility === IEditorTool.TEXT_FORMATING,
     },
@@ -1239,6 +1246,8 @@ export const TextHighlighter = ({
 
 const ROW_HEIGHT = 28;
 const MAX_VISIBLE_ROWS = 12;
+// Figma mobile popover: 320px total incl. 8px padding
+const SHEET_MAX_HEIGHT = 320;
 
 type FontRowSharedProps = {
   entries: PickerEntry[];
@@ -1246,6 +1255,8 @@ type FontRowSharedProps = {
   setToolVisibility: Dispatch<SetStateAction<IEditorTool>>;
   loadingValue: string | null;
   setLoadingValue: Dispatch<SetStateAction<string | null>>;
+  focusEditor: boolean;
+  mobileSheet: boolean;
 };
 
 const FontRow = ({
@@ -1256,6 +1267,8 @@ const FontRow = ({
   setToolVisibility,
   loadingValue,
   setLoadingValue,
+  focusEditor,
+  mobileSheet,
 }: RowComponentProps<FontRowSharedProps>) => {
   const font = entries[index];
   const isActive = editor.isActive('textStyle', { fontFamily: font.value });
@@ -1271,7 +1284,7 @@ const FontRow = ({
         setLoadingValue(font.value);
         try {
           await ensureLoaded(font.value);
-          font.command(editor);
+          font.command(editor, focusEditor);
           setToolVisibility(IEditorTool.NONE);
         } finally {
           // Only clear if this row still owns the spinner — a later click on
@@ -1287,7 +1300,10 @@ const FontRow = ({
       )}
     >
       {font.preview ?? (
-        <p className="font-medium" style={{ fontFamily: font.value }}>
+        <p
+          className={mobileSheet ? 'font-normal' : 'font-medium'}
+          style={{ fontFamily: font.value }}
+        >
           {font.title}
         </p>
       )}
@@ -1301,11 +1317,15 @@ export const EditorFontFamily = ({
   editor,
   setToolVisibility,
   fonts: consumerFonts = [],
+  focusEditor = true,
+  mobileSheet = false,
 }: {
   elementRef: React.RefObject<HTMLDivElement>;
   editor: Editor;
   setToolVisibility: Dispatch<SetStateAction<IEditorTool>>;
   fonts?: FontDescriptor[];
+  focusEditor?: boolean;
+  mobileSheet?: boolean;
 }) => {
   const entries = useMemo(
     () => buildPickerEntries(consumerFonts),
@@ -1313,13 +1333,16 @@ export const EditorFontFamily = ({
   );
   const [loadingValue, setLoadingValue] = useState<string | null>(null);
 
-  const visibleHeight = Math.min(entries.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT;
+  const visibleHeight = mobileSheet
+    ? SHEET_MAX_HEIGHT
+    : Math.min(entries.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT;
 
   return (
     <div
       ref={elementRef}
       className={cn(
-        'z-50 w-48 color-bg-default px-1 py-2 shadow-elevation-1 transition-all rounded',
+        'z-50 color-bg-default shadow-elevation-1 transition-all rounded',
+        mobileSheet ? 'w-full p-2' : 'w-48 px-1 py-2',
       )}
       style={{
         maxHeight: visibleHeight,
@@ -1337,6 +1360,8 @@ export const EditorFontFamily = ({
           setToolVisibility,
           loadingValue,
           setLoadingValue,
+          focusEditor,
+          mobileSheet,
         }}
         style={{ height: '100%', width: '100%' }}
       />
@@ -2051,17 +2076,28 @@ export const LineHeightPicker = ({
   );
 };
 
+// 12 x 24px circles + 4px gaps per page (Figma); 45 colours -> 4 pages
+const MOBILE_COLOR_SLIDES = 12;
+
+const MOBILE_FONT_TRIGGER =
+  'h-9 min-w-0 rounded border color-border-default color-bg-default px-2 flex items-center justify-between gap-2';
+
 export const TextFormatingPopup = ({
   editor,
   isOpen,
   setIsOpen,
   setToolVisibility,
+  fonts,
 }: {
   editor: Editor | null;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   setToolVisibility: Dispatch<SetStateAction<IEditorTool>>;
+  fonts?: FontDescriptor[];
 }) => {
+  const { currentSize } = useEditorStates(editor);
+  const { theme } = useTheme();
+
   const headings = [
     {
       title: 'Text',
@@ -2144,40 +2180,7 @@ export const TextFormatingPopup = ({
     },
   ];
 
-  const textAlignments = [
-    {
-      title: 'Left',
-      description: 'Left',
-      icon: 'AlignLeft',
-      command: (editor: Editor) => {
-        editor.chain().setTextAlign('left').focus().run();
-        setToolVisibility(IEditorTool.NONE);
-      },
-      isActive: () => editor?.isActive({ textAlign: 'left' }),
-    },
-    {
-      title: 'Center',
-      description: 'Center',
-      icon: 'AlignCenter',
-      command: (editor: Editor) => {
-        editor.chain().setTextAlign('center').focus().run();
-        setToolVisibility(IEditorTool.NONE);
-      },
-      isActive: () => editor?.isActive({ textAlign: 'center' }),
-    },
-    {
-      title: 'Right',
-      description: 'Right',
-      icon: 'AlignRight',
-      command: (editor: Editor) => {
-        editor.chain().setTextAlign('right').focus().run();
-        setToolVisibility(IEditorTool.NONE);
-      },
-      isActive: () => editor?.isActive({ textAlign: 'right' }),
-    },
-  ];
-
-  const textStyles = [
+  const firstRow = [
     {
       title: 'Bold',
       description: 'Bold text',
@@ -2224,7 +2227,47 @@ export const TextFormatingPopup = ({
     },
   ];
 
-  const others = [
+  const secondRow = [
+    {
+      title: 'Left',
+      description: 'Left',
+      icon: 'AlignLeft',
+      command: (editor: Editor) => {
+        editor.chain().setTextAlign('left').focus().run();
+        setToolVisibility(IEditorTool.NONE);
+      },
+      isActive: () => editor?.isActive({ textAlign: 'left' }),
+    },
+    {
+      title: 'Center',
+      description: 'Center',
+      icon: 'AlignCenter',
+      command: (editor: Editor) => {
+        editor.chain().setTextAlign('center').focus().run();
+        setToolVisibility(IEditorTool.NONE);
+      },
+      isActive: () => editor?.isActive({ textAlign: 'center' }),
+    },
+    {
+      title: 'Right',
+      description: 'Right',
+      icon: 'AlignRight',
+      command: (editor: Editor) => {
+        editor.chain().setTextAlign('right').focus().run();
+        setToolVisibility(IEditorTool.NONE);
+      },
+      isActive: () => editor?.isActive({ textAlign: 'right' }),
+    },
+    {
+      title: 'Quote',
+      description: 'Quote',
+      icon: 'TextQuote',
+      command: (editor: Editor) => editor.chain().toggleBlockquote().run(),
+      isActive: () => editor?.isActive('blockquote'),
+    },
+  ];
+
+  const thirdRow = [
     {
       title: 'Code',
       description: 'Code',
@@ -2233,18 +2276,18 @@ export const TextFormatingPopup = ({
       isActive: () => editor?.isActive('code'),
     },
     {
+      title: 'Code Block',
+      description: 'Code block',
+      icon: 'Braces',
+      command: (editor: Editor) => editor.chain().toggleCodeBlock().run(),
+      isActive: () => editor?.isActive('codeBlock'),
+    },
+    {
       title: 'Link',
       description: 'Link',
       icon: 'Link',
       command: () => setToolVisibility(IEditorTool.LINK_POPUP),
       isActive: () => false,
-    },
-    {
-      title: 'Quote',
-      description: 'Quote',
-      icon: 'TextQuote',
-      command: (editor: Editor) => editor.chain().toggleBlockquote().run(),
-      isActive: () => editor?.isActive('blockquote'),
     },
   ];
 
@@ -2351,18 +2394,11 @@ export const TextFormatingPopup = ({
       },
       isActive: () => editor?.isActive('orderedList'),
     },
-    {
-      title: 'Code Block',
-      description: 'Code block',
-      icon: 'Braces',
-      command: (editor: Editor) => editor.chain().toggleCodeBlock().run(),
-      isActive: () => editor?.isActive('codeBlock'),
-    },
   ];
 
   return (
     <UtilsModal
-      title="Text formating"
+      title="Text formatting"
       isOpen={isOpen}
       setIsOpen={setIsOpen}
       onCloseAutoFocus={() => {
@@ -2374,258 +2410,188 @@ export const TextFormatingPopup = ({
         });
       }}
       content={
-        <div className="px-4 flex flex-col gap-2 w-full">
-          <div className="flex justify-start sm:justify-center items-center gap-1">
-            {headings.map((heading) => (
-              <button
-                onClick={() => editor && heading.command(editor)}
-                key={heading.title}
-                className={cn(
-                  'flex w-fit items-center font-medium space-x-2 rounded p-2 text-center text-sm color-text-default transition',
-                  {
-                    ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
-                      heading.isActive(),
-                    ['hover:color-bg-default-hover']: !heading.isActive(),
-                  },
-                )}
-              >
-                {heading.title}
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-between sm:justify-center items-center gap-1">
-            <div className="mobile-util-btn-group rounded flex gap-1 justify-evenly w-full sm:w-fit p-1">
-              {textAlignments.map((textAlignment) => (
-                <button
-                  onClick={() => editor && textAlignment.command(editor)}
-                  key={textAlignment.title}
-                  className={cn(
-                    'flex items-center space-x-2 rounded px-4 py-1 color-text-default transition h-9',
-                    {
+        editor && (
+          <div className="px-4 w-full">
+            <div>
+              <h6 className="text-body-sm-bold color-text-default mb-3">
+                Paragraph styles
+              </h6>
+              <div className="flex justify-start sm:justify-center items-center gap-1">
+                {headings.map((heading) => (
+                  <button
+                    onClick={() => heading.command(editor)}
+                    key={heading.title}
+                    className={cn(
+                      'flex w-fit items-center font-medium space-x-2 rounded p-2 text-center text-sm color-text-default transition',
+                      {
+                        ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
+                          heading.isActive(),
+                        ['hover:color-bg-default-hover']: !heading.isActive(),
+                      },
+                    )}
+                  >
+                    {heading.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-4">
+              <h6 className="text-body-sm-bold color-text-default">
+                Text formatting
+              </h6>
+              <div className="flex gap-2 mt-3">
+                <FontFamilyDropdown
+                  editor={editor}
+                  consumerFonts={fonts}
+                  focusEditor={false}
+                  mobileSheet
+                  triggerClassName={cn(MOBILE_FONT_TRIGGER, 'flex-1')}
+                />
+                <FontSizeDropdown
+                  editor={editor}
+                  currentSize={currentSize}
+                  onSetFontSize={(size) =>
+                    editor.chain().setFontSize(size).run()
+                  }
+                  mobileSheet
+                  triggerClassName={cn(MOBILE_FONT_TRIGGER, 'w-24')}
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="flex gap-1 justify-between">
+                {firstRow.map((textStyle) => (
+                  <IconButton
+                    variant={'ghost'}
+                    icon={textStyle.icon}
+                    size="md"
+                    onClick={() => textStyle.command(editor)}
+                    key={textStyle.title}
+                    className={cn({
+                      ['color-bg-brand hover:!bg-[hsl(var(--color-bg-brand-hover))] color-text-on-brand']:
+                        textStyle.isActive(),
+                    })}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-between gap-1 my-3">
+                {secondRow.map((textAlignment) => (
+                  <IconButton
+                    variant={'ghost'}
+                    icon={textAlignment.icon}
+                    onClick={() => textAlignment.command(editor)}
+                    size="md"
+                    key={textAlignment.title}
+                    className={cn({
                       ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
                         textAlignment.isActive(),
                       ['hover:color-bg-default-hover']:
                         !textAlignment.isActive(),
-                    },
-                  )}
-                >
-                  <LucideIcon name={textAlignment.icon} size="md" />
-                </button>
-              ))}
-            </div>
-            <div className="mobile-util-btn-group rounded flex gap-1 justify-evenly w-full sm:w-fit p-1">
-              {others.map((other) => (
-                <button
-                  onClick={() => editor && other.command(editor)}
-                  key={other.title}
-                  className={cn(
-                    'flex items-center space-x-2 rounded px-4 py-1 color-text-default transition h-9',
-                    {
+                    })}
+                  />
+                ))}
+                {listStyles.map((listStyle) => (
+                  <IconButton
+                    variant={'ghost'}
+                    icon={listStyle.icon}
+                    size="md"
+                    onClick={() => listStyle.command(editor)}
+                    key={listStyle.title}
+                    className={cn({
+                      ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
+                        listStyle.isActive(),
+                      ['hover:color-bg-default-hover']: !listStyle.isActive(),
+                    })}
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-[repeat(17,1fr)] justify-items-start">
+                {thirdRow.map((other) => (
+                  <IconButton
+                    icon={other.icon}
+                    size="md"
+                    variant={'ghost'}
+                    onClick={() => other.command(editor)}
+                    key={other.title}
+                    className={cn('col-span-3', {
                       ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
                         other.isActive(),
                       ['hover:color-bg-default-hover']: !other.isActive(),
-                    },
-                  )}
-                >
-                  <LucideIcon name={other.icon} size="md" />
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex gap-1 justify-center">
-            <div className="mobile-util-btn-group rounded flex gap-1 justify-evenly p-1 w-full sm:w-fit ">
-              {textStyles.slice(0, 4).map((textStyle) => (
-                <button
-                  onClick={() => editor && textStyle.command(editor)}
-                  key={textStyle.title}
-                  className={cn(
-                    'flex items-center space-x-2 rounded px-4 py-1 color-text-default transition h-9',
-                    {
-                      ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
-                        textStyle.isActive(),
-                      ['hover:color-bg-default-hover']: !textStyle.isActive(),
-                    },
-                  )}
-                >
-                  <LucideIcon name={textStyle.icon} size="sm" />
-                </button>
-              ))}
-            </div>
-            <div className="mobile-util-btn-group rounded flex gap-1 justify-evenly p-1 w-full sm:w-fit ">
-              {textStyles.slice(4).map((textStyle) => (
-                <button
-                  onClick={() => editor && textStyle.command(editor)}
-                  key={textStyle.title}
-                  className={cn(
-                    'flex items-center space-x-2 rounded px-4 py-1 color-text-default transition h-9',
-                    {
-                      ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
-                        textStyle.isActive(),
-                      ['hover:color-bg-default-hover']: !textStyle.isActive(),
-                    },
-                  )}
-                >
-                  <LucideIcon name={textStyle.icon} size="sm" />
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mobile-util-btn-group rounded flex gap-1 justify-center self-center w-fit p-1">
-            {listStyles.map((listStyle) => (
-              <button
-                onClick={() => editor && listStyle.command(editor)}
-                key={listStyle.title}
-                className={cn(
-                  'flex items-center space-x-2 rounded px-4 py-1 color-text-default transition h-9',
-                  {
-                    ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
-                      listStyle.isActive(),
-                    ['hover:color-bg-default-hover']: !listStyle.isActive(),
-                  },
-                )}
-              >
-                <LucideIcon name={listStyle.icon} size="md" />
-              </button>
-            ))}
-          </div>
-
-          {/* New Layout */}
-          <div className="flex flex-col gap-4 mt-4">
-            <p className="text-left sm:text-center text-lg font-semibold leading-none tracking-tight">
-              Text color
-            </p>
-            <Carousel
-              opts={{
-                align: 'start',
-                dragFree: true,
-                slidesToScroll: 'auto',
-              }}
-              className="w-full max-w-md mx-auto"
-            >
-              <CarouselContent>
-                <CarouselItem
-                  style={{
-                    flexBasis: 'calc(100% / 12)',
-                  }}
-                >
-                  <button
-                    className="mb-1 drop-shadow flex justify-center items-center cursor-pointer transition"
-                    onClick={() => {
-                      editor && editor.chain().unsetColor().run();
-                    }}
-                  >
-                    <LucideIcon name="Ban" className="w-6 h-6" />
-                  </button>
-                </CarouselItem>
-                {colors.map((color, index) => (
-                  <CarouselItem
-                    key={index}
-                    style={{
-                      flexBasis: 'calc(100% / 12)',
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        editor && editor.chain().setColor(color.color).run();
-                      }}
-                      key={color.color}
-                      className={cn(
-                        'w-6 h-6 mb-1 drop-shadow rounded-full flex justify-center items-center cursor-pointer transition',
-                        color.code,
-                      )}
-                    >
-                      <LucideIcon
-                        name="Check"
-                        className={cn(
-                          'w-[14px] aspect-square',
-                          editor?.isActive('textStyle', {
-                            color: color.color,
-                          })
-                            ? 'visible'
-                            : 'invisible',
-                        )}
-                      />
-                    </button>
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-              <div className="flex justify-center gap-2 mt-4 w-full max-w-sm">
-                {Array.from({ length: colors.length / 8 }).map((_, index) => (
-                  <CarouselIndicator key={index} index={index} />
+                    })}
+                  />
                 ))}
               </div>
-            </Carousel>
-          </div>
-        </div>
-      }
-    />
-  );
-};
-
-export const TextColorPicker = ({ editor }: { editor: Editor }) => {
-  return (
-    <UtilsModal
-      title="Text color"
-      content={
-        <Carousel
-          opts={{
-            align: 'start',
-            dragFree: true,
-            slidesToScroll: 'auto',
-          }}
-          className="w-full max-w-md px-4 mx-auto"
-        >
-          <CarouselContent>
-            <CarouselItem
-              style={{
-                flexBasis: 'calc(100% / 12)',
-              }}
-            >
-              <IconButton
-                icon="Ban"
-                onClick={() => {
-                  editor.chain().focus().unsetColor().run();
+            </div>
+            <div className="mt-4">
+              <h6 className="text-body-sm-bold color-text-default">
+                Text color
+              </h6>
+              <Carousel
+                opts={{
+                  align: 'start',
+                  slidesToScroll: MOBILE_COLOR_SLIDES,
+                  // keep the last page start-aligned so dots map 1:1 to pages
+                  containScroll: false,
                 }}
-              />
-            </CarouselItem>
-            {colors.map((color, index) => (
-              <CarouselItem
-                key={index}
-                style={{
-                  flexBasis: 'calc(100% / 12)',
-                }}
+                slidesPerView={MOBILE_COLOR_SLIDES}
+                className="w-full max-w-md mx-auto mt-3"
               >
-                <button
-                  onClick={() => {
-                    editor.chain().focus().setColor(color.color).run();
-                  }}
-                  key={color.color}
-                  className={cn(
-                    'w-6 h-6 mb-1 drop-shadow rounded-full flex justify-center items-center cursor-pointer transition',
-                    color.code,
-                  )}
-                >
-                  <LucideIcon
-                    name="Check"
-                    className={cn(
-                      'w-[14px] aspect-square',
-                      editor.isActive('textStyle', {
-                        color: color.color,
-                      })
-                        ? 'visible'
-                        : 'invisible',
-                    )}
+                <CarouselContent className="-ml-1">
+                  {mobileTextColors.map((color, index) => {
+                    const contrastColor = getContrastColor(
+                      (color as Record<string, string>)[theme] || color.light,
+                    );
+                    const tickColorClassName =
+                      contrastColor === '#000000' ? 'text-black' : 'text-white';
+                    const colorCSSVariable = `var(--color-editor-${color.name})`;
+                    return (
+                      <CarouselItem key={index} className="pl-1">
+                        <button
+                          onClick={() => {
+                            editor.chain().setColor(colorCSSVariable).run();
+                          }}
+                          key={color.name}
+                          style={{ backgroundColor: colorCSSVariable }}
+                          className="w-6 h-6 shrink-0 drop-shadow rounded-full flex justify-center items-center cursor-pointer transition"
+                        >
+                          <LucideIcon
+                            name="Check"
+                            className={cn(
+                              'w-[14px] aspect-square',
+                              editor?.isActive('textStyle', {
+                                color: colorCSSVariable,
+                              }) || false
+                                ? 'visible'
+                                : 'invisible',
+                              tickColorClassName,
+                            )}
+                          />
+                        </button>
+                      </CarouselItem>
+                    );
+                  })}
+                </CarouselContent>
+                <div className="flex items-center mt-4">
+                  <IconButton
+                    icon="Ban"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().unsetColor().run()}
                   />
-                </button>
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-          <div className="flex justify-center gap-2 mt-4 w-full max-w-sm">
-            {Array.from({ length: colors.length / 8 }).map((_, index) => (
-              <CarouselIndicator key={index} index={index} />
-            ))}
+                  <CarouselDots className="flex-1" />
+                  {/* invisible twin keeps the dots centred */}
+                  <IconButton
+                    icon="Ban"
+                    variant="ghost"
+                    size="sm"
+                    className="invisible"
+                    aria-hidden
+                  />
+                </div>
+              </Carousel>
+            </div>
           </div>
-        </Carousel>
+        )
       }
     />
   );

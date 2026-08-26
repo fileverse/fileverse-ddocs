@@ -13,8 +13,14 @@ import {
 import ToolbarButton from '../common/toolbar-button';
 import { AnimatePresence } from 'framer-motion';
 import { fadeInTransition, slideUpTransition } from './motion-div';
-import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../types';
+import {
+  FontDescriptor,
+  IpfsImageFetchPayload,
+  IpfsImageUploadResponse,
+} from '../types';
 import { parseHeadingLink } from '../utils/heading-link';
+import { useMobileToolbarStore } from '../stores/mobile-toolbar-store';
+import { dismissNativeSelection } from '../utils/dismiss-native-selection';
 
 const MobileToolbar = ({
   editor,
@@ -26,6 +32,7 @@ const MobileToolbar = ({
   isLoading,
   ipfsImageFetchFn,
   fetchV1ImageFn,
+  fonts,
 }: {
   editor: Editor | null;
   onError?: (errorString: string) => void;
@@ -38,6 +45,7 @@ const MobileToolbar = ({
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
   fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>;
+  fonts?: FontDescriptor[];
 }) => {
   const { toolVisibility, setToolVisibility, bottomToolbar } = useEditorToolbar(
     {
@@ -155,6 +163,18 @@ const MobileToolbar = ({
     }
   }, [isKeyboardVisible, setToolVisibility]);
 
+  // While a sheet/modal owns the screen: hide the bubble menu and drop the
+  // native selection UI (OS edit menu + handles) that would float above it.
+  const setMobileToolbarOpen = useMobileToolbarStore(
+    (s) => s.setMobileToolbarOpen,
+  );
+  useEffect(() => {
+    const isOpen = toolVisibility !== IEditorTool.NONE;
+    setMobileToolbarOpen(isOpen);
+    if (isOpen) dismissNativeSelection(editor);
+    return () => setMobileToolbarOpen(false);
+  }, [toolVisibility, editor, setMobileToolbarOpen]);
+
   useEffect(() => {
     if (toolVisibility === IEditorTool.LINK_POPUP) {
       const { text, url } = getSelectedLink();
@@ -253,6 +273,7 @@ const MobileToolbar = ({
         isOpen={toolVisibility === IEditorTool.TEXT_FORMATING}
         setIsOpen={(open) => !open && setToolVisibility(IEditorTool.NONE)}
         setToolVisibility={setToolVisibility}
+        fonts={fonts}
       />
       <DynamicModal
         open={toolVisibility === IEditorTool.LINK_POPUP}

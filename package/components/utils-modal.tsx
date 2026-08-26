@@ -4,8 +4,8 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerClose,
-  LucideIcon,
   Drawer,
+  IconButton,
 } from '@fileverse/ui';
 import cn from 'classnames';
 
@@ -29,14 +29,14 @@ const UtilsModal = ({
   return (
     <Drawer open={isOpen} onOpenChange={setIsOpen}>
       <DrawerContent
-        className="w-full z-20"
+        className="w-full z-20 !gap-4"
         onCloseAutoFocus={onCloseAutoFocus}
       >
-        <DrawerHeader className="p-4">
+        <DrawerHeader className="p-4 border-b color-border-default">
           <DrawerTitle className="flex justify-between items-center text-left sm:text-center text-base">
             {title}
-            <DrawerClose>
-              <LucideIcon name="X" size="sm" />
+            <DrawerClose asChild>
+              <IconButton icon={'X'} size="sm" variant={'ghost'} />
             </DrawerClose>
           </DrawerTitle>
         </DrawerHeader>

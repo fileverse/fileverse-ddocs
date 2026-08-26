@@ -6,6 +6,7 @@ const nothingOpen = {
   isLinkPopupOpen: false,
   isBubbleMenuSuppressed: false,
   isCustomSpacingOpen: false,
+  isMobileToolbarOpen: false,
 };
 
 describe('isBubbleMenuHidden', () => {
@@ -19,6 +20,14 @@ describe('isBubbleMenuHidden', () => {
   it('hides the menu while the custom spacing dialog is open', () => {
     expect(
       isBubbleMenuHidden({ ...nothingOpen, isCustomSpacingOpen: true }),
+    ).toBe(true);
+  });
+
+  // On native mobile the menu shows for any in-editor DOM selection (focus is
+  // ignored), so the mobile toolbar's sheets have to hide it explicitly too.
+  it('hides the menu while a mobile toolbar sheet/modal is open', () => {
+    expect(
+      isBubbleMenuHidden({ ...nothingOpen, isMobileToolbarOpen: true }),
     ).toBe(true);
   });
 

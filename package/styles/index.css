@@ -450,10 +450,6 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   background-color: hsl(var(--color-border-default));
 }
 
-.mobile-util-btn-group {
-  background-color: hsl(var(--color-bg-secondary));
-}
-
 .vertical-divider {
   background-color: hsl(var(--color-border-default));
 }
