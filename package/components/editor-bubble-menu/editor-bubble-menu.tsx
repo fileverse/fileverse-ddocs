@@ -33,6 +33,7 @@ import {
   openCustomSpacingDialog,
   useCustomSpacingStore,
 } from '../../stores/custom-spacing-store';
+import { useMobileToolbarStore } from '../../stores/mobile-toolbar-store';
 import { Editor } from '@tiptap/react';
 
 const MemoizedFontSizePicker = React.memo(FontSizePicker);
@@ -83,6 +84,9 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   );
   const isCustomSpacingOpen = useCustomSpacingStore(
     (s) => s.isCustomSpacingOpen,
+  );
+  const isMobileToolbarOpen = useMobileToolbarStore(
+    (s) => s.isMobileToolbarOpen,
   );
   const { buttonRef } = useCommentRefs();
 
@@ -307,6 +311,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
           isLinkPopupOpen: toolVisibility === IEditorTool.LINK_POPUP,
           isBubbleMenuSuppressed,
           isCustomSpacingOpen,
+          isMobileToolbarOpen,
         })
           ? '!invisible'
           : '!visible',

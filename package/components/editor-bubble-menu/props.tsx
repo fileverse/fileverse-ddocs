@@ -100,13 +100,16 @@ export const isBubbleMenuHidden = ({
   isLinkPopupOpen,
   isBubbleMenuSuppressed,
   isCustomSpacingOpen,
+  isMobileToolbarOpen,
 }: {
   isCommentOpen: boolean;
   isLinkPopupOpen: boolean;
   isBubbleMenuSuppressed: boolean;
   isCustomSpacingOpen: boolean;
+  isMobileToolbarOpen: boolean;
 }) =>
   isCommentOpen ||
   isLinkPopupOpen ||
   isBubbleMenuSuppressed ||
-  isCustomSpacingOpen;
+  isCustomSpacingOpen ||
+  isMobileToolbarOpen;

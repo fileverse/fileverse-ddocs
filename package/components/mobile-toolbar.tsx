@@ -19,6 +19,8 @@ import {
   IpfsImageUploadResponse,
 } from '../types';
 import { parseHeadingLink } from '../utils/heading-link';
+import { useMobileToolbarStore } from '../stores/mobile-toolbar-store';
+import { dismissNativeSelection } from '../utils/dismiss-native-selection';
 
 const MobileToolbar = ({
   editor,
@@ -160,6 +162,18 @@ const MobileToolbar = ({
       setToolVisibility(IEditorTool.NONE);
     }
   }, [isKeyboardVisible, setToolVisibility]);
+
+  // While a sheet/modal owns the screen: hide the bubble menu and drop the
+  // native selection UI (OS edit menu + handles) that would float above it.
+  const setMobileToolbarOpen = useMobileToolbarStore(
+    (s) => s.setMobileToolbarOpen,
+  );
+  useEffect(() => {
+    const isOpen = toolVisibility !== IEditorTool.NONE;
+    setMobileToolbarOpen(isOpen);
+    if (isOpen) dismissNativeSelection(editor);
+    return () => setMobileToolbarOpen(false);
+  }, [toolVisibility, editor, setMobileToolbarOpen]);
 
   useEffect(() => {
     if (toolVisibility === IEditorTool.LINK_POPUP) {
