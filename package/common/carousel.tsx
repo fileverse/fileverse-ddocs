@@ -9,6 +9,7 @@ import React, {
   useState,
   KeyboardEvent,
 } from 'react';
+import type { CSSProperties } from 'react';
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from 'embla-carousel-react';
@@ -25,6 +26,9 @@ type CarouselProps = {
   plugins?: CarouselPlugin;
   orientation?: 'horizontal' | 'vertical';
   setApi?: (api: CarouselApi) => void;
+  /** Slides visible per view. Embla has no option for this — slide size is
+   *  CSS-driven (`--slide-size` → flex-basis), which is what this sets. */
+  slidesPerView?: number;
 };
 
 type CarouselContextProps = {
@@ -58,6 +62,7 @@ const Carousel = forwardRef<
       opts,
       setApi,
       plugins,
+      slidesPerView,
       className,
       children,
       ...props
@@ -132,6 +137,7 @@ const Carousel = forwardRef<
           carouselRef,
           api: api,
           opts,
+          slidesPerView,
           orientation:
             orientation || (opts?.axis === 'y' ? 'vertical' : 'horizontal'),
           scrollPrev,
@@ -159,8 +165,11 @@ Carousel.displayName = 'Carousel';
 const CarouselContent = forwardRef<
   HTMLDivElement,
   HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => {
-  const { carouselRef, orientation } = useCarousel();
+>(({ className, style, ...props }, ref) => {
+  const { carouselRef, orientation, slidesPerView } = useCarousel();
+  const slideSize = slidesPerView
+    ? ({ '--slide-size': `${100 / slidesPerView}%` } as CSSProperties)
+    : undefined;
 
   return (
     <div ref={carouselRef} className="overflow-hidden">
@@ -171,6 +180,7 @@ const CarouselContent = forwardRef<
           orientation === 'horizontal' ? '-ml-4' : '-mt-4 flex-col',
           className,
         )}
+        style={{ ...slideSize, ...style }}
         {...props}
       />
     </div>
@@ -188,7 +198,7 @@ const CarouselItem = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
         role="group"
         aria-roledescription="slide"
         className={cn(
-          'min-w-0 shrink-0 grow-0 basis-full',
+          'min-w-0 shrink-0 grow-0 basis-[var(--slide-size,100%)]',
           orientation === 'horizontal' ? 'pl-4' : 'pt-4',
           className,
         )}
@@ -254,6 +264,37 @@ const CarouselIndicator = forwardRef<
 
 CarouselIndicator.displayName = 'CarouselIndicator';
 
+/** Renders one CarouselIndicator per Embla scroll snap. */
+const CarouselDots = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => {
+    const { api: emblaApi } = useCarousel();
+    const [snapCount, setSnapCount] = useState(0);
+
+    useEffect(() => {
+      if (!emblaApi) return;
+      const update = () => setSnapCount(emblaApi.scrollSnapList().length);
+      update();
+      emblaApi.on('reInit', update);
+      return () => {
+        emblaApi.off('reInit', update);
+      };
+    }, [emblaApi]);
+
+    return (
+      <div
+        ref={ref}
+        className={cn('flex justify-center gap-2', className)}
+        {...props}
+      >
+        {Array.from({ length: snapCount }).map((_, index) => (
+          <CarouselIndicator key={index} index={index} />
+        ))}
+      </div>
+    );
+  },
+);
+CarouselDots.displayName = 'CarouselDots';
+
 const CarouselPrevious = React.forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement>
@@ -306,6 +347,7 @@ export {
   CarouselContent,
   CarouselItem,
   CarouselIndicator,
+  CarouselDots,
   CarouselPrevious,
   CarouselNext,
 };

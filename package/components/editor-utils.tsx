@@ -25,7 +25,7 @@ import { useEditorStates } from '../hooks/use-editor-states';
 import {
   Carousel,
   CarouselContent,
-  CarouselIndicator,
+  CarouselDots,
   CarouselItem,
 } from '../common/carousel';
 import {
@@ -40,7 +40,7 @@ import {
   useTheme,
 } from '@fileverse/ui';
 import { useMediaQuery } from 'usehooks-ts';
-import { colors, textColors } from '../utils/colors';
+import { colors, mobileTextColors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
 import { useCommentRefs } from '../stores/comment-store-provider';
@@ -2076,6 +2076,9 @@ export const LineHeightPicker = ({
   );
 };
 
+// 12 x 24px circles + 4px gaps per page (Figma); 45 colours -> 4 pages
+const MOBILE_COLOR_SLIDES = 12;
+
 const MOBILE_FONT_TRIGGER =
   'h-9 min-w-0 rounded border color-border-default color-bg-default px-2 flex items-center justify-between gap-2';
 
@@ -2093,6 +2096,8 @@ export const TextFormatingPopup = ({
   fonts?: FontDescriptor[];
 }) => {
   const { currentSize } = useEditorStates(editor);
+  const { theme } = useTheme();
+
   const headings = [
     {
       title: 'Text',
@@ -2524,62 +2529,64 @@ export const TextFormatingPopup = ({
               <Carousel
                 opts={{
                   align: 'start',
-                  dragFree: true,
-                  slidesToScroll: 'auto',
+                  slidesToScroll: MOBILE_COLOR_SLIDES,
+                  // keep the last page start-aligned so dots map 1:1 to pages
+                  containScroll: false,
                 }}
+                slidesPerView={MOBILE_COLOR_SLIDES}
                 className="w-full max-w-md mx-auto mt-3"
               >
-                <CarouselContent>
-                  <CarouselItem
-                    style={{
-                      flexBasis: 'calc(100% / 12)',
-                    }}
-                  >
-                    <button
-                      className="mb-1 drop-shadow flex justify-center items-center cursor-pointer transition"
-                      onClick={() => {
-                        editor.chain().unsetColor().run();
-                      }}
-                    >
-                      <LucideIcon name="Ban" className="w-6 h-6" />
-                    </button>
-                  </CarouselItem>
-                  {colors.map((color, index) => (
-                    <CarouselItem
-                      key={index}
-                      style={{
-                        flexBasis: 'calc(100% / 12)',
-                      }}
-                    >
-                      <button
-                        onClick={() => {
-                          editor.chain().setColor(color.color).run();
-                        }}
-                        key={color.color}
-                        className={cn(
-                          'w-6 h-6 mb-1 drop-shadow rounded-full flex justify-center items-center cursor-pointer transition',
-                          color.code,
-                        )}
-                      >
-                        <LucideIcon
-                          name="Check"
-                          className={cn(
-                            'w-[14px] aspect-square',
-                            editor?.isActive('textStyle', {
-                              color: color.color,
-                            })
-                              ? 'visible'
-                              : 'invisible',
-                          )}
-                        />
-                      </button>
-                    </CarouselItem>
-                  ))}
+                <CarouselContent className="-ml-1">
+                  {mobileTextColors.map((color, index) => {
+                    const contrastColor = getContrastColor(
+                      (color as Record<string, string>)[theme] || color.light,
+                    );
+                    const tickColorClassName =
+                      contrastColor === '#000000' ? 'text-black' : 'text-white';
+                    const colorCSSVariable = `var(--color-editor-${color.name})`;
+                    return (
+                      <CarouselItem key={index} className="pl-1">
+                        <button
+                          onClick={() => {
+                            editor.chain().setColor(colorCSSVariable).run();
+                          }}
+                          key={color.name}
+                          style={{ backgroundColor: colorCSSVariable }}
+                          className="w-6 h-6 shrink-0 drop-shadow rounded-full flex justify-center items-center cursor-pointer transition"
+                        >
+                          <LucideIcon
+                            name="Check"
+                            className={cn(
+                              'w-[14px] aspect-square',
+                              editor?.isActive('textStyle', {
+                                color: colorCSSVariable,
+                              }) || false
+                                ? 'visible'
+                                : 'invisible',
+                              tickColorClassName,
+                            )}
+                          />
+                        </button>
+                      </CarouselItem>
+                    );
+                  })}
                 </CarouselContent>
-                <div className="flex justify-center gap-2 mt-4 w-full max-w-sm">
-                  {Array.from({ length: colors.length / 8 }).map((_, index) => (
-                    <CarouselIndicator key={index} index={index} />
-                  ))}
+                <div className="flex items-center mt-4">
+                  <IconButton
+                    icon="Ban"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().unsetColor().run()}
+                  />
+                  <CarouselDots className="flex-1" />
+                  {/* invisible twin keeps the dots centred */}
+                  <IconButton
+                    icon="Ban"
+                    variant="ghost"
+                    size="sm"
+                    className="invisible"
+                    aria-hidden
+                  />
                 </div>
               </Carousel>
             </div>
