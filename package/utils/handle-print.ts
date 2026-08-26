@@ -64,6 +64,20 @@ const CONTENT_STYLES = `
     margin-left: auto;
     margin-right: auto;
   }
+  .print-content-root [data-type='resizable-media'] {
+    border: none;
+  }
+  .print-content-root [data-type='resizable-media'] > img[width='100%'] {
+    width: auto;
+  }
+  .print-content-root [data-type='resizable-media'][dataalign='start'] > img,
+  .print-content-root [data-type='resizable-media'][dataalign='left'] > img {
+    margin-left: 0;
+  }
+  .print-content-root [data-type='resizable-media'][dataalign='end'] > img,
+  .print-content-root [data-type='resizable-media'][dataalign='right'] > img {
+    margin-right: 0;
+  }
   .print-content-root h3 {
     font-weight: 600;
     color: #0D0D0D;
