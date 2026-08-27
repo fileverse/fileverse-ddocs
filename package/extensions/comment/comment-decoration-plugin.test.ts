@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import {
+  applyAcceptedSuggestion,
   CommentDecorationExtension,
   commentDecorationPluginKey,
   createCommentAnchorFromEditor,
@@ -53,6 +54,28 @@ const decoratedText = (editor: Editor, commentId: string): string | null => {
   const from = Math.min(...decorations.map((d) => d.from));
   const to = Math.max(...decorations.map((d) => d.to));
   return editor.state.doc.textBetween(from, to, ' ');
+};
+
+const applySuggestion = (
+  editor: Editor,
+  needle: string,
+  suggestionType: 'delete' | 'replace',
+  suggestedContent = '',
+) => {
+  const range = findRange(editor, needle);
+  const relative = createCommentAnchorFromEditor(editor, range.from, range.to);
+  if (!relative) throw new Error(`Could not anchor "${needle}"`);
+
+  return applyAcceptedSuggestion(editor, {
+    id: 'suggestion-1',
+    ...relative,
+    resolved: false,
+    deleted: false,
+    isSuggestion: true,
+    suggestionType,
+    originalContent: needle,
+    suggestedContent,
+  });
 };
 
 describe('comment decoration anchoring', () => {
@@ -202,5 +225,50 @@ describe('comment decoration anchoring', () => {
     editor.commands.deleteRange({ from: target.from, to: target.to });
 
     expect(decoratedText(editor, 'c1')).toBeNull();
+  });
+});
+
+describe('accepted suggestions', () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  it('removes one surrounding space when deleting a middle word', () => {
+    const harness = makeCommentEditor();
+    editor = harness.editor;
+    editor.commands.setContent('<p>I like red apples</p>');
+
+    expect(applySuggestion(editor, 'red', 'delete')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('I like apples');
+  });
+
+  it('does not normalize a deletion next to punctuation', () => {
+    const harness = makeCommentEditor();
+    editor = harness.editor;
+    editor.commands.setContent('<p>I like red, apples</p>');
+
+    expect(applySuggestion(editor, 'red', 'delete')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('I like , apples');
+  });
+
+  it('does not remove another character when the selection includes a space', () => {
+    const harness = makeCommentEditor();
+    editor = harness.editor;
+    editor.commands.setContent('<p>I like red apples</p>');
+
+    expect(applySuggestion(editor, 'red ', 'delete')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('I like apples');
+  });
+
+  it('preserves surrounding spaces for replacement suggestions', () => {
+    const harness = makeCommentEditor();
+    editor = harness.editor;
+    editor.commands.setContent('<p>I like red apples</p>');
+
+    expect(applySuggestion(editor, 'red', 'replace', 'green')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('I like green apples');
   });
 });

@@ -942,6 +942,37 @@ export function getCommentAnchorRange(
   return resolveCommentAnchorRangeInState(anchor, editor.state);
 }
 
+function resolveAcceptedDeleteRange(
+  state: EditorState,
+  from: number,
+  to: number,
+): CommentAnchorRange {
+  const $from = state.doc.resolve(from);
+  const $to = state.doc.resolve(to);
+
+  if (
+    !$from.sameParent($to) ||
+    !$from.parent.isTextblock ||
+    $from.parentOffset === 0 ||
+    $to.parentOffset === $to.parent.content.size
+  ) {
+    return { from, to };
+  }
+
+  const spaceBefore =
+    $from.parent.textBetween(
+      $from.parentOffset - 1,
+      $from.parentOffset,
+      '',
+      '',
+    ) === ' ';
+  const spaceAfter =
+    $to.parent.textBetween($to.parentOffset, $to.parentOffset + 1, '', '') ===
+    ' ';
+
+  return spaceBefore && spaceAfter ? { from, to: to + 1 } : { from, to };
+}
+
 /**
  * Apply the accepted suggestion's change to the document.
  * Called by the store's acceptSuggestion action before resolving on-chain.
@@ -997,7 +1028,8 @@ export function applyAcceptedSuggestion(
     }
     if (suggestionType === 'delete') {
       if (from >= to) return false;
-      return editor.chain().focus().deleteRange({ from, to }).run();
+      const deleteRange = resolveAcceptedDeleteRange(state, from, to);
+      return editor.chain().focus().deleteRange(deleteRange).run();
     }
     if (suggestionType === 'replace') {
       if (from >= to || !suggestedContent) return false;
