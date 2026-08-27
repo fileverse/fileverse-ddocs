@@ -1,5 +1,6 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
+import { Profiler } from 'react';
 import { Editor } from '@tiptap/react';
 import { makeEditor } from '../../utils/make-editor';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
@@ -40,8 +41,9 @@ describe.each([1, 2])(
     let editor: Editor;
     let panel: HTMLElement;
 
-    const mountOverlay = () => {
+    const mountOverlay = (content?: string, onRender?: () => void) => {
       editor = new Editor({
+        content,
         extensions: getHeadlessExtensions({ schemaVersion }),
         textDirection: 'auto',
       });
@@ -52,11 +54,13 @@ describe.each([1, 2])(
       document.body.appendChild(panel);
 
       render(
-        <DBlockTemplateOverlay
-          editor={editor}
-          enableFanficTemplate={false}
-          runtimeState={DEFAULT_DBLOCK_RUNTIME_STATE}
-        />,
+        <Profiler id="template-overlay" onRender={onRender ?? (() => {})}>
+          <DBlockTemplateOverlay
+            editor={editor}
+            enableFanficTemplate={false}
+            runtimeState={DEFAULT_DBLOCK_RUNTIME_STATE}
+          />
+        </Profiler>,
       );
     };
 
@@ -95,6 +99,23 @@ describe.each([1, 2])(
 
       act(() => editor.commands.setTextSelection(paragraphPositions[0]));
       expect(overlay()).not.toBeNull();
+    });
+
+    it('does not rerender repeatedly when edits keep cached state unchanged', () => {
+      let commitCount = 0;
+      mountOverlay('<p>content</p>', () => {
+        commitCount += 1;
+      });
+
+      act(() => editor.commands.insertContent('more '));
+      const commitsAfterFirstEdit = commitCount;
+
+      act(() => editor.commands.insertContent('text '));
+      act(() => editor.commands.insertContent('here'));
+
+      // React may attempt one same-state render before bailing out. The
+      // regression was a committed render for every separate transaction.
+      expect(commitCount - commitsAfterFirstEdit).toBeLessThan(2);
     });
   },
 );

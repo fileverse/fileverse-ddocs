@@ -130,14 +130,17 @@ export const DBlockTemplateOverlay = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [visibleTemplateCount, setVisibleTemplateCount] = useState(2);
-  const [documentState, setDocumentState] = useState(() => ({
-    isBlank: Boolean(
+  const [documentState, setDocumentState] = useState(() => {
+    const isBlank = Boolean(
       editor && !editor.isDestroyed && isDocumentBlank(editor.state.doc),
-    ),
-    hasFirstBlockFocus: Boolean(
-      editor && !editor.isDestroyed && isFirstBlockFocused(editor),
-    ),
-  }));
+    );
+    return {
+      isBlank,
+      hasFirstBlockFocus: Boolean(
+        isBlank && editor && !editor.isDestroyed && isFirstBlockFocused(editor),
+      ),
+    };
+  });
   const documentIsBlankRef = useRef(documentState.isBlank);
   const isFocusMode = runtimeState.isFocusMode;
 
@@ -153,11 +156,16 @@ export const DBlockTemplateOverlay = ({
 
     const updateDocumentState = () => {
       const isBlank = isDocumentBlank(editor.state.doc);
+      const hasFirstBlockFocus = isBlank && isFirstBlockFocused(editor);
       documentIsBlankRef.current = isBlank;
-      setDocumentState({
-        isBlank,
-        hasFirstBlockFocus: isBlank && isFirstBlockFocused(editor),
-      });
+      setDocumentState((state) =>
+        // Keep the same state object when an edit does not change whether the
+        // overlay can appear, so ordinary typing does not rerender it.
+        state.isBlank === isBlank &&
+        state.hasFirstBlockFocus === hasFirstBlockFocus
+          ? state
+          : { isBlank, hasFirstBlockFocus },
+      );
     };
 
     const handleTransaction = ({

@@ -106,8 +106,18 @@ const rangeTouchesHeading = (
   return touchesHeading;
 };
 
+// The same completed transaction is checked by multiple TOC listeners. Cache
+// that single answer without introducing plugin state or manual cleanup.
+const headingTransactionCache = new WeakMap<Transaction, boolean>();
+
 export const transactionCouldTouchHeading = (transaction: Transaction) => {
+  const cachedResult = headingTransactionCache.get(transaction);
+  if (cachedResult !== undefined) {
+    return cachedResult;
+  }
+
   if (!transaction.docChanged) {
+    headingTransactionCache.set(transaction, false);
     return false;
   }
 
@@ -127,6 +137,7 @@ export const transactionCouldTouchHeading = (transaction: Transaction) => {
     });
   });
 
+  headingTransactionCache.set(transaction, touchesHeading);
   return touchesHeading;
 };
 
