@@ -22,7 +22,6 @@ import { defaultExtensions } from '../extensions/default-extension';
 import { AnyExtension, JSONContent, Editor } from '@tiptap/react';
 import { getCursor } from '../utils/cursor';
 import { EditorView } from '@tiptap/pm/view';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import SlashCommand from '../extensions/slash-command/slash-comand';
 import {
   EditorState,
@@ -73,7 +72,11 @@ import {
   CollaborationProps,
 } from '../sync-local/types';
 import { destroyEditorWithYSyncCleanup } from '../utils/y-prosemirror-cleanup';
-import { clearTableOfContentsStorage } from '../extensions/table-of-contents';
+import {
+  clearTableOfContentsStorage,
+  getHeadingSignature,
+  transactionCouldTouchHeading,
+} from '../extensions/table-of-contents';
 import { useTabEditorCache } from './use-tab-editor-cache';
 
 // The single source of truth for the tab editor's construction-time
@@ -162,73 +165,6 @@ const hasVisibleFloatingCommentCard = () => {
       '[data-floating-comment-hidden="false"] [data-floating-comment-card]',
     ),
   );
-};
-
-const getHeadingSignature = (doc: ProseMirrorNode) => {
-  const headings: string[] = [];
-
-  doc.descendants((node) => {
-    if (node.type.name !== 'heading') {
-      return true;
-    }
-
-    headings.push(
-      [node.attrs.id ?? '', node.attrs.level ?? '', node.textContent].join(':'),
-    );
-    return false;
-  });
-
-  return headings.join('|');
-};
-
-const rangeTouchesHeading = (
-  doc: ProseMirrorNode,
-  from: number,
-  to: number,
-) => {
-  const start = Math.max(0, Math.min(from - 2, doc.content.size));
-  const end = Math.max(start, Math.min(to + 2, doc.content.size));
-  let touchesHeading = false;
-
-  doc.nodesBetween(start, end, (node) => {
-    if (node.type.name === 'heading') {
-      touchesHeading = true;
-      return false;
-    }
-
-    return !touchesHeading;
-  });
-
-  return touchesHeading;
-};
-
-const transactionCouldTouchHeading = (transaction: Transaction) => {
-  if (!transaction.docChanged) {
-    return false;
-  }
-
-  let touchesHeading = false;
-
-  transaction.mapping.maps.forEach((map, index) => {
-    if (touchesHeading) {
-      return;
-    }
-
-    const beforeDoc = transaction.docs[index] ?? transaction.before;
-    const afterDoc = transaction.docs[index + 1] ?? transaction.doc;
-
-    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      if (touchesHeading) {
-        return;
-      }
-
-      touchesHeading =
-        rangeTouchesHeading(beforeDoc, oldStart, oldEnd) ||
-        rangeTouchesHeading(afterDoc, newStart, newEnd);
-    });
-  });
-
-  return touchesHeading;
 };
 
 interface UseTabEditorArgs {
