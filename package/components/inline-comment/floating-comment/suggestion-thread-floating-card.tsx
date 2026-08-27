@@ -87,6 +87,7 @@ export const SuggestionThreadFloatingCard = ({
           createdAt={comment.createdAt}
           canAcceptReject={canAcceptReject}
           canWithdraw={canWithdraw}
+          isFocused={thread.isFocused}
           onAccept={handleAccept}
           onReject={handleReject}
         />
@@ -119,6 +120,7 @@ interface HeaderProps {
   createdAt: Date | undefined;
   canAcceptReject: boolean;
   canWithdraw: boolean;
+  isFocused: boolean;
   onAccept: () => void;
   onReject: () => void;
 }
@@ -128,6 +130,7 @@ const Header = ({
   createdAt,
   canAcceptReject,
   canWithdraw,
+  isFocused,
   onAccept,
   onReject,
 }: HeaderProps) => {
@@ -155,7 +158,14 @@ const Header = ({
       <span className="text-helper-text-sm color-text-secondary whitespace-nowrap">
         {createdAt && dateFormatter(createdAt)}
       </span>
-      <div className="ml-auto opacity-0 group-hover:opacity-100 flex items-center gap-1">
+      <div
+        className={cn(
+          'ml-auto flex items-center gap-1',
+          isFocused && canAcceptReject
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100',
+        )}
+      >
         {canAcceptReject && (
           <>
             <IconButton
