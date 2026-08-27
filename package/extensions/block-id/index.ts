@@ -1,6 +1,8 @@
 import { Extension } from '@tiptap/core';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import { AddMarkStep, RemoveMarkStep, ReplaceStep } from '@tiptap/pm/transform';
 import { v4 as uuidv4 } from 'uuid';
 
 export const BLOCK_ID_ATTR = 'blockId';
@@ -28,9 +30,94 @@ const BLOCK_ID_TYPES = [
   'columns',
 ];
 
-// v2-only: registered in the flat extension set, never in v1. Gives every
-// top-level block a stable uuid that survives edits and rides the Yjs doc,
-// for deep links, block anchoring, and the floating handle.
+const blockIdAssignmentPluginKey = new PluginKey('blockIdAssign');
+
+type InlineChangeContext = {
+  block: ProseMirrorNode;
+  blockIndex: number;
+};
+
+const getInlineChangeContext = (
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+): InlineChangeContext | null => {
+  if (from < 0 || to < from || to > doc.content.size) {
+    return null;
+  }
+
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  if ($from.depth < 1 || !$from.sameParent($to) || !$from.parent.isTextblock) {
+    return null;
+  }
+
+  return {
+    block: $from.node(1),
+    blockIndex: $from.index(0),
+  };
+};
+
+const hasValidBlockId = (node: ProseMirrorNode) => {
+  const id = node.attrs[BLOCK_ID_ATTR];
+  return typeof id === 'string' && id.length > 0;
+};
+
+// Skip the full ID check only when an edit clearly stays inside one block and
+// that block keeps the same type and ID. If we are unsure, check every block.
+const transactionRequiresBlockIdValidation = (transaction: Transaction) => {
+  if (!transaction.docChanged) {
+    return false;
+  }
+
+  return transaction.steps.some((step, index) => {
+    // Bold, italic, links, and similar formatting cannot change block IDs.
+    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
+      return false;
+    }
+
+    // Normal typing uses ReplaceStep. Other step types may change blocks, so
+    // check every ID when we see one.
+    if (!(step instanceof ReplaceStep)) {
+      return true;
+    }
+
+    const beforeDoc = transaction.docs[index] ?? transaction.before;
+    const afterDoc = transaction.docs[index + 1] ?? transaction.doc;
+
+    // Enter, split, join, and block paste can change the number of blocks and
+    // may create missing or copied IDs.
+    if (beforeDoc.childCount !== afterDoc.childCount) {
+      return true;
+    }
+
+    let hasChangedRange = false;
+    let requiresValidation = false;
+
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      hasChangedRange = true;
+      const before = getInlineChangeContext(beforeDoc, oldStart, oldEnd);
+      const after = getInlineChangeContext(afterDoc, newStart, newEnd);
+
+      // Typing is safe only when it starts and ends in the same block, and the
+      // block keeps the same type and ID. Otherwise, check every block.
+      if (
+        !before ||
+        !after ||
+        before.blockIndex !== after.blockIndex ||
+        before.block.type !== after.block.type ||
+        !hasValidBlockId(before.block) ||
+        before.block.attrs[BLOCK_ID_ATTR] !== after.block.attrs[BLOCK_ID_ATTR]
+      ) {
+        requiresValidation = true;
+      }
+    });
+
+    return !hasChangedRange || requiresValidation;
+  });
+};
+
+// v2 only: give every top-level block a stable ID for links and block controls.
 export const BlockId = Extension.create({
   name: 'blockId',
 
@@ -41,8 +128,8 @@ export const BlockId = Extension.create({
         attributes: {
           [BLOCK_ID_ATTR]: {
             default: null,
-            // The new half of an Enter-split starts without an id and gets a
-            // fresh one; the original half keeps its identity.
+            // After Enter splits a block, the new block gets a new ID while
+            // the original block keeps its ID.
             keepOnSplit: false,
             parseHTML: (element: HTMLElement) =>
               element.getAttribute('data-block-id'),
@@ -59,23 +146,44 @@ export const BlockId = Extension.create({
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: new PluginKey('blockIdAssign'),
+        key: blockIdAssignmentPluginKey,
         appendTransaction: (transactions, _oldState, newState) => {
-          if (!transactions.some((transaction) => transaction.docChanged)) {
+          const changedTransactions = transactions.filter(
+            (transaction) => transaction.docChanged,
+          );
+          if (changedTransactions.length === 0) {
             return null;
           }
 
-          // A remote peer running this same extension already gave its blocks
-          // ids before the update was sent, so re-deriving them here would
-          // only race that peer — and would put a write triggered by someone
-          // else's edit on OUR undo stack.
+          if (
+            changedTransactions.every((transaction) =>
+              transaction.getMeta(blockIdAssignmentPluginKey),
+            )
+          ) {
+            // This is our own repair. It was already checked, so skip it.
+            return null;
+          }
+
+          // The remote editor already handled its IDs. Do not create another
+          // local repair or add someone else's change to our undo history.
           if (transactions.some(isChangeOrigin)) {
             return null;
           }
 
-          // Shallow pass over top-level blocks only: assign missing ids and
-          // re-id duplicates (paste copies ids along with content).
-          let tr: typeof newState.tr | null = null;
+          if (
+            changedTransactions.every(
+              (transaction) =>
+                !transactionRequiresBlockIdValidation(transaction),
+            )
+          ) {
+            // Typing or formatting did not change any blocks or IDs, so do not
+            // check every block after this keystroke.
+            return null;
+          }
+
+          // Check top-level blocks: add missing IDs and replace copied IDs.
+          const tr = newState.tr;
+          let modified = false;
           const seenIds = new Set<string>();
 
           newState.doc.forEach((node, pos) => {
@@ -89,9 +197,9 @@ export const BlockId = Extension.create({
               return;
             }
 
-            tr = tr ?? newState.tr;
             const newId = uuidv4();
             seenIds.add(newId);
+            modified = true;
             tr.setNodeMarkup(
               pos,
               undefined,
@@ -100,16 +208,9 @@ export const BlockId = Extension.create({
             );
           });
 
-          // Deliberately NOT marked `addToHistory: false`. Undo here is Yjs's
-          // UndoManager, not prosemirror-history, and the y-sync binding
-          // writes ONE Yjs transaction per dispatch, stamped with the meta of
-          // the LAST transaction in the chain — which is this one. Setting the
-          // flag therefore excludes the user's own edit from the undo stack
-          // (and calls stopCapturing), so anything that creates a new block —
-          // Enter, paste, select-all-then-delete — became unrecoverable. The
-          // ids ride along in the same Yjs transaction as the edit that needed
-          // them, which is exactly where they belong.
-          return tr;
+          // Keep this repair in the same undo action as the user's edit.
+          // Mark it so the guard above skips the next check.
+          return modified ? tr.setMeta(blockIdAssignmentPluginKey, true) : null;
         },
       }),
     ];

@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Editor, JSONContent } from '@tiptap/react';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -28,18 +34,41 @@ const isBlankParagraphBlock = (block: ProseMirrorNode): boolean => {
   if (paragraph?.type.name !== 'paragraph') {
     return false;
   }
-  let hasContent = false;
-  paragraph.content.forEach((child) => {
+
+  for (let index = 0; index < paragraph.childCount; index += 1) {
+    const child = paragraph.child(index);
     if ((child.isText && child.text?.trim()) || !child.isText) {
-      hasContent = true;
+      return false;
     }
-  });
-  return !hasContent;
+  }
+
+  return true;
 };
 
-export const getTemplateTarget = (
+// This is the only document-wide template check. It runs after content edits
+// and stops as soon as the first non-blank top-level block is found.
+export const isDocumentBlank = (doc: ProseMirrorNode) => {
+  for (let index = 0; index < doc.childCount; index += 1) {
+    if (!isBlankParagraphBlock(doc.child(index))) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const isFirstBlockFocused = (editor: Editor) => {
+  const firstBlock = editor.state.doc.firstChild;
+  const { $anchor } = editor.state.selection;
+  return Boolean(
+    firstBlock && $anchor.depth >= 1 && $anchor.node(1) === firstBlock,
+  );
+};
+
+export const getTemplateTargetFromBlankState = (
   editor: Editor | null,
   runtimeState: DBlockRuntimeState,
+  documentIsBlank: boolean,
 ): DBlockTemplateTarget | null => {
   if (
     !editor ||
@@ -52,32 +81,16 @@ export const getTemplateTarget = (
     return null;
   }
 
-  // A visually clean doc is not always a single block: converting the first
-  // block to a heading ('# ' or the toolbar) makes TrailingNode append an
-  // empty paragraph, and converting back never removes it. So instead of
-  // requiring childCount === 1, require EVERY block to be a blank paragraph
-  // — any real content anywhere still hides the picker.
-  const { doc } = editor.state;
-  let allBlank = true;
-  doc.forEach((child) => {
-    if (!isBlankParagraphBlock(child)) {
-      allBlank = false;
-    }
-  });
-
-  const node = doc.firstChild;
-  const pos = 0;
-
-  if (!node || !allBlank) {
+  if (!documentIsBlank) {
     return null;
   }
 
-  const { selection } = editor.state;
-  const isFirstDBlockFocused =
-    selection.$anchor.pos >= pos &&
-    selection.$anchor.pos <= pos + node.nodeSize;
+  // Blankness is cached by the overlay; cursor movement only needs this
+  // constant-time first-block identity check.
+  const node = editor.state.doc.firstChild;
+  const pos = 0;
 
-  if (!isFirstDBlockFocused) {
+  if (!node || !isFirstBlockFocused(editor)) {
     return null;
   }
 
@@ -87,7 +100,24 @@ export const getTemplateTarget = (
   };
 };
 
-const DBlockTemplateOverlay = ({
+export const getTemplateTarget = (
+  editor: Editor | null,
+  runtimeState: DBlockRuntimeState,
+): DBlockTemplateTarget | null => {
+  if (!editor || editor.isDestroyed) {
+    return null;
+  }
+
+  // A visually clean doc is not always a single block: converting the first
+  // block to a heading can leave a trailing blank paragraph behind.
+  return getTemplateTargetFromBlankState(
+    editor,
+    runtimeState,
+    isDocumentBlank(editor.state.doc),
+  );
+};
+
+export const DBlockTemplateOverlay = ({
   editor,
   enableFanficTemplate,
   onApplyTabbedTemplate,
@@ -100,28 +130,86 @@ const DBlockTemplateOverlay = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [visibleTemplateCount, setVisibleTemplateCount] = useState(2);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [documentState, setDocumentState] = useState(() => {
+    const isBlank = Boolean(
+      editor && !editor.isDestroyed && isDocumentBlank(editor.state.doc),
+    );
+    return {
+      isBlank,
+      hasFirstBlockFocus: Boolean(
+        isBlank && editor && !editor.isDestroyed && isFirstBlockFocused(editor),
+      ),
+    };
+  });
+  const documentIsBlankRef = useRef(documentState.isBlank);
   const isFocusMode = runtimeState.isFocusMode;
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) {
+      documentIsBlankRef.current = false;
+      setDocumentState({
+        isBlank: false,
+        hasFirstBlockFocus: false,
+      });
+      return;
+    }
 
-    const refresh = () => setRefreshKey((key) => key + 1);
-    editor.on('transaction', refresh);
-    editor.on('selectionUpdate', refresh);
-    window.addEventListener('resize', refresh);
+    const updateDocumentState = () => {
+      const isBlank = isDocumentBlank(editor.state.doc);
+      const hasFirstBlockFocus = isBlank && isFirstBlockFocused(editor);
+      documentIsBlankRef.current = isBlank;
+      setDocumentState((state) =>
+        // Keep the same state object when an edit does not change whether the
+        // overlay can appear, so ordinary typing does not rerender it.
+        state.isBlank === isBlank &&
+        state.hasFirstBlockFocus === hasFirstBlockFocus
+          ? state
+          : { isBlank, hasFirstBlockFocus },
+      );
+    };
+
+    const handleTransaction = ({
+      transaction,
+    }: {
+      transaction: { docChanged: boolean };
+    }) => {
+      if (transaction.docChanged) {
+        // Selection-only transactions keep the cached blankness unchanged.
+        updateDocumentState();
+      }
+    };
+
+    const handleSelectionUpdate = () => {
+      if (!documentIsBlankRef.current) {
+        // A non-blank document cannot show the picker regardless of selection.
+        return;
+      }
+
+      const hasFirstBlockFocus = isFirstBlockFocused(editor);
+      setDocumentState((state) =>
+        state.hasFirstBlockFocus === hasFirstBlockFocus
+          ? state
+          : { ...state, hasFirstBlockFocus },
+      );
+    };
+
+    updateDocumentState();
+    editor.on('transaction', handleTransaction);
+    editor.on('selectionUpdate', handleSelectionUpdate);
 
     return () => {
-      editor.off('transaction', refresh);
-      editor.off('selectionUpdate', refresh);
-      window.removeEventListener('resize', refresh);
+      editor.off('transaction', handleTransaction);
+      editor.off('selectionUpdate', handleSelectionUpdate);
     };
   }, [editor]);
 
-  const target = useMemo(() => {
-    void refreshKey;
-    return getTemplateTarget(editor, runtimeState);
-  }, [editor, runtimeState, refreshKey]);
+  const target = documentState.hasFirstBlockFocus
+    ? getTemplateTargetFromBlankState(
+        editor,
+        runtimeState,
+        documentState.isBlank,
+      )
+    : null;
 
   const addTemplate = useCallback(
     (template: JSONContent) => {

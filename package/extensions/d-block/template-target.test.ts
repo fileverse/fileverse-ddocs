@@ -1,7 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/react';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
-import { getTemplateTarget } from './dblock-toolbar';
+import {
+  getTemplateTarget,
+  getTemplateTargetFromBlankState,
+  isDocumentBlank,
+} from './dblock-toolbar';
 import { DEFAULT_DBLOCK_RUNTIME_STATE } from './dblock-runtime';
 
 // Repro for: clean editor -> '#' + space (markdown heading) -> Backspace.
@@ -41,56 +45,121 @@ const pressBackspace = (editor: Editor) => {
 
 const docShape = (editor: Editor) =>
   editor.state.doc.content.content.map((n) =>
-    n.type.name === 'dBlock' ? `dBlock(${n.firstChild?.type.name})` : n.type.name,
+    n.type.name === 'dBlock'
+      ? `dBlock(${n.firstChild?.type.name})`
+      : n.type.name,
   );
 
-describe.each([1, 2])('template target after # -> space -> Backspace (v%i)', (schemaVersion) => {
-  let editor: Editor;
-  afterEach(() => editor?.destroy());
+describe.each([1, 2])(
+  'template target after # -> space -> Backspace (v%i)',
+  (schemaVersion) => {
+    let editor: Editor;
+    afterEach(() => {
+      vi.restoreAllMocks();
+      editor?.destroy();
+    });
 
-  it('shows template buttons again once the doc is back to an empty paragraph', () => {
-    editor = makeSchemaEditor(schemaVersion);
-    editor.commands.focus('start');
+    it('shows template buttons again once the doc is back to an empty paragraph', () => {
+      editor = makeSchemaEditor(schemaVersion);
+      editor.commands.focus('start');
 
-    // Clean editor: buttons visible.
-    expect(
-      getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
-    ).not.toBeNull();
+      // Clean editor: buttons visible.
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).not.toBeNull();
 
-    typeText(editor, '# ');
-    // '#'+space converts the block to a heading, so TrailingNode appends an
-    // empty paragraph — the doc is now two blocks.
-    expect(editor.state.doc.childCount).toBe(2);
-    expect(getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE)).toBeNull();
+      typeText(editor, '# ');
+      // '#'+space converts the block to a heading, so TrailingNode appends an
+      // empty paragraph — the doc is now two blocks.
+      expect(editor.state.doc.childCount).toBe(2);
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).toBeNull();
 
-    pressBackspace(editor);
-    // Backspace turns the heading back into a paragraph, but nothing removes
-    // the trailing residue: the doc stays at two blank paragraphs.
-    expect(docShape(editor)).toEqual(
-      schemaVersion >= 2
-        ? ['paragraph', 'paragraph']
-        : ['dBlock(paragraph)', 'dBlock(paragraph)'],
-    );
+      pressBackspace(editor);
+      // Backspace turns the heading back into a paragraph, but nothing removes
+      // the trailing residue: the doc stays at two blank paragraphs.
+      expect(docShape(editor)).toEqual(
+        schemaVersion >= 2
+          ? ['paragraph', 'paragraph']
+          : ['dBlock(paragraph)', 'dBlock(paragraph)'],
+      );
 
-    // The regression: hint placeholder is back but the template target is not.
-    expect(
-      getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
-    ).not.toBeNull();
-  });
+      // The regression: hint placeholder is back but the template target is not.
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).not.toBeNull();
+    });
 
-  it('keeps buttons hidden while any block holds real content', () => {
-    editor = makeSchemaEditor(schemaVersion);
-    editor.commands.setContent('<p></p><p>hello</p>');
-    editor.commands.focus('start');
+    it('keeps buttons hidden while any block holds real content', () => {
+      editor = makeSchemaEditor(schemaVersion);
+      editor.commands.setContent('<p></p><p>hello</p>');
+      editor.commands.focus('start');
 
-    expect(getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE)).toBeNull();
-  });
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).toBeNull();
+    });
 
-  it('keeps buttons hidden when the first block is a heading', () => {
-    editor = makeSchemaEditor(schemaVersion);
-    editor.commands.setContent('<h1></h1><p></p>');
-    editor.commands.focus('start');
+    it('keeps buttons hidden when the first block is a heading', () => {
+      editor = makeSchemaEditor(schemaVersion);
+      editor.commands.setContent('<h1></h1><p></p>');
+      editor.commands.focus('start');
 
-    expect(getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE)).toBeNull();
-  });
-});
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).toBeNull();
+    });
+
+    it('only targets the first block as focus moves across blank blocks', () => {
+      editor = makeSchemaEditor(schemaVersion);
+      editor.commands.setContent('<p></p><p></p>');
+      const paragraphPositions: number[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'paragraph') {
+          paragraphPositions.push(pos + 1);
+        }
+      });
+
+      editor.commands.setTextSelection(paragraphPositions[0]);
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).not.toBeNull();
+
+      editor.commands.setTextSelection(paragraphPositions[1]);
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).toBeNull();
+
+      editor.commands.setTextSelection(paragraphPositions[0]);
+      expect(
+        getTemplateTarget(editor, DEFAULT_DBLOCK_RUNTIME_STATE),
+      ).not.toBeNull();
+    });
+
+    it('uses cached non-blank state without traversing a large document', () => {
+      editor = makeSchemaEditor(schemaVersion);
+      editor.commands.setContent(
+        Array.from(
+          { length: 250 },
+          (_, index) => `<p>${index === 0 ? 'content' : ''}</p>`,
+        ).join(''),
+      );
+
+      const doc = editor.state.doc;
+      const child = vi.spyOn(doc, 'child');
+      expect(isDocumentBlank(doc)).toBe(false);
+      expect(child).toHaveBeenCalledTimes(1);
+      child.mockClear();
+
+      expect(
+        getTemplateTargetFromBlankState(
+          editor,
+          DEFAULT_DBLOCK_RUNTIME_STATE,
+          false,
+        ),
+      ).toBeNull();
+      expect(child).not.toHaveBeenCalled();
+    });
+  },
+);
