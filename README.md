@@ -266,15 +266,7 @@ const fonts: FontDescriptor[] = [
 | `onSlidesShare`     | `() => void`                                                             | Callback for slides sharing               |
 | `onComment`         | `() => void`                                                             | General comment callback                  |
 
-## AI Writer Props
-
-| Property           | Type          | Description                                     |
-| ------------------ | ------------- | ----------------------------------------------- |
-| `activeModel`      | `CustomModel` | Currently selected AI model for text generation |
-| `maxTokens`        | `number`      | Maximum token limit for AI-generated content    |
-| `isAIAgentEnabled` | `boolean`     | Toggle for AI agent functionality               |
-
-### Steps to run this example locally
+## Steps to run this example locally
 
 - `npm i`
 - `npm run dev`
