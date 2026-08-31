@@ -239,11 +239,18 @@ export const ResizableMedia = Node.create<MediaOptions>({
       },
       {
         tag: 'img',
-        getAttrs: (el) => ({
-          src: (el as HTMLImageElement).getAttribute('src'),
-          'media-type': 'img',
-          backgroundColor: readBackgroundColor(el as HTMLElement),
-        }),
+        getAttrs: (el) => {
+          const img = el as HTMLImageElement;
+          const align =
+            img.getAttribute('data-align') ||
+            img.getAttribute('dataalign');
+          return {
+            src: img.getAttribute('src'),
+            'media-type': 'img',
+            ...(align ? { dataAlign: align } : {}),
+            backgroundColor: readBackgroundColor(img),
+          };
+        },
       },
       {
         tag: 'video',
