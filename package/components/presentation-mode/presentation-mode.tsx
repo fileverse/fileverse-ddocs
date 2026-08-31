@@ -1,4 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  CSSProperties,
+} from 'react';
 import { Editor, EditorContent } from '@tiptap/react';
 import {
   AnimatedLoader,
@@ -8,13 +15,12 @@ import {
   Tooltip,
 } from '@fileverse/ui';
 import { EditingProvider } from '../../hooks/use-editing-context';
-import { convertToMarkdown } from '../../utils/md-to-slides';
+import { buildSlidesFromDoc } from '../../utils/doc-to-slides';
 import { handlePrint } from '../../utils/handle-print';
 import { PreviewPanel } from './preview-panel';
 import { cn } from '@fileverse/ui';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useAnimationControls } from 'framer-motion';
 import copy from 'copy-to-clipboard';
-import { convertMarkdownToHTML } from '../../utils/md-to-html';
 import { useResponsive } from '../../utils/responsive';
 import { IpfsImageFetchPayload, DdocProps, ThemeKey } from '../../types';
 import { dedupeResolvedExtensions } from '../../utils/helpers';
@@ -47,6 +53,43 @@ interface PresentationModeProps {
   fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>;
   theme?: ThemeKey;
 }
+
+/**
+ * Font scaling multiplies the presentation stylesheet's sizes via the
+ * `--slide-font-scale` custom property, so every element keeps its relative
+ * proportions instead of each one needing its own override.
+ */
+const FONT_SCALE_MIN = 0.6;
+const FONT_SCALE_MAX = 1.8;
+const FONT_SCALE_STEP = 0.1;
+
+const clampFontScale = (scale: number) =>
+  Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, Number(scale.toFixed(2))));
+
+const SlideNumber = ({
+  current,
+  total,
+  isFullscreen,
+}: {
+  current: number;
+  total: number;
+  isFullscreen: boolean;
+}) => {
+  if (!total) return null;
+
+  return (
+    <div
+      className={cn(
+        'absolute z-40 select-none pointer-events-none text-helper-text-sm',
+        isFullscreen
+          ? 'bottom-6 right-8 color-utility-overlay color-text-inverse rounded-full px-3 py-1'
+          : 'bottom-4 right-6 color-text-secondary',
+      )}
+    >
+      {current} / {total}
+    </div>
+  );
+};
 
 const SlideContent = ({
   content,
@@ -112,8 +155,11 @@ const SlideContent = ({
   return (
     <EditorContent
       editor={editor}
+      // `w-full h-full` matches the markup the fullscreen path used before the
+      // two render paths were unified. Without it the container is a flex item
+      // that shrinks to its content.
       className={cn('presentation-mode', {
-        fullscreen: isFullscreen,
+        'fullscreen w-full h-full': isFullscreen,
       })}
       style={editorStyles}
       onTouchStart={onTouchStart}
@@ -150,9 +196,38 @@ export const PresentationMode = ({
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const minSwipeDistance = 50;
-  const [slideDirection, setSlideDirection] = useState<'forward' | 'backward'>(
-    'forward',
-  );
+  // Direction is only read when the slide-change animation fires, so a ref
+  // keeps it out of the render cycle and out of the effect's dependencies.
+  const slideDirectionRef = useRef<'forward' | 'backward'>('forward');
+  const [fontScale, setFontScale] = useState(1);
+  const slideAnimation = useAnimationControls();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // The document editor stays mounted behind this overlay and keeps DOM focus,
+  // so every keystroke meant for navigation was also being typed into the
+  // document. Surrender focus once the deck opens.
+  useEffect(() => {
+    editor.commands.blur();
+    (document.activeElement as HTMLElement | null)?.blur();
+  }, [editor]);
+
+  const adjustFontScale = useCallback((delta: number) => {
+    setFontScale((previous) => clampFontScale(previous + delta));
+  }, []);
+
+  // Replays the enter transition on each slide change without remounting the
+  // editor that renders the slide.
+  useEffect(() => {
+    slideAnimation.set({
+      opacity: 0,
+      x: slideDirectionRef.current === 'forward' ? 50 : -50,
+    });
+    slideAnimation.start({
+      opacity: 1,
+      x: 0,
+      transition: { duration: 0.2 },
+    });
+  }, [currentSlide, slideAnimation]);
 
   const themeCanvasBackground = getThemeStyle(
     documentStyling?.canvasBackground,
@@ -171,14 +246,16 @@ export const PresentationMode = ({
             // The presentation editor reuses the source editor's extension
             // instances. In a shared/viewer context the editor is in suggestion
             // mode, where suggestionTracking's filterTransaction blocks every
-            // doc-changing transaction — including the setContent that loads each
-            // slide. That left the active slide empty while the deck (rendered
-            // via dangerouslySetInnerHTML) still showed content. The presentation
+            // doc-changing transaction — including the setContent that loads
+            // each slide, which would leave every slide blank. The presentation
             // editor only renders slides read-only, so it never needs tracking.
             'suggestionTracking',
           ].includes(b.name),
       ),
-      editable: !isPreviewMode,
+      // Slides are a read-only view of the document. Left editable, the
+      // navigation shortcuts double as text input — pressing `f` to go
+      // fullscreen also types an "f" into the slide.
+      editable: false,
     });
   }, [isPreviewMode]);
   const handlePresentationMode = useCallback(async () => {
@@ -197,62 +274,25 @@ export const PresentationMode = ({
     }
 
     setIsLoading(true);
-    const markdown = await convertToMarkdown(
-      editor,
-      ipfsImageFetchFn,
-      fetchV1ImageFn,
-    );
 
-    // First convert markdown to HTML with proper page breaks
-    const html = convertMarkdownToHTML(markdown, {
-      preserveNewlines: true,
-      sanitize: true,
-      maxCharsPerSlide: 1000,
-      maxWordsPerSlide: 250,
-      maxLinesPerSlide: 7,
-    });
-    // Create a temporary div to properly parse the HTML
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
+    try {
+      // Slides are derived straight from the document nodes. The previous
+      // doc -> Markdown -> HTML route silently dropped everything Markdown
+      // cannot express, most visibly multi-column blocks and font sizes.
+      const slideArray = await buildSlidesFromDoc(editor, {
+        ipfsImageFetchFn,
+        fetchV1ImageFn,
+        fontScale,
+      });
 
-    // Find all page breaks and split content
-    const slideArray: string[] = [];
-    let currentSlideContent: Node[] = [];
-
-    // Iterate through all nodes
-    tempDiv.childNodes.forEach((node) => {
-      if (
-        node instanceof HTMLElement &&
-        node.getAttribute('data-type') === 'page-break' &&
-        node.getAttribute('data-page-break') === 'true'
-      ) {
-        // When we hit a page break, save the current slide content
-        if (currentSlideContent.length > 0) {
-          const slideDiv = document.createElement('div');
-          currentSlideContent.forEach((n) =>
-            slideDiv.appendChild(n.cloneNode(true)),
-          );
-          slideArray.push(slideDiv.innerHTML);
-          currentSlideContent = [];
-        }
-      } else {
-        currentSlideContent.push(node.cloneNode(true));
-      }
-    });
-
-    // Don't forget to add the last slide
-    if (currentSlideContent.length > 0) {
-      const slideDiv = document.createElement('div');
-      currentSlideContent.forEach((n) =>
-        slideDiv.appendChild(n.cloneNode(true)),
-      );
-      slideArray.push(slideDiv.innerHTML);
+      setSlides(slideArray);
+    } catch (error) {
+      // Without this the loader spins forever and the failure is invisible.
+      console.error('Failed to build slides from document', error);
+      onError?.('Could not build slides from this document');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Filter out empty slides and set the state
-    setSlides(slideArray.filter((slide) => slide.trim().length > 0));
-
-    setIsLoading(false);
   }, [isPreviewMode, editor.state.doc]);
   // Add check for empty editor
   useEffect(() => {
@@ -299,6 +339,18 @@ export const PresentationMode = ({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Yield to a comment box or similar field *inside* the deck, but not to
+      // the document editor sitting behind the overlay — keystrokes there are
+      // navigation, not typing.
+      const target = e.target as HTMLElement | null;
+      const isTextEntry =
+        target?.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
+
+      if (isTextEntry && target && containerRef.current?.contains(target)) {
+        return;
+      }
+
       if (
         e.key === 'ArrowRight' ||
         e.key === 'ArrowDown' ||
@@ -306,18 +358,27 @@ export const PresentationMode = ({
       ) {
         e.preventDefault();
         e.stopPropagation();
-        setSlideDirection('forward');
+        slideDirectionRef.current = 'forward';
         setCurrentSlide((prev) => Math.min(prev + 1, slides.length - 1));
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        setSlideDirection('backward');
+        slideDirectionRef.current = 'backward';
         setCurrentSlide((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'Escape') {
         !isPreviewMode && onClose();
       } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen();
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        adjustFontScale(FONT_SCALE_STEP);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        adjustFontScale(-FONT_SCALE_STEP);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        setFontScale(1);
       }
     },
-    [slides.length, onClose, toggleFullscreen],
+    [slides.length, onClose, toggleFullscreen, adjustFontScale],
   );
 
   useEffect(() => {
@@ -356,11 +417,11 @@ export const PresentationMode = ({
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe) {
-      setSlideDirection('forward');
+      slideDirectionRef.current = 'forward';
       setCurrentSlide((prev) => Math.min(prev + 1, slides.length - 1));
     }
     if (isRightSwipe) {
-      setSlideDirection('backward');
+      slideDirectionRef.current = 'backward';
       setCurrentSlide((prev) => Math.max(prev - 1, 0));
     }
   }, [touchStart, touchEnd, slides.length, minSwipeDistance]);
@@ -395,6 +456,7 @@ export const PresentationMode = ({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         'fixed inset-0 color-bg-secondary flex z-50',
         isNativeMobile ? 'flex-col' : 'flex-col xl:flex-row',
@@ -442,6 +504,34 @@ export const PresentationMode = ({
             )}
             <div className="flex justify-center items-center gap-2">
               {renderThemeToggle?.()}
+              <div className="hidden md:flex items-center">
+                <Tooltip text="Decrease text size (-)" sideOffset={10}>
+                  <IconButton
+                    variant="ghost"
+                    icon="AArrowDown"
+                    size="md"
+                    disabled={fontScale <= FONT_SCALE_MIN}
+                    onClick={() => adjustFontScale(-FONT_SCALE_STEP)}
+                  />
+                </Tooltip>
+                <Tooltip text="Reset text size (0)" sideOffset={10}>
+                  <button
+                    onClick={() => setFontScale(1)}
+                    className="text-helper-text-sm color-text-secondary min-w-[3rem] px-1 py-1 rounded hover:color-bg-default-hover"
+                  >
+                    {Math.round(fontScale * 100)}%
+                  </button>
+                </Tooltip>
+                <Tooltip text="Increase text size (+)" sideOffset={10}>
+                  <IconButton
+                    variant="ghost"
+                    icon="AArrowUp"
+                    size="md"
+                    disabled={fontScale >= FONT_SCALE_MAX}
+                    onClick={() => adjustFontScale(FONT_SCALE_STEP)}
+                  />
+                </Tooltip>
+              </div>
               {!isPreviewMode && (
                 <Tooltip text="Download" sideOffset={10}>
                   <IconButton
@@ -526,33 +616,19 @@ export const PresentationMode = ({
             }}
           >
             <EditingProvider isPreviewMode={true} isPresentationMode={true}>
-              {isFullscreen ? (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={currentSlide}
-                    initial={{
-                      opacity: 0,
-                      x: slideDirection === 'forward' ? 50 : -50,
-                    }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{
-                      opacity: 0,
-                      x: slideDirection === 'forward' ? -50 : 50,
-                    }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <div
-                      className={cn(
-                        'presentation-mode fullscreen w-full h-full',
-                      )}
-                      dangerouslySetInnerHTML={{ __html: slides[currentSlide] }}
-                      onTouchStart={onTouchStart}
-                      onTouchMove={onTouchMove}
-                      onTouchEnd={onTouchEnd}
-                    />
-                  </motion.div>
-                </AnimatePresence>
-              ) : (
+              {/*
+                Both windowed and fullscreen render through the editor. They
+                used to diverge — fullscreen injected raw HTML — which meant
+                custom nodes could render in one and not the other. The wrapper
+                is animated via controls rather than remounted, because
+                EditorContent owns the editor's DOM node and re-parenting it on
+                every slide change is what made the two paths drift apart.
+              */}
+              <motion.div
+                animate={slideAnimation}
+                className="w-full h-full"
+                style={{ '--slide-font-scale': fontScale } as CSSProperties}
+              >
                 <SlideContent
                   content={slides[currentSlide]}
                   editor={presentationEditor}
@@ -563,8 +639,14 @@ export const PresentationMode = ({
                   documentStyling={documentStyling}
                   theme={theme}
                 />
-              )}
+              </motion.div>
             </EditingProvider>
+
+            <SlideNumber
+              current={currentSlide + 1}
+              total={slides.length}
+              isFullscreen={isFullscreen}
+            />
           </div>
         </div>
 
@@ -578,22 +660,17 @@ export const PresentationMode = ({
           </div>
         )}
 
+        {/* The slide counter that used to live here now renders for every
+            viewport via SlideNumber. */}
         {isFullscreen && isNativeMobile && (
-          <>
-            <div className="fixed top-2 right-4 z-50">
-              <IconButton
-                variant="ghost"
-                onClick={toggleFullscreen}
-                icon="X"
-                size="md"
-              />
-            </div>
-            <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 color-utility-overlay px-3 py-1 rounded">
-              <span className="color-text-default">
-                {currentSlide + 1} / {slides.length}
-              </span>
-            </div>
-          </>
+          <div className="fixed top-2 right-4 z-50">
+            <IconButton
+              variant="ghost"
+              onClick={toggleFullscreen}
+              icon="X"
+              size="md"
+            />
+          </div>
         )}
       </div>
     </div>

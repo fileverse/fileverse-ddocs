@@ -43,6 +43,30 @@ export const FontSize = Extension.create({
         },
       },
       {
+        // A list marker is sized by its <li>, but the size lives on the mark
+        // or paragraph inside it, so a resized item ended up with a marker
+        // that no longer matched its own text. Carrying the size on the item
+        // lets the native marker follow it. Nothing sets this during editing —
+        // it defaults to null and is applied when building slides — so normal
+        // document output is unchanged.
+        types: ['listItem'],
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: (element) =>
+              element.style.fontSize?.replace(/['"]+/g, '') || null,
+            renderHTML: (attributes) => {
+              if (!attributes.fontSize) {
+                return {};
+              }
+              return {
+                style: `font-size: ${attributes.fontSize}`,
+              };
+            },
+          },
+        } as Attributes,
+      },
+      {
         types: this.options.types,
         attributes: {
           fontSize: {
