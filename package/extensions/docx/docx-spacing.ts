@@ -238,9 +238,9 @@ export const applyDocxSpacingToHtml = (
     if (lineHeight !== null) element.style.lineHeight = lineHeight;
     if (textAlign !== null) element.style.textAlign = textAlign;
 
-    if (hasImage || element.querySelector('img')) {
-      const img = element.querySelector('img');
-      if (img) {
+    if (hasImage || element.querySelectorAll('img').length > 0) {
+      const images = element.querySelectorAll('img');
+      images.forEach((img) => {
         const align =
           textAlign === 'center'
             ? 'center'
@@ -249,7 +249,7 @@ export const applyDocxSpacingToHtml = (
               : 'start';
         img.setAttribute('data-align', align);
         img.setAttribute('dataalign', align);
-      }
+      });
     }
   });
 
