@@ -413,3 +413,68 @@ describe('readDocxSpacing edge cases', () => {
     expect(readDocxSpacing(doc(''), NO_STYLES)).toEqual([]);
   });
 });
+
+describe('applyDocxSpacingToHtml alignment & image', () => {
+  it('applies text-align to paragraph and heading elements', () => {
+    const html = '<p>center me</p><h1>right me</h1>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'center',
+        hasImage: false,
+        text: 'center me',
+      },
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: false,
+        text: 'right me',
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toBe(
+      '<p style="text-align: center;">center me</p><h1 style="text-align: right;">right me</h1>',
+    );
+  });
+
+  it('sets data-align and dataalign on img inside aligned paragraph', () => {
+    const html = '<p><img src="test.png"></p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: true,
+        text: '',
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('data-align="right"');
+    expect(result).toContain('dataalign="right"');
+  });
+
+  it('defaults image data-align to start when alignment is left', () => {
+    const html = '<p><img src="test.png"></p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'left',
+        hasImage: true,
+        text: '',
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('data-align="start"');
+  });
+});
+

@@ -230,11 +230,27 @@ export const applyDocxSpacingToHtml = (
   if (!aligned) return html;
 
   blocks.forEach((block, index) => {
-    const { spaceBefore, spaceAfter, lineHeight } = spacings[index];
+    const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage } =
+      spacings[index];
     const element = block as HTMLElement;
     if (spaceBefore !== null) element.style.marginTop = `${spaceBefore}pt`;
     if (spaceAfter !== null) element.style.marginBottom = `${spaceAfter}pt`;
     if (lineHeight !== null) element.style.lineHeight = lineHeight;
+    if (textAlign !== null) element.style.textAlign = textAlign;
+
+    if (hasImage || element.querySelector('img')) {
+      const img = element.querySelector('img');
+      if (img) {
+        const align =
+          textAlign === 'center'
+            ? 'center'
+            : textAlign === 'right'
+              ? 'right'
+              : 'start';
+        img.setAttribute('data-align', align);
+        img.setAttribute('dataalign', align);
+      }
+    }
   });
 
   return doc.body.innerHTML;
