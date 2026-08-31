@@ -8,19 +8,28 @@ import {
 } from './docx-spacing';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const WP =
+  'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const V = 'urn:schemas-microsoft-com:vml';
 
 const doc = (body: string) =>
-  `<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>${body}</w:body></w:document>`;
+  `<?xml version="1.0"?><w:document xmlns:w="${W}" xmlns:wp="${WP}" xmlns:v="${V}"><w:body>${body}</w:body></w:document>`;
 
 const styles = (inner: string) =>
   `<?xml version="1.0"?><w:styles xmlns:w="${W}">${inner}</w:styles>`;
 
-const para = (opts: { style?: string; spacing?: string; text?: string }) => {
+const para = (opts: {
+  style?: string;
+  spacing?: string;
+  text?: string;
+  alignment?: string;
+}) => {
+  const alignXml = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : '';
   const pPr =
-    opts.style || opts.spacing
+    opts.style || opts.spacing || opts.alignment
       ? `<w:pPr>${opts.style ? `<w:pStyle w:val="${opts.style}"/>` : ''}${
           opts.spacing ?? ''
-        }</w:pPr>`
+        }${alignXml}</w:pPr>`
       : '';
   return `<w:p>${pPr}<w:r><w:t>${opts.text ?? ''}</w:t></w:r></w:p>`;
 };
@@ -132,11 +141,100 @@ describe('readDocxSpacing', () => {
   });
 });
 
+describe('readDocxSpacing paragraph alignment', () => {
+  it('reads direct w:jc alignment on paragraph', () => {
+    const xml = doc(
+      para({ alignment: 'center', text: 'centered' }) +
+        para({ alignment: 'right', text: 'right-aligned' }) +
+        para({ alignment: 'both', text: 'justified' }) +
+        para({ text: 'default' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].textAlign).toBe('right');
+    expect(result[2].textAlign).toBe('justify');
+    expect(result[3].textAlign).toBeNull();
+  });
+
+  it('inherits alignment from paragraph style and basedOn chain', () => {
+    const xml = doc(
+      para({ style: 'CenteredStyle', text: 'styled' }) +
+        para({ style: 'ChildStyle', text: 'inherited' }),
+    );
+    const sty = styles(
+      `<w:style w:styleId="CenteredStyle"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>` +
+        `<w:style w:styleId="BaseRight"><w:pPr><w:jc w:val="right"/></w:pPr></w:style>` +
+        `<w:style w:styleId="ChildStyle"><w:basedOn w:val="BaseRight"/></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].textAlign).toBe('right');
+  });
+
+  it('lets direct w:jc win over style alignment', () => {
+    const xml = doc(
+      para({ style: 'CenteredStyle', alignment: 'right', text: 'override' }),
+    );
+    const sty = styles(
+      `<w:style w:styleId="CenteredStyle"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].textAlign).toBe('right');
+  });
+
+  it('detects images in paragraph', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline/></w:drawing></w:r></w:p>` +
+        `<w:p><w:r><w:pict><v:shape/></w:pict></w:r></w:p>` +
+        `<w:p><w:r><v:imagedata/></w:r></w:p>` +
+        para({ text: 'no image' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].hasImage).toBe(true);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].hasImage).toBe(true);
+    expect(result[2].hasImage).toBe(true);
+    expect(result[3].hasImage).toBe(false);
+  });
+
+  it('normalizes start/end/distribute and handles case-insensitivity and invalid values', () => {
+    const xml = doc(
+      para({ alignment: 'start' }) +
+        para({ alignment: 'END' }) +
+        para({ alignment: 'Distribute' }) +
+        para({ alignment: 'LEFT' }) +
+        para({ alignment: 'unknownValue' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].textAlign).toBe('left');
+    expect(result[1].textAlign).toBe('right');
+    expect(result[2].textAlign).toBe('justify');
+    expect(result[3].textAlign).toBe('left');
+    expect(result[4].textAlign).toBeNull();
+  });
+
+  it('inherits alignment from docDefaults', () => {
+    const xml = doc(para({ text: 'plain' }));
+    const sty = styles(
+      `<w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="center"/></w:pPr></w:pPrDefault></w:docDefaults>`,
+    );
+
+    expect(readDocxSpacing(xml, sty)[0].textAlign).toBe('center');
+  });
+});
+
 describe('applyDocxSpacingToHtml', () => {
   const spacing = (over: Partial<DocxParagraphSpacing>) => ({
     spaceBefore: null,
     spaceAfter: null,
     lineHeight: null,
+    textAlign: null,
+    hasImage: false,
     text: '',
     ...over,
   });

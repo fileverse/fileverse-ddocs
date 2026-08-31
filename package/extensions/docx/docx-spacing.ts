@@ -13,6 +13,8 @@ export type DocxParagraphSpacing = {
   spaceBefore: number | null;
   spaceAfter: number | null;
   lineHeight: string | null;
+  textAlign: string | null;
+  hasImage: boolean;
   /** Paragraph text, used to verify alignment against mammoth's output. */
   text: string;
 };
@@ -29,6 +31,7 @@ type RawSpacing = {
   after?: string;
   line?: string;
   lineRule?: string;
+  jc?: string;
 };
 
 const toPt = (twips: string | undefined): number | null => {
@@ -51,15 +54,36 @@ const toLineHeight = (raw: RawSpacing): string | null => {
   return `${Math.round(parsed / AUTO_LINE_PER_PERCENT)}%`;
 };
 
+const normalizeAlignment = (val?: string): string | null => {
+  if (!val) return null;
+  switch (val.toLowerCase()) {
+    case 'left':
+    case 'start':
+      return 'left';
+    case 'center':
+      return 'center';
+    case 'right':
+    case 'end':
+      return 'right';
+    case 'both':
+    case 'distribute':
+      return 'justify';
+    default:
+      return null;
+  }
+};
+
 const parseXml = (xml: string): Document =>
   new DOMParser().parseFromString(xml, 'application/xml');
 
 /** The w:spacing child of a w:pPr, as raw attributes. */
 const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
   const spacing = pPr?.getElementsByTagName('w:spacing')[0];
-  if (!spacing) return {};
+  const jc =
+    pPr?.getElementsByTagName('w:jc')[0]?.getAttribute('w:val') ?? undefined;
+
   const attr = (name: string) => {
-    const value = spacing.getAttribute(`w:${name}`);
+    const value = spacing?.getAttribute(`w:${name}`);
     return value === null ? undefined : value;
   };
   return {
@@ -67,6 +91,7 @@ const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
     after: attr('after'),
     line: attr('line'),
     lineRule: attr('lineRule'),
+    jc,
   };
 };
 
@@ -75,7 +100,7 @@ const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
 const mergeSpacing = (...layers: RawSpacing[]): RawSpacing =>
   layers.reduce<RawSpacing>((merged, layer) => {
     const next = { ...merged };
-    (['before', 'after', 'line', 'lineRule'] as const).forEach((key) => {
+    (['before', 'after', 'line', 'lineRule', 'jc'] as const).forEach((key) => {
       if (layer[key] !== undefined) next[key] = layer[key];
     });
     return next;
@@ -158,10 +183,17 @@ export const readDocxSpacing = (
       readSpacingElement(pPr),
     );
 
+    const hasImage =
+      paragraph.getElementsByTagName('w:drawing').length > 0 ||
+      paragraph.getElementsByTagName('w:pict').length > 0 ||
+      paragraph.getElementsByTagName('v:imagedata').length > 0;
+
     return {
       spaceBefore: toPt(raw.before),
       spaceAfter: toPt(raw.after),
       lineHeight: toLineHeight(raw),
+      textAlign: normalizeAlignment(raw.jc),
+      hasImage,
       text: paragraphText(paragraph),
     };
   });
