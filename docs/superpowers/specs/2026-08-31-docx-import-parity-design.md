@@ -161,6 +161,7 @@ Extend `package/extensions/docx/docx-spacing.ts`:
      - `textAlign === 'right'` -> `data-align="right"`
      - Default / `left` -> `data-align="start"`
    - Also preserve standard `dataalign` for backwards compatibility with media paste handlers.
+3. In `package/extensions/resizable-media/resizable-media.ts`, update `parseHTML` for `tag: 'img'` so it extracts `dataAlign: el.getAttribute('data-align') || el.getAttribute('dataalign')` (currently `tag: 'img'` only extracts `src`, `media-type`, and `backgroundColor`).
 
 ---
 
