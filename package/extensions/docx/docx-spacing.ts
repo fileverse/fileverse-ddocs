@@ -266,6 +266,8 @@ const runText = (run: Element): string => {
         text += ' ';
       } else if (tagName === 'noBreakHyphen') {
         text += '\u2011';
+      } else if (tagName === 'softHyphen') {
+        text += '\u00AD';
       }
     }
   }
@@ -352,23 +354,28 @@ const FOOTNOTE_REF_SELECTOR = 'a[href^="#footnote-"], a[href^="#endnote-"]';
 
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
-/** Text this block owns directly. A nested block — a sub-list's item, a
- *  footnote's paragraph — owns its own text and is skipped, which is what keeps
- *  the comparison one-to-one with a single w:p. */
-const blockOwnText = (block: Element): string => {
-  let text = '';
+/** Text nodes this block owns directly. A nested block owns its own text, and
+ *  mammoth's injected footnote marker has no OOXML counterpart — excluding both
+ *  is what keeps run offsets and the text comparison describing the same string. */
+const ownTextNodes = (block: Element): Text[] => {
+  const nodes: Text[] = [];
   for (const node of Array.from(block.childNodes)) {
     if (node.nodeType === 3 /* TEXT_NODE */) {
-      text += node.nodeValue ?? '';
+      nodes.push(node as Text);
     } else if (node.nodeType === 1 /* ELEMENT_NODE */) {
       const el = node as Element;
       if (el.matches(BLOCK_SELECTOR)) continue;
       if (el.matches(FOOTNOTE_REF_SELECTOR)) continue;
-      text += blockOwnText(el);
+      nodes.push(...ownTextNodes(el));
     }
   }
-  return text;
+  return nodes;
 };
+
+const blockOwnText = (block: Element): string =>
+  ownTextNodes(block)
+    .map((node) => node.nodeValue ?? '')
+    .join('');
 
 /**
  * Apply run styling (color, fontSize, fontFamily) to DOM Text nodes within a block.
@@ -404,15 +411,7 @@ export const applyRunStylesToBlock = (
   }
   if (intervals.length === 0) return;
 
-  const textNodes: Text[] = [];
-  const walker = block.ownerDocument.createTreeWalker(
-    block,
-    4 /* NodeFilter.SHOW_TEXT */,
-  );
-  let tn: Node | null;
-  while ((tn = walker.nextNode())) {
-    textNodes.push(tn as Text);
-  }
+  const textNodes = ownTextNodes(block);
 
   let curOffset = 0;
   for (const node of textNodes) {

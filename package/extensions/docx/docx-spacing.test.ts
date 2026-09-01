@@ -154,6 +154,14 @@ describe('readDocxSpacing', () => {
     );
     expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('a‑b');
   });
+
+  it('matches mammoth by using a soft hyphen for w:softHyphen', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>a</w:t><w:softHyphen/><w:t>b</w:t></w:r></w:p>`,
+    );
+    // U+00AD is not whitespace, so `normalize` cannot paper over a mismatch.
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('a\u00ADb');
+  });
 });
 
 describe('readDocxSpacing paragraph alignment', () => {
@@ -521,14 +529,14 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
           {
             text: 'Red Bold',
             color: '#FF0000',
-            fontSize: '14pt',
+            fontSize: '19px',
             fontFamily: 'Calibri',
           },
           { text: ' and ', color: null, fontSize: null, fontFamily: null },
           {
             text: 'Normal Blue',
             color: '#0000FF',
-            fontSize: '18pt',
+            fontSize: '24px',
             fontFamily: 'Arial',
           },
         ],
@@ -537,10 +545,10 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
 
     const result = applyDocxSpacingToHtml(html, spacings);
     expect(result).toContain(
-      '<strong><span style="color: rgb(255, 0, 0); font-size: 14pt; font-family: Calibri;">Red Bold</span></strong>',
+      '<strong><span style="color: rgb(255, 0, 0); font-size: 19px; font-family: Calibri;">Red Bold</span></strong>',
     );
     expect(result).toContain(
-      '<span style="color: rgb(0, 0, 255); font-size: 18pt; font-family: Arial;">Normal Blue</span>',
+      '<span style="color: rgb(0, 0, 255); font-size: 24px; font-family: Arial;">Normal Blue</span>',
     );
   });
 });
@@ -651,6 +659,39 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('text-align: center');
     // The footnote body must be left alone, not styled as a second block.
     expect(result.match(/text-align: center/g)).toHaveLength(1);
+  });
+
+  it('offsets run styling past a footnote marker mammoth injected', () => {
+    const html =
+      '<p>Alpha<sup><a href="#footnote-0" id="footnote-ref-0">[1]</a></sup> bravo charlie</p>';
+    // The OOXML has no counterpart for the marker, so run offsets are measured
+    // against "Alpha bravo charlie"; counting the marker displaces every run
+    // after it by its length.
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'Alpha bravo charlie',
+        runs: [
+          { text: 'Alpha ', color: null, fontSize: null, fontFamily: null },
+          {
+            text: 'bravo',
+            color: '#cc0000',
+            fontSize: null,
+            fontFamily: null,
+          },
+          { text: ' charlie', color: null, fontSize: null, fontFamily: null },
+        ],
+      },
+    ]);
+
+    expect(result).toContain('id="footnote-ref-0">[1]</a>');
+    expect(result).toContain(
+      '<span style="color: rgb(204, 0, 0);">bravo</span>',
+    );
   });
 
   it('keeps superscript that is not a footnote reference', () => {

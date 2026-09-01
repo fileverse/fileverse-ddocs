@@ -15,14 +15,6 @@ const readBackgroundColor = (el: HTMLElement | null): string | null =>
   el?.getAttribute('data-background-color') ||
   null;
 
-const normalizeDataAlign = (align?: string | null): string => {
-  if (!align) return 'center';
-  const val = align.toLowerCase();
-  if (val === 'right' || val === 'end') return 'end';
-  if (val === 'left' || val === 'start') return 'start';
-  return 'center';
-};
-
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     resizableMedia: {
