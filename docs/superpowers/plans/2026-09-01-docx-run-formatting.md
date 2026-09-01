@@ -588,10 +588,25 @@ In `extracts direct color, font-size, and font-family from w:rPr`, change `fontS
 
 In `inherits run formatting from character styles and basedOn chain`, change `fontSize: '14pt'` to `fontSize: '19px'` (`w:sz="28"` → 14pt → 18.67px → 19px).
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Update the integration test in the other file**
 
-Run: `npx vitest run package/extensions/docx/docx-spacing.test.ts`
-Expected: PASS, 49 tests.
+`package/extensions/docx/docx-import-parity.test.ts`, in `zips run formatting (color, font size, font family) onto mammoth html`, asserts two full span strings carrying pt. Its source XML uses `w:sz="36"` and `w:sz="24"`, so:
+
+```ts
+    expect(finalHtml).toContain(
+      '<span style="color: rgb(255, 0, 0); font-size: 24px; font-family: Arial;">Red 18pt Arial</span>',
+    );
+    expect(finalHtml).toContain(
+      '<span style="color: rgb(0, 0, 255); font-size: 16px; font-family: Georgia;">Blue 12pt Georgia</span>',
+    );
+```
+
+Leave the `Red 18pt Arial` / `Blue 12pt Georgia` **text** alone — it is document content, not an assertion about units. Do not touch the other test in that file; its paragraph carries explicit `w:spacing`, so its exact style-attribute assertion stays valid.
+
+- [ ] **Step 7: Run both test files to verify they pass**
+
+Run: `npx vitest run package/extensions/docx/docx-spacing.test.ts package/extensions/docx/docx-import-parity.test.ts`
+Expected: PASS, 51 tests (49 + 2).
 
 ---
 
