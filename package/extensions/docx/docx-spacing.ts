@@ -286,10 +286,9 @@ const resolveRunProperties = (
   return mergeRunProperties(...layers);
 };
 
-// Character-for-character parity with mammoth's HTML matters twice over: the
-// alignment gate compares this against the DOM's text, and applyRunStylesToBlock
-// places spans by offset into it. w:tab stays a space — mammoth emits a literal
-// tab, and `normalize` collapses both to the same thing.
+// Character-for-character parity with mammoth matters twice: the alignment gate
+// compares this text against the DOM's, and spans are placed by offset into it.
+// w:tab stays a space — mammoth emits a literal tab and `normalize` collapses both.
 const runText = (run: Element): string => {
   let text = '';
   for (const child of Array.from(run.childNodes)) {
