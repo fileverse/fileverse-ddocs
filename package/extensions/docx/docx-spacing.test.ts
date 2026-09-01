@@ -271,12 +271,14 @@ describe('applyDocxSpacingToHtml', () => {
     expect(out).toContain('line-height: 138%');
   });
 
-  it('leaves untouched paragraphs without a style attribute', () => {
+  it('stamps zero margins on a paragraph the docx left unspecified', () => {
     const html = '<p>one</p>';
 
     const out = applyDocxSpacingToHtml(html, [spacing({ text: 'one' })]);
 
-    expect(out).not.toContain('style=');
+    // Absent in OOXML means zero, not "let CSS decide" — see TEC-2900.
+    expect(out).toContain('margin-top: 0pt');
+    expect(out).toContain('margin-bottom: 0pt');
   });
 
   it('covers headings and list items, not just paragraphs', () => {
@@ -288,7 +290,7 @@ describe('applyDocxSpacingToHtml', () => {
     ]);
 
     expect(out).toContain('<h1 style="margin-top: 24pt');
-    expect(out).toContain('<li style="margin-bottom: 4pt');
+    expect(out).toContain('<li style="margin-top: 0pt; margin-bottom: 4pt');
   });
 
   // Degrade per block rather than document-wide: mammoth relocates text boxes
@@ -464,7 +466,8 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
 
     const result = applyDocxSpacingToHtml(html, spacings);
     expect(result).toBe(
-      '<p style="text-align: center;">center me</p><h1 style="text-align: right;">right me</h1>',
+      '<p style="margin-top: 0pt; margin-bottom: 0pt; text-align: center;">center me</p>' +
+        '<h1 style="margin-top: 0pt; margin-bottom: 0pt; text-align: right;">right me</h1>',
     );
   });
 
@@ -708,5 +711,26 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('rgb(204, 0, 0)');
     expect(result).not.toContain('rgb(0, 0, 0)');
     expect(result).not.toContain('rgb(255, 255, 255)');
+  });
+
+  it('stamps an explicit zero when the docx specifies no paragraph spacing', () => {
+    const html = '<p>flush</p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'flush',
+        runs: [],
+      },
+    ]);
+    // Absent in OOXML means zero; null would let editor.css's 1.5rem apply on
+    // top of the blank lines the author used as spacing (TEC-2900).
+    expect(result).toContain('margin-top: 0pt');
+    expect(result).toContain('margin-bottom: 0pt');
+    // Line-height is house typography, not authorial rhythm — left to CSS.
+    expect(result).not.toContain('line-height');
   });
 });
