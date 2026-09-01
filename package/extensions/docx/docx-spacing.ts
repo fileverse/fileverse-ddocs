@@ -60,6 +60,9 @@ const toPt = (twips: string | undefined): number | null => {
 };
 
 const toLineHeight = (raw: RawSpacing): string | null => {
+  // 'exact' and 'atLeast' are absolute measurements with no multiplier
+  // equivalent, and ddoc's lineHeight is a percentage — so they are dropped
+  // rather than guessed at from an assumed font size.
   if (raw.line === undefined || raw.lineRule !== 'auto') return null;
   const parsed = Number.parseFloat(raw.line);
   if (Number.isNaN(parsed)) return null;
@@ -150,6 +153,8 @@ const readRunPropertiesElement = (
   };
 };
 
+/** Later layers win, but attribute by attribute — a style supplying only
+ * w:before must survive direct formatting that supplies only w:after. */
 const mergeSpacing = (...layers: RawSpacing[]): RawSpacing =>
   layers.reduce<RawSpacing>((merged, layer) => {
     const next = { ...merged };
@@ -213,7 +218,7 @@ const resolveStyleSpacing = (
   let current = styleId;
 
   while (current && !seen.has(current)) {
-    seen.add(current);
+    seen.add(current); // a malformed basedOn cycle must not hang the import
     const style = styles.byId.get(current);
     if (!style) break;
     chain.unshift(style.spacing);
@@ -294,7 +299,8 @@ const paragraphText = (paragraph: Element): string =>
     .join('');
 
 /**
- * One entry per w:p, in document order.
+ * One entry per w:p, in document order — the same order mammoth emits its
+ * blocks in, which is what makes them zippable.
  */
 export const readDocxSpacing = (
   documentXml: string,
@@ -536,6 +542,7 @@ export const readDocxSpacingFromArchive = async (
     const documentXml = await zip.file('word/document.xml')?.async('string');
     if (!documentXml) return html;
 
+    // styles.xml is optional — a document can carry direct formatting only.
     const stylesXml =
       (await zip.file('word/styles.xml')?.async('string')) ??
       '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>';
@@ -545,6 +552,9 @@ export const readDocxSpacingFromArchive = async (
       readDocxSpacing(documentXml, stylesXml),
     );
   } catch (error) {
+    // Reported, not swallowed silently: a failure here is invisible in the
+    // imported document (formatting simply does not appear) and is otherwise
+    // very hard to tell apart from a document that had none.
     console.warn('Could not read formatting from .docx', error);
     return html;
   }
