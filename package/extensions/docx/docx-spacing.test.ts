@@ -139,6 +139,21 @@ describe('readDocxSpacing', () => {
 
     expect(readDocxSpacing(xml, NO_STYLES)[0].spaceBefore).toBe(100);
   });
+
+  it('matches mammoth by contributing no text for a line break', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>foo</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>bar</w:t></w:r></w:p>`,
+    );
+    // mammoth renders <p>foo<br />bar</p>, whose textContent is "foobar".
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('foobar');
+  });
+
+  it('matches mammoth by using a non-breaking hyphen for w:noBreakHyphen', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>a</w:t><w:noBreakHyphen/><w:t>b</w:t></w:r></w:p>`,
+    );
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('a‑b');
+  });
 });
 
 describe('readDocxSpacing paragraph alignment', () => {

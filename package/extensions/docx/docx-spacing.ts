@@ -286,6 +286,10 @@ const resolveRunProperties = (
   return mergeRunProperties(...layers);
 };
 
+// Character-for-character parity with mammoth's HTML matters twice over: the
+// alignment gate compares this against the DOM's text, and applyRunStylesToBlock
+// places spans by offset into it. w:tab stays a space — mammoth emits a literal
+// tab, and `normalize` collapses both to the same thing.
 const runText = (run: Element): string => {
   let text = '';
   for (const child of Array.from(run.childNodes)) {
@@ -296,10 +300,8 @@ const runText = (run: Element): string => {
         text += el.textContent ?? '';
       } else if (tagName === 'tab') {
         text += ' ';
-      } else if (tagName === 'br' || tagName === 'cr') {
-        text += '\n';
       } else if (tagName === 'noBreakHyphen') {
-        text += '-';
+        text += '\u2011';
       }
     }
   }
