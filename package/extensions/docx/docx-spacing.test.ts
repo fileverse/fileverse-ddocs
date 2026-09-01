@@ -287,20 +287,21 @@ describe('applyDocxSpacingToHtml', () => {
     expect(out).toContain('<li style="margin-bottom: 4pt');
   });
 
-  // Degrade to no spacing rather than confidently wrong spacing: mammoth
-  // relocates text boxes and appends footnotes, so the two sequences can
-  // legitimately diverge on complex documents.
-  it('drops spacing entirely when the block count diverges', () => {
+  // Degrade per block rather than document-wide: mammoth relocates text boxes
+  // and appends footnotes, so the two sequences can legitimately diverge. A
+  // block that cannot be verified is skipped alone.
+  it('keeps spacing on matched blocks when the block count diverges', () => {
     const html = '<p>one</p><p>two</p>';
 
     const out = applyDocxSpacingToHtml(html, [
       spacing({ text: 'one', spaceBefore: 12 }),
     ]);
 
-    expect(out).toBe(html);
+    expect(out).toContain('margin-top: 12pt');
+    expect(out).toContain('<p>two</p>');
   });
 
-  it('drops spacing entirely when the text diverges', () => {
+  it('skips only the block whose text diverges', () => {
     const html = '<p>one</p><p>two</p>';
 
     const out = applyDocxSpacingToHtml(html, [
@@ -308,7 +309,8 @@ describe('applyDocxSpacingToHtml', () => {
       spacing({ text: 'ELSEWHERE', spaceBefore: 12 }),
     ]);
 
-    expect(out).toBe(html);
+    expect(out).toContain('margin-top: 12pt');
+    expect(out).toContain('<p>two</p>');
   });
 
   it('tolerates whitespace differences when comparing text', () => {
@@ -599,6 +601,24 @@ describe('applyDocxSpacingToHtml block matching', () => {
     const html = '<p>E = mc<sup>2</sup></p>';
     const result = applyDocxSpacingToHtml(html, [bare('E = mc2')]);
     expect(result).toContain('text-align: center');
+  });
+
+  it('skips only the paragraph that does not match', () => {
+    const html = '<p>one</p><p>UNEXPECTED</p><p>three</p>';
+    const result = applyDocxSpacingToHtml(html, [
+      bare('one'),
+      bare('two'),
+      bare('three'),
+    ]);
+    // The first and third still line up positionally and must survive.
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+    expect(result).toContain('<p>UNEXPECTED</p>');
+  });
+
+  it('still applies to the blocks it can when counts differ', () => {
+    const html = '<p>one</p><p>two</p><p>extra</p>';
+    const result = applyDocxSpacingToHtml(html, [bare('one'), bare('two')]);
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
   });
 });
 

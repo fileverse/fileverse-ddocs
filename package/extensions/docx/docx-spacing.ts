@@ -503,17 +503,24 @@ export const applyDocxSpacingToHtml = (
       !block.closest(FOOTNOTE_BLOCK_SELECTOR),
   );
 
-  if (blocks.length !== spacings.length) return html;
-
-  const aligned = blocks.every(
-    (block, index) =>
-      normalize(blockOwnText(block)) === normalize(spacings[index].text),
-  );
-  if (!aligned) return html;
+  // Positional, so every block is verified rather than trusted — mammoth
+  // relocates text boxes and appends footnotes. A block that does not match is
+  // skipped alone, rather than costing the whole document its formatting.
+  let skipped = 0;
 
   blocks.forEach((block, index) => {
+    const spacing = spacings[index];
+    if (!spacing) {
+      skipped += 1;
+      return;
+    }
+    if (normalize(blockOwnText(block)) !== normalize(spacing.text)) {
+      skipped += 1;
+      return;
+    }
+
     const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage, runs } =
-      spacings[index];
+      spacing;
     const element = block as HTMLElement;
     if (spaceBefore !== null) element.style.marginTop = `${spaceBefore}pt`;
     if (spaceAfter !== null) element.style.marginBottom = `${spaceAfter}pt`;
@@ -538,6 +545,12 @@ export const applyDocxSpacingToHtml = (
       applyRunStylesToBlock(element, runs);
     }
   });
+
+  if (skipped > 0) {
+    console.warn(
+      `Skipped ${skipped} of ${blocks.length} blocks while applying .docx formatting`,
+    );
+  }
 
   return doc.body.innerHTML;
 };
