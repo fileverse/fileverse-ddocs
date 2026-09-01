@@ -96,10 +96,10 @@ describe('DOCX Import Parity End-to-End', () => {
     );
 
     expect(finalHtml).toContain(
-      '<span style="color: rgb(255, 0, 0); font-size: 18pt; font-family: Arial;">Red 18pt Arial</span>',
+      '<span style="color: rgb(255, 0, 0); font-size: 24px; font-family: Arial;">Red 18pt Arial</span>',
     );
     expect(finalHtml).toContain(
-      '<span style="color: rgb(0, 0, 255); font-size: 12pt; font-family: Georgia;">Blue 12pt Georgia</span>',
+      '<span style="color: rgb(0, 0, 255); font-size: 16px; font-family: Georgia;">Blue 12pt Georgia</span>',
     );
   });
 });

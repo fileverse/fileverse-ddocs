@@ -127,10 +127,11 @@ const readRunPropertiesElement = (
   const szVal = szEl?.getAttribute('w:val');
   let fontSize: string | undefined;
   if (szVal) {
-    const parsed = Number.parseFloat(szVal);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      const pt = Math.round((parsed / 2) * 10) / 10;
-      fontSize = `${pt}pt`;
+    const halfPoints = Number.parseFloat(szVal);
+    if (!Number.isNaN(halfPoints) && halfPoints > 0) {
+      // px, not pt: the size stepper parseInts the stored value and writes back
+      // px, so a pt value shrinks the text the first time it is nudged.
+      fontSize = `${Math.round((halfPoints / 2) * (96 / 72))}px`;
     }
   }
 

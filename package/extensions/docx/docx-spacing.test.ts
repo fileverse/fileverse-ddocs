@@ -553,7 +553,7 @@ describe('readDocxSpacing run formatting', () => {
     expect(result[0].runs[0]).toEqual({
       text: 'Custom Run',
       color: '#FF0000',
-      fontSize: '16pt',
+      fontSize: '21px',
       fontFamily: 'Arial',
     });
   });
@@ -571,9 +571,17 @@ describe('readDocxSpacing run formatting', () => {
     expect(result[0].runs[0]).toEqual({
       text: 'Styled Run',
       color: '#00FF00',
-      fontSize: '14pt',
+      fontSize: '19px',
       fontFamily: 'Georgia',
     });
+  });
+
+  it('converts half-points to px so the size stepper stays coherent', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:sz w:val="32"/></w:rPr><w:t>Sized</w:t></w:r></w:p>`,
+    );
+    // 32 half-points = 16pt = 21.33px.
+    expect(readDocxSpacing(xml, NO_STYLES)[0].runs[0].fontSize).toBe('21px');
   });
 
   it('does not bake in paragraph-style run properties', () => {
