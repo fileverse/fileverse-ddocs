@@ -583,5 +583,22 @@ describe('applyDocxSpacingToHtml block matching', () => {
     // Both items styled: the outer li must not be judged by "lvl0lvl1".
     expect(result.match(/text-align: center/g)).toHaveLength(2);
   });
+
+  it('ignores mammoth footnote blocks and reference markers', () => {
+    const html =
+      '<p>Text with a note<sup><a href="#footnote-0" id="footnote-ref-0">[1]</a></sup>.</p>' +
+      '<ol><li id="footnote-0"><p>The note body. <a href="#footnote-ref-0">↑</a></p></li></ol>';
+    // One w:p in document.xml: the footnote's paragraph lives in footnotes.xml.
+    const result = applyDocxSpacingToHtml(html, [bare('Text with a note.')]);
+    expect(result).toContain('text-align: center');
+    // The footnote body must be left alone, not styled as a second block.
+    expect(result.match(/text-align: center/g)).toHaveLength(1);
+  });
+
+  it('keeps superscript that is not a footnote reference', () => {
+    const html = '<p>E = mc<sup>2</sup></p>';
+    const result = applyDocxSpacingToHtml(html, [bare('E = mc2')]);
+    expect(result).toContain('text-align: center');
+  });
 });
 

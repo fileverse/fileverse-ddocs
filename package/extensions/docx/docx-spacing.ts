@@ -381,6 +381,15 @@ export const readDocxSpacing = (
 /** Blocks mammoth emits that map one-to-one onto a w:p. */
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li';
 
+/** Mammoth's footnote/endnote list. Its paragraphs come from footnotes.xml,
+ *  which is not read, so they have no w:p to zip against — and the li plus its
+ *  nested p would otherwise be counted twice. */
+const FOOTNOTE_BLOCK_SELECTOR = 'li[id^="footnote-"], li[id^="endnote-"]';
+
+/** The injected [1] marker. Keyed on the anchor, not on sup — a document's own
+ *  superscript must survive. */
+const FOOTNOTE_REF_SELECTOR = 'a[href^="#footnote-"], a[href^="#endnote-"]';
+
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 /** Text this block owns directly. A nested block — a sub-list's item, a
@@ -394,6 +403,7 @@ const blockOwnText = (block: Element): string => {
     } else if (node.nodeType === 1 /* ELEMENT_NODE */) {
       const el = node as Element;
       if (el.matches(BLOCK_SELECTOR)) continue;
+      if (el.matches(FOOTNOTE_REF_SELECTOR)) continue;
       text += blockOwnText(el);
     }
   }
@@ -487,7 +497,11 @@ export const applyDocxSpacingToHtml = (
   spacings: DocxParagraphSpacing[],
 ): string => {
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const blocks = Array.from(doc.body.querySelectorAll(BLOCK_SELECTOR));
+  const blocks = Array.from(doc.body.querySelectorAll(BLOCK_SELECTOR)).filter(
+    (block) =>
+      !block.matches(FOOTNOTE_BLOCK_SELECTOR) &&
+      !block.closest(FOOTNOTE_BLOCK_SELECTOR),
+  );
 
   if (blocks.length !== spacings.length) return html;
 
