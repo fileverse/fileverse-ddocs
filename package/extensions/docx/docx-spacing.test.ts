@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, afterEach, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
   applyDocxSpacingToHtml,
@@ -254,6 +254,10 @@ describe('applyDocxSpacingToHtml', () => {
     ...over,
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('writes the spacing as inline styles the editor already parses', () => {
     const html = '<p>one</p><p>two</p>';
 
@@ -292,6 +296,7 @@ describe('applyDocxSpacingToHtml', () => {
   // block that cannot be verified is skipped alone.
   it('keeps spacing on matched blocks when the block count diverges', () => {
     const html = '<p>one</p><p>two</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = applyDocxSpacingToHtml(html, [
       spacing({ text: 'one', spaceBefore: 12 }),
@@ -303,6 +308,7 @@ describe('applyDocxSpacingToHtml', () => {
 
   it('skips only the block whose text diverges', () => {
     const html = '<p>one</p><p>two</p>';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = applyDocxSpacingToHtml(html, [
       spacing({ text: 'one', spaceBefore: 12 }),
@@ -311,6 +317,9 @@ describe('applyDocxSpacingToHtml', () => {
 
     expect(out).toContain('margin-top: 12pt');
     expect(out).toContain('<p>two</p>');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Skipped 1 of'),
+    );
   });
 
   it('tolerates whitespace differences when comparing text', () => {
@@ -579,7 +588,11 @@ describe('applyDocxSpacingToHtml block matching', () => {
     runs: [],
   });
 
-  it('matches a nested list by each item\'s own text', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("matches a nested list by each item's own text", () => {
     const html = '<ul><li>lvl0<ul><li>lvl1</li></ul></li></ul>';
     const result = applyDocxSpacingToHtml(html, [bare('lvl0'), bare('lvl1')]);
     // Both items styled: the outer li must not be judged by "lvl0lvl1".
@@ -605,6 +618,7 @@ describe('applyDocxSpacingToHtml block matching', () => {
 
   it('skips only the paragraph that does not match', () => {
     const html = '<p>one</p><p>UNEXPECTED</p><p>three</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = applyDocxSpacingToHtml(html, [
       bare('one'),
       bare('two'),
@@ -617,8 +631,8 @@ describe('applyDocxSpacingToHtml block matching', () => {
 
   it('still applies to the blocks it can when counts differ', () => {
     const html = '<p>one</p><p>two</p><p>extra</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = applyDocxSpacingToHtml(html, [bare('one'), bare('two')]);
     expect(result.match(/text-align: center/g)).toHaveLength(2);
   });
 });
-
