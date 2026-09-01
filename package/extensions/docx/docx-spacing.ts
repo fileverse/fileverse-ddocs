@@ -167,18 +167,10 @@ const mergeRunProperties = (...layers: RawRunProperties[]): RawRunProperties =>
   }, {});
 
 type StyleTable = {
-  docDefaults: {
-    spacing: RawSpacing;
-    run: RawRunProperties;
-  };
+  docDefaults: RawSpacing;
   byId: Map<
     string,
-    {
-      type: string;
-      spacing: RawSpacing;
-      run: RawRunProperties;
-      basedOn: string | null;
-    }
+    { spacing: RawSpacing; run: RawRunProperties; basedOn: string | null }
   >;
 };
 
@@ -189,26 +181,15 @@ const readStyles = (stylesXml: string): StyleTable => {
     .getElementsByTagName('w:pPrDefault')[0]
     ?.getElementsByTagName('w:pPr')[0];
 
-  const defaultRPr = doc
-    .getElementsByTagName('w:rPrDefault')[0]
-    ?.getElementsByTagName('w:rPr')[0];
-
   const byId = new Map<
     string,
-    {
-      type: string;
-      spacing: RawSpacing;
-      run: RawRunProperties;
-      basedOn: string | null;
-    }
+    { spacing: RawSpacing; run: RawRunProperties; basedOn: string | null }
   >();
 
   Array.from(doc.getElementsByTagName('w:style')).forEach((style) => {
     const id = style.getAttribute('w:styleId');
     if (!id) return;
-    const type = style.getAttribute('w:type') || 'paragraph';
     byId.set(id, {
-      type,
       spacing: readSpacingElement(style.getElementsByTagName('w:pPr')[0]),
       run: readRunPropertiesElement(style.getElementsByTagName('w:rPr')[0]),
       basedOn:
@@ -217,13 +198,7 @@ const readStyles = (stylesXml: string): StyleTable => {
     });
   });
 
-  return {
-    docDefaults: {
-      spacing: readSpacingElement(defaultPPr),
-      run: readRunPropertiesElement(defaultRPr),
-    },
-    byId,
-  };
+  return { docDefaults: readSpacingElement(defaultPPr), byId };
 };
 
 /** Walk basedOn to the root, then merge back down so the nearest style wins. */
@@ -243,47 +218,30 @@ const resolveStyleSpacing = (
     current = style.basedOn;
   }
 
-  return mergeSpacing(styles.docDefaults.spacing, ...chain);
+  return mergeSpacing(styles.docDefaults, ...chain);
 };
 
+/** Only the layers a person applied to a selection: a named character style,
+ *  then direct formatting. Paragraph styles and docDefaults are the source
+ *  app's factory look — ddoc owns that. */
 const resolveRunProperties = (
   rPr: Element | null | undefined,
   characterStyleId: string | null,
-  paragraphStyleId: string | null,
   styles: StyleTable,
 ): RawRunProperties => {
-  const layers: RawRunProperties[] = [];
+  const chain: RawRunProperties[] = [];
+  const seen = new Set<string>();
+  let current = characterStyleId;
 
-  // 1. Paragraph style hierarchy
-  let currentP = paragraphStyleId;
-  const pChain: RawRunProperties[] = [];
-  const pSeen = new Set<string>();
-  while (currentP && !pSeen.has(currentP)) {
-    pSeen.add(currentP);
-    const style = styles.byId.get(currentP);
+  while (current && !seen.has(current)) {
+    seen.add(current); // a malformed basedOn cycle must not hang the import
+    const style = styles.byId.get(current);
     if (!style) break;
-    pChain.unshift(style.run);
-    currentP = style.basedOn;
+    chain.unshift(style.run);
+    current = style.basedOn;
   }
-  layers.push(...pChain);
 
-  // 2. Character style hierarchy
-  let currentC = characterStyleId;
-  const cChain: RawRunProperties[] = [];
-  const cSeen = new Set<string>();
-  while (currentC && !cSeen.has(currentC)) {
-    cSeen.add(currentC);
-    const style = styles.byId.get(currentC);
-    if (!style) break;
-    cChain.unshift(style.run);
-    currentC = style.basedOn;
-  }
-  layers.push(...cChain);
-
-  // 3. Direct formatting
-  layers.push(readRunPropertiesElement(rPr));
-
-  return mergeRunProperties(...layers);
+  return mergeRunProperties(...chain, readRunPropertiesElement(rPr));
 };
 
 // Character-for-character parity with mammoth matters twice: the alignment gate
@@ -309,7 +267,6 @@ const runText = (run: Element): string => {
 
 const getParagraphRuns = (
   paragraph: Element,
-  paragraphStyleId: string | null,
   styles: StyleTable,
 ): DocxRunFormatting[] => {
   const runElements = Array.from(paragraph.getElementsByTagName('w:r'));
@@ -318,12 +275,7 @@ const getParagraphRuns = (
       const rPr = r.getElementsByTagName('w:rPr')[0];
       const rStyleId =
         rPr?.getElementsByTagName('w:rStyle')[0]?.getAttribute('w:val') ?? null;
-      const resolved = resolveRunProperties(
-        rPr,
-        rStyleId,
-        paragraphStyleId,
-        styles,
-      );
+      const resolved = resolveRunProperties(rPr, rStyleId, styles);
       return {
         text: runText(r),
         color: resolved.color ?? null,
@@ -364,7 +316,7 @@ export const readDocxSpacing = (
       paragraph.getElementsByTagName('w:pict').length > 0 ||
       paragraph.getElementsByTagName('v:imagedata').length > 0;
 
-    const runs = getParagraphRuns(paragraph, styleId, styles);
+    const runs = getParagraphRuns(paragraph, styles);
 
     return {
       spaceBefore: toPt(raw.before),

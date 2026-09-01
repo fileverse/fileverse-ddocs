@@ -575,6 +575,38 @@ describe('readDocxSpacing run formatting', () => {
       fontFamily: 'Georgia',
     });
   });
+
+  it('does not bake in paragraph-style run properties', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:style w:type="paragraph" w:styleId="Heading1"><w:rPr><w:sz w:val="40"/><w:color w:val="2e74b5"/></w:rPr></w:style>`,
+    );
+
+    // Heading identity belongs to the block type and editor.css, not to an
+    // inline span the toolbar cannot explain.
+    expect(readDocxSpacing(xml, sty)[0].runs[0]).toEqual({
+      text: 'Title',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+  });
+
+  it('does not bake in document default run properties', () => {
+    const xml = doc(`<w:p><w:r><w:t>Body</w:t></w:r></w:p>`);
+    const sty = styles(
+      `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>`,
+    );
+
+    expect(readDocxSpacing(xml, sty)[0].runs[0]).toEqual({
+      text: 'Body',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+  });
 });
 
 describe('applyDocxSpacingToHtml block matching', () => {
