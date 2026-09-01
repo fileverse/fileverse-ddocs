@@ -15,6 +15,14 @@ const readBackgroundColor = (el: HTMLElement | null): string | null =>
   el?.getAttribute('data-background-color') ||
   null;
 
+const normalizeDataAlign = (align?: string | null): string => {
+  if (!align) return 'center';
+  const val = align.toLowerCase();
+  if (val === 'right' || val === 'end') return 'end';
+  if (val === 'left' || val === 'start') return 'start';
+  return 'center';
+};
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     resizableMedia: {
@@ -108,6 +116,11 @@ export const ResizableMedia = Node.create<MediaOptions>({
       },
       dataAlign: {
         default: 'center', // 'left' | 'center' | 'right'
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute('data-align') ||
+          element.getAttribute('dataalign') ||
+          element.style.textAlign ||
+          'center',
       },
       dataFloat: {
         default: null, // 'left' | 'right'
@@ -178,7 +191,10 @@ export const ResizableMedia = Node.create<MediaOptions>({
             src: media.getAttribute('src'),
             'media-type':
               media.getAttribute('media-type') || (img ? 'img' : 'video'),
-            dataAlign: root.getAttribute('data-align') || 'center',
+            dataAlign:
+              root.getAttribute('data-align') ||
+              root.getAttribute('dataalign') ||
+              'center',
           };
           const float = root.getAttribute('data-float');
           if (float) attrs.dataFloat = float;
@@ -219,12 +235,18 @@ export const ResizableMedia = Node.create<MediaOptions>({
             '[data-type="media-caption-wrapper"]',
           ) || document.createElement('div'),
         getAttrs: (el) => {
-          const img = (el as HTMLElement).querySelector('img');
-          const video = (el as HTMLElement).querySelector('video');
+          const root = el as HTMLElement;
+          const img = root.querySelector('img');
+          const video = root.querySelector('video');
+          const align =
+            root.getAttribute('data-align') ||
+            root.getAttribute('dataalign') ||
+            'center';
           if (img) {
             return {
               src: img.getAttribute('src'),
               'media-type': 'img',
+              dataAlign: align,
               backgroundColor: readBackgroundColor(img),
             };
           }
@@ -232,6 +254,7 @@ export const ResizableMedia = Node.create<MediaOptions>({
             return {
               src: video.getAttribute('src'),
               'media-type': 'video',
+              dataAlign: align,
             };
           }
           return {};
@@ -243,11 +266,13 @@ export const ResizableMedia = Node.create<MediaOptions>({
           const img = el as HTMLImageElement;
           const align =
             img.getAttribute('data-align') ||
-            img.getAttribute('dataalign');
+            img.getAttribute('dataalign') ||
+            img.style.textAlign ||
+            'center';
           return {
             src: img.getAttribute('src'),
             'media-type': 'img',
-            ...(align ? { dataAlign: align } : {}),
+            dataAlign: align,
             backgroundColor: readBackgroundColor(img),
           };
         },

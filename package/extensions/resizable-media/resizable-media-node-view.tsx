@@ -397,7 +397,14 @@ export const getResizableMediaNodeView =
         className={cn(
           'media-node-view not-prose transition-all ease-in-out w-full',
           isFloat && `f-${node.attrs.dataFloat}`,
-          isAlign && `justify-${node.attrs.dataAlign}`,
+          isAlign &&
+            `justify-${
+              node.attrs.dataAlign === 'left'
+                ? 'start'
+                : node.attrs.dataAlign === 'right'
+                  ? 'end'
+                  : node.attrs.dataAlign
+            }`,
         )}
       >
         <div
@@ -453,9 +460,13 @@ export const getResizableMediaNodeView =
             contentEditable={false}
             className={cn(
               'relative',
-              node.attrs.dataAlign === 'start' && 'self-start',
+              (node.attrs.dataAlign === 'start' ||
+                node.attrs.dataAlign === 'left') &&
+                'self-start',
               node.attrs.dataAlign === 'center' && 'self-center',
-              node.attrs.dataAlign === 'end' && 'self-end',
+              (node.attrs.dataAlign === 'end' ||
+                node.attrs.dataAlign === 'right') &&
+                'self-end',
               isImageType && 'border-2',
               isImageType && selected
                 ? 'border-[#5c0aff]'
@@ -577,18 +588,26 @@ export const getResizableMediaNodeView =
             <NodeViewContent
               as="div"
               className={cn('media-caption', {
-                'text-left': node.attrs.dataAlign === 'start',
+                'text-left':
+                  node.attrs.dataAlign === 'start' ||
+                  node.attrs.dataAlign === 'left',
                 'text-center': node.attrs.dataAlign === 'center',
-                'text-right': node.attrs.dataAlign === 'end',
+                'text-right':
+                  node.attrs.dataAlign === 'end' ||
+                  node.attrs.dataAlign === 'right',
               })}
             />
           ) : node.attrs.caption ? (
             <div
               contentEditable={false}
               className={cn('media-caption media-caption-legacy', {
-                'text-left': node.attrs.dataAlign === 'start',
+                'text-left':
+                  node.attrs.dataAlign === 'start' ||
+                  node.attrs.dataAlign === 'left',
                 'text-center': node.attrs.dataAlign === 'center',
-                'text-right': node.attrs.dataAlign === 'end',
+                'text-right':
+                  node.attrs.dataAlign === 'end' ||
+                  node.attrs.dataAlign === 'right',
               })}
               onClick={migrateLegacyCaption}
             >

@@ -57,4 +57,49 @@ describe('DOCX Import Parity End-to-End', () => {
     expect(finalHtml).toContain('<mark data-color="#FFFF00">title</mark>');
     expect(finalHtml).toContain('data-align="right"');
   });
+
+  it('zips run formatting (color, font size, font family) onto mammoth html', async () => {
+    const documentXml = `<?xml version="1.0"?>
+      <w:document xmlns:w="${W}">
+        <w:body>
+          <w:p>
+            <w:r>
+              <w:rPr>
+                <w:color w:val="FF0000"/>
+                <w:sz w:val="36"/>
+                <w:rFonts w:ascii="Arial"/>
+              </w:rPr>
+              <w:t>Red 18pt Arial</w:t>
+            </w:r>
+            <w:r>
+              <w:t> and </w:t>
+            </w:r>
+            <w:r>
+              <w:rPr>
+                <w:color w:val="0000FF"/>
+                <w:sz w:val="24"/>
+                <w:rFonts w:ascii="Georgia"/>
+              </w:rPr>
+              <w:t>Blue 12pt Georgia</w:t>
+            </w:r>
+          </w:p>
+        </w:body>
+      </w:document>`;
+
+    const arrayBuffer = await createDocxArchive(documentXml);
+
+    const mammothHtml = '<p>Red 18pt Arial and Blue 12pt Georgia</p>';
+
+    const finalHtml = await readDocxSpacingFromArchive(
+      arrayBuffer,
+      mammothHtml,
+    );
+
+    expect(finalHtml).toContain(
+      '<span style="color: rgb(255, 0, 0); font-size: 18pt; font-family: Arial;">Red 18pt Arial</span>',
+    );
+    expect(finalHtml).toContain(
+      '<span style="color: rgb(0, 0, 255); font-size: 12pt; font-family: Georgia;">Blue 12pt Georgia</span>',
+    );
+  });
 });

@@ -1,13 +1,20 @@
 import JSZip from 'jszip';
 import { SPACING_MAX_PT, SPACING_MIN_PT } from '../../utils/typography';
 
+export type DocxRunFormatting = {
+  text: string;
+  color: string | null;
+  fontSize: string | null;
+  fontFamily: string | null;
+};
+
 /**
- * Paragraph spacing read straight out of the OOXML.
+ * Paragraph spacing and formatting read straight out of the OOXML.
  *
  * Mammoth is a *semantic* converter — its README is explicit that it uses "the
  * semantic information in the document, and ignoring other details" — so it
- * never parses w:spacing at all. Structure still comes from mammoth; only the
- * presentational values we model are read here, from the same arrayBuffer.
+ * never parses presentation attributes (spacing, text color, font size, font family).
+ * Structure comes from mammoth; presentation values are merged here.
  */
 export type DocxParagraphSpacing = {
   spaceBefore: number | null;
@@ -17,6 +24,7 @@ export type DocxParagraphSpacing = {
   hasImage: boolean;
   /** Paragraph text, used to verify alignment against mammoth's output. */
   text: string;
+  runs: DocxRunFormatting[];
 };
 
 /** Word measures spacing in twips — a twentieth of a point. */
@@ -34,6 +42,12 @@ type RawSpacing = {
   jc?: string;
 };
 
+type RawRunProperties = {
+  color?: string;
+  fontSize?: string;
+  fontFamily?: string;
+};
+
 const toPt = (twips: string | undefined): number | null => {
   if (twips === undefined) return null;
   const parsed = Number.parseFloat(twips);
@@ -45,9 +59,6 @@ const toPt = (twips: string | undefined): number | null => {
 };
 
 const toLineHeight = (raw: RawSpacing): string | null => {
-  // 'exact' and 'atLeast' are absolute measurements with no multiplier
-  // equivalent, and ddoc's lineHeight is a percentage — so they are dropped
-  // rather than guessed at from an assumed font size.
   if (raw.line === undefined || raw.lineRule !== 'auto') return null;
   const parsed = Number.parseFloat(raw.line);
   if (Number.isNaN(parsed)) return null;
@@ -95,8 +106,48 @@ const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
   };
 };
 
-/** Later layers win, but attribute by attribute — a style supplying only
- * w:before must survive direct formatting that supplies only w:after. */
+/** Read direct run properties (w:color, w:sz, w:rFonts) */
+const readRunPropertiesElement = (
+  rPr: Element | null | undefined,
+): RawRunProperties => {
+  if (!rPr) return {};
+
+  const colorEl = rPr.getElementsByTagName('w:color')[0];
+  const colorVal = colorEl?.getAttribute('w:val');
+  let color: string | undefined;
+  if (colorVal && colorVal !== 'auto') {
+    color = colorVal.startsWith('#')
+      ? colorVal
+      : /^[0-9a-fA-F]{3,8}$/.test(colorVal)
+        ? `#${colorVal}`
+        : undefined;
+  }
+
+  const szEl = rPr.getElementsByTagName('w:sz')[0];
+  const szVal = szEl?.getAttribute('w:val');
+  let fontSize: string | undefined;
+  if (szVal) {
+    const parsed = Number.parseFloat(szVal);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      const pt = Math.round((parsed / 2) * 10) / 10;
+      fontSize = `${pt}pt`;
+    }
+  }
+
+  const fontEl = rPr.getElementsByTagName('w:rFonts')[0];
+  const fontFamily =
+    fontEl?.getAttribute('w:ascii') ||
+    fontEl?.getAttribute('w:hAnsi') ||
+    fontEl?.getAttribute('w:cs') ||
+    undefined;
+
+  return {
+    color,
+    fontSize,
+    fontFamily,
+  };
+};
+
 const mergeSpacing = (...layers: RawSpacing[]): RawSpacing =>
   layers.reduce<RawSpacing>((merged, layer) => {
     const next = { ...merged };
@@ -106,9 +157,29 @@ const mergeSpacing = (...layers: RawSpacing[]): RawSpacing =>
     return next;
   }, {});
 
+const mergeRunProperties = (...layers: RawRunProperties[]): RawRunProperties =>
+  layers.reduce<RawRunProperties>((merged, layer) => {
+    const next = { ...merged };
+    (['color', 'fontSize', 'fontFamily'] as const).forEach((key) => {
+      if (layer[key] !== undefined) next[key] = layer[key];
+    });
+    return next;
+  }, {});
+
 type StyleTable = {
-  docDefaults: RawSpacing;
-  byId: Map<string, { spacing: RawSpacing; basedOn: string | null }>;
+  docDefaults: {
+    spacing: RawSpacing;
+    run: RawRunProperties;
+  };
+  byId: Map<
+    string,
+    {
+      type: string;
+      spacing: RawSpacing;
+      run: RawRunProperties;
+      basedOn: string | null;
+    }
+  >;
 };
 
 const readStyles = (stylesXml: string): StyleTable => {
@@ -118,23 +189,41 @@ const readStyles = (stylesXml: string): StyleTable => {
     .getElementsByTagName('w:pPrDefault')[0]
     ?.getElementsByTagName('w:pPr')[0];
 
+  const defaultRPr = doc
+    .getElementsByTagName('w:rPrDefault')[0]
+    ?.getElementsByTagName('w:rPr')[0];
+
   const byId = new Map<
     string,
-    { spacing: RawSpacing; basedOn: string | null }
+    {
+      type: string;
+      spacing: RawSpacing;
+      run: RawRunProperties;
+      basedOn: string | null;
+    }
   >();
 
   Array.from(doc.getElementsByTagName('w:style')).forEach((style) => {
     const id = style.getAttribute('w:styleId');
     if (!id) return;
+    const type = style.getAttribute('w:type') || 'paragraph';
     byId.set(id, {
+      type,
       spacing: readSpacingElement(style.getElementsByTagName('w:pPr')[0]),
+      run: readRunPropertiesElement(style.getElementsByTagName('w:rPr')[0]),
       basedOn:
         style.getElementsByTagName('w:basedOn')[0]?.getAttribute('w:val') ??
         null,
     });
   });
 
-  return { docDefaults: readSpacingElement(defaultPPr), byId };
+  return {
+    docDefaults: {
+      spacing: readSpacingElement(defaultPPr),
+      run: readRunPropertiesElement(defaultRPr),
+    },
+    byId,
+  };
 };
 
 /** Walk basedOn to the root, then merge back down so the nearest style wins. */
@@ -147,24 +236,110 @@ const resolveStyleSpacing = (
   let current = styleId;
 
   while (current && !seen.has(current)) {
-    seen.add(current); // a malformed basedOn cycle must not hang the import
+    seen.add(current);
     const style = styles.byId.get(current);
     if (!style) break;
     chain.unshift(style.spacing);
     current = style.basedOn;
   }
 
-  return mergeSpacing(styles.docDefaults, ...chain);
+  return mergeSpacing(styles.docDefaults.spacing, ...chain);
+};
+
+const resolveRunProperties = (
+  rPr: Element | null | undefined,
+  characterStyleId: string | null,
+  paragraphStyleId: string | null,
+  styles: StyleTable,
+): RawRunProperties => {
+  const layers: RawRunProperties[] = [];
+
+  // 1. Paragraph style hierarchy
+  let currentP = paragraphStyleId;
+  const pChain: RawRunProperties[] = [];
+  const pSeen = new Set<string>();
+  while (currentP && !pSeen.has(currentP)) {
+    pSeen.add(currentP);
+    const style = styles.byId.get(currentP);
+    if (!style) break;
+    pChain.unshift(style.run);
+    currentP = style.basedOn;
+  }
+  layers.push(...pChain);
+
+  // 2. Character style hierarchy
+  let currentC = characterStyleId;
+  const cChain: RawRunProperties[] = [];
+  const cSeen = new Set<string>();
+  while (currentC && !cSeen.has(currentC)) {
+    cSeen.add(currentC);
+    const style = styles.byId.get(currentC);
+    if (!style) break;
+    cChain.unshift(style.run);
+    currentC = style.basedOn;
+  }
+  layers.push(...cChain);
+
+  // 3. Direct formatting
+  layers.push(readRunPropertiesElement(rPr));
+
+  return mergeRunProperties(...layers);
+};
+
+const runText = (run: Element): string => {
+  let text = '';
+  for (const child of Array.from(run.childNodes)) {
+    if (child.nodeType === 1 /* ELEMENT_NODE */) {
+      const el = child as Element;
+      const tagName = el.localName || el.nodeName.replace(/^w:/, '');
+      if (tagName === 't') {
+        text += el.textContent ?? '';
+      } else if (tagName === 'tab') {
+        text += ' ';
+      } else if (tagName === 'br' || tagName === 'cr') {
+        text += '\n';
+      } else if (tagName === 'noBreakHyphen') {
+        text += '-';
+      }
+    }
+  }
+  return text;
+};
+
+const getParagraphRuns = (
+  paragraph: Element,
+  paragraphStyleId: string | null,
+  styles: StyleTable,
+): DocxRunFormatting[] => {
+  const runElements = Array.from(paragraph.getElementsByTagName('w:r'));
+  return runElements
+    .map((r) => {
+      const rPr = r.getElementsByTagName('w:rPr')[0];
+      const rStyleId =
+        rPr?.getElementsByTagName('w:rStyle')[0]?.getAttribute('w:val') ?? null;
+      const resolved = resolveRunProperties(
+        rPr,
+        rStyleId,
+        paragraphStyleId,
+        styles,
+      );
+      return {
+        text: runText(r),
+        color: resolved.color ?? null,
+        fontSize: resolved.fontSize ?? null,
+        fontFamily: resolved.fontFamily ?? null,
+      };
+    })
+    .filter((run) => run.text.length > 0);
 };
 
 const paragraphText = (paragraph: Element): string =>
-  Array.from(paragraph.getElementsByTagName('w:t'))
-    .map((node) => node.textContent ?? '')
+  Array.from(paragraph.getElementsByTagName('w:r'))
+    .map((run) => runText(run))
     .join('');
 
 /**
- * One entry per w:p, in document order — the same order mammoth emits its
- * blocks in, which is what makes them zippable.
+ * One entry per w:p, in document order.
  */
 export const readDocxSpacing = (
   documentXml: string,
@@ -188,6 +363,8 @@ export const readDocxSpacing = (
       paragraph.getElementsByTagName('w:pict').length > 0 ||
       paragraph.getElementsByTagName('v:imagedata').length > 0;
 
+    const runs = getParagraphRuns(paragraph, styleId, styles);
+
     return {
       spaceBefore: toPt(raw.before),
       spaceAfter: toPt(raw.after),
@@ -195,6 +372,7 @@ export const readDocxSpacing = (
       textAlign: normalizeAlignment(raw.jc),
       hasImage,
       text: paragraphText(paragraph),
+      runs,
     };
   });
 };
@@ -205,14 +383,86 @@ const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li';
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 /**
- * Zip the spacing onto mammoth's HTML as inline styles, which the LineHeight
- * and ParagraphSpacing attributes already parse back on import.
- *
- * Alignment is positional, so it is verified rather than trusted: mammoth
- * relocates text boxes and appends footnotes, and `ignoreEmptyParagraphs`
- * has to stay off for the counts to line up at all. On any divergence the
- * HTML is returned untouched — no spacing is better than spacing on the
- * wrong paragraphs, which is silent and hard to trace.
+ * Apply run styling (color, fontSize, fontFamily) to DOM Text nodes within a block.
+ */
+export const applyRunStylesToBlock = (
+  block: HTMLElement,
+  runs: DocxRunFormatting[],
+): void => {
+  const styledRuns = runs.filter(
+    (r) => r.color !== null || r.fontSize !== null || r.fontFamily !== null,
+  );
+  if (styledRuns.length === 0) return;
+
+  let offset = 0;
+  const intervals: { start: number; end: number; run: DocxRunFormatting }[] =
+    [];
+  for (const run of runs) {
+    const start = offset;
+    const end = offset + run.text.length;
+    if (run.color || run.fontSize || run.fontFamily) {
+      intervals.push({ start, end, run });
+    }
+    offset = end;
+  }
+  if (intervals.length === 0) return;
+
+  const textNodes: Text[] = [];
+  const walker = block.ownerDocument.createTreeWalker(
+    block,
+    4 /* NodeFilter.SHOW_TEXT */,
+  );
+  let tn: Node | null;
+  while ((tn = walker.nextNode())) {
+    textNodes.push(tn as Text);
+  }
+
+  let curOffset = 0;
+  for (const node of textNodes) {
+    const nodeLen = node.nodeValue ? node.nodeValue.length : 0;
+    if (nodeLen === 0) continue;
+    const nodeStart = curOffset;
+    const nodeEnd = curOffset + nodeLen;
+    curOffset = nodeEnd;
+
+    let activeNode = node;
+    let activeStart = nodeStart;
+
+    for (const interval of intervals) {
+      if (interval.end <= activeStart || interval.start >= nodeEnd) continue;
+
+      const overlapStart = Math.max(interval.start, activeStart);
+      const overlapEnd = Math.min(interval.end, nodeEnd);
+
+      const splitOffset1 = overlapStart - activeStart;
+      let targetNode = activeNode;
+
+      if (splitOffset1 > 0) {
+        targetNode = activeNode.splitText(splitOffset1);
+        activeStart = overlapStart;
+      }
+
+      const overlapLen = overlapEnd - overlapStart;
+      if (targetNode.nodeValue && targetNode.nodeValue.length > overlapLen) {
+        const remaining = targetNode.splitText(overlapLen);
+        activeNode = remaining;
+        activeStart = overlapEnd;
+      }
+
+      const span = block.ownerDocument.createElement('span');
+      if (interval.run.color) span.style.color = interval.run.color;
+      if (interval.run.fontSize) span.style.fontSize = interval.run.fontSize;
+      if (interval.run.fontFamily)
+        span.style.fontFamily = interval.run.fontFamily;
+
+      targetNode.parentNode?.replaceChild(span, targetNode);
+      span.appendChild(targetNode);
+    }
+  }
+};
+
+/**
+ * Zip spacing, alignment, image alignment, and run formatting onto mammoth's HTML.
  */
 export const applyDocxSpacingToHtml = (
   html: string,
@@ -230,7 +480,7 @@ export const applyDocxSpacingToHtml = (
   if (!aligned) return html;
 
   blocks.forEach((block, index) => {
-    const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage } =
+    const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage, runs } =
       spacings[index];
     const element = block as HTMLElement;
     if (spaceBefore !== null) element.style.marginTop = `${spaceBefore}pt`;
@@ -251,17 +501,18 @@ export const applyDocxSpacingToHtml = (
         img.setAttribute('dataalign', align);
       });
     }
+
+    if (runs && runs.length > 0) {
+      applyRunStylesToBlock(element, runs);
+    }
   });
 
   return doc.body.innerHTML;
 };
 
 /**
- * Read the spacing out of the .docx archive and zip it onto mammoth's HTML.
- *
- * Reuses the arrayBuffer mammoth is already given, so the file is not read
- * twice. Every failure path returns the original HTML: losing spacing is
- * recoverable, losing the import is not.
+ * Read spacing, alignment, image presence, and run formatting from .docx archive
+ * and apply onto mammoth's HTML.
  */
 export const readDocxSpacingFromArchive = async (
   arrayBuffer: ArrayBuffer,
@@ -273,7 +524,6 @@ export const readDocxSpacingFromArchive = async (
     const documentXml = await zip.file('word/document.xml')?.async('string');
     if (!documentXml) return html;
 
-    // styles.xml is optional — a document can carry direct formatting only.
     const stylesXml =
       (await zip.file('word/styles.xml')?.async('string')) ??
       '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>';
@@ -283,10 +533,7 @@ export const readDocxSpacingFromArchive = async (
       readDocxSpacing(documentXml, stylesXml),
     );
   } catch (error) {
-    // Reported, not swallowed silently: a failure here is invisible in the
-    // imported document (spacing simply does not appear) and is otherwise
-    // very hard to tell apart from a document that had no spacing.
-    console.warn('Could not read spacing from .docx', error);
+    console.warn('Could not read formatting from .docx', error);
     return html;
   }
 };

@@ -470,11 +470,84 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
         textAlign: 'left',
         hasImage: true,
         text: '',
+        runs: [],
       },
     ];
 
     const result = applyDocxSpacingToHtml(html, spacings);
     expect(result).toContain('data-align="start"');
+  });
+
+  it('applies color, font-size, and font-family to text nodes within paragraph', () => {
+    const html = '<p><strong>Red Bold</strong> and Normal Blue</p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'Red Bold and Normal Blue',
+        runs: [
+          {
+            text: 'Red Bold',
+            color: '#FF0000',
+            fontSize: '14pt',
+            fontFamily: 'Calibri',
+          },
+          { text: ' and ', color: null, fontSize: null, fontFamily: null },
+          {
+            text: 'Normal Blue',
+            color: '#0000FF',
+            fontSize: '18pt',
+            fontFamily: 'Arial',
+          },
+        ],
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain(
+      '<strong><span style="color: rgb(255, 0, 0); font-size: 14pt; font-family: Calibri;">Red Bold</span></strong>',
+    );
+    expect(result).toContain(
+      '<span style="color: rgb(0, 0, 255); font-size: 18pt; font-family: Arial;">Normal Blue</span>',
+    );
+  });
+});
+
+describe('readDocxSpacing run formatting', () => {
+  it('extracts direct color, font-size, and font-family from w:rPr', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:color w:val="FF0000"/><w:sz w:val="32"/><w:rFonts w:ascii="Arial"/></w:rPr><w:t>Custom Run</w:t></w:r></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].runs).toHaveLength(1);
+    expect(result[0].runs[0]).toEqual({
+      text: 'Custom Run',
+      color: '#FF0000',
+      fontSize: '16pt',
+      fontFamily: 'Arial',
+    });
+  });
+
+  it('inherits run formatting from character styles and basedOn chain', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:rStyle w:val="ChildChar"/></w:rPr><w:t>Styled Run</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:style w:type="character" w:styleId="BaseChar"><w:rPr><w:color w:val="0000FF"/><w:sz w:val="28"/><w:rFonts w:ascii="Georgia"/></w:rPr></w:style>` +
+        `<w:style w:type="character" w:styleId="ChildChar"><w:basedOn w:val="BaseChar"/><w:rPr><w:color w:val="00FF00"/></w:rPr></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].runs[0]).toEqual({
+      text: 'Styled Run',
+      color: '#00FF00',
+      fontSize: '14pt',
+      fontFamily: 'Georgia',
+    });
   });
 });
 
