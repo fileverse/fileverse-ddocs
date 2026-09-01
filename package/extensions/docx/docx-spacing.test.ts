@@ -566,3 +566,22 @@ describe('readDocxSpacing run formatting', () => {
   });
 });
 
+describe('applyDocxSpacingToHtml block matching', () => {
+  const bare = (text: string): DocxParagraphSpacing => ({
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+    textAlign: 'center',
+    hasImage: false,
+    text,
+    runs: [],
+  });
+
+  it('matches a nested list by each item\'s own text', () => {
+    const html = '<ul><li>lvl0<ul><li>lvl1</li></ul></li></ul>';
+    const result = applyDocxSpacingToHtml(html, [bare('lvl0'), bare('lvl1')]);
+    // Both items styled: the outer li must not be judged by "lvl0lvl1".
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+  });
+});
+

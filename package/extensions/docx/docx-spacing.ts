@@ -383,6 +383,23 @@ const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li';
 
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
+/** Text this block owns directly. A nested block — a sub-list's item, a
+ *  footnote's paragraph — owns its own text and is skipped, which is what keeps
+ *  the comparison one-to-one with a single w:p. */
+const blockOwnText = (block: Element): string => {
+  let text = '';
+  for (const node of Array.from(block.childNodes)) {
+    if (node.nodeType === 3 /* TEXT_NODE */) {
+      text += node.nodeValue ?? '';
+    } else if (node.nodeType === 1 /* ELEMENT_NODE */) {
+      const el = node as Element;
+      if (el.matches(BLOCK_SELECTOR)) continue;
+      text += blockOwnText(el);
+    }
+  }
+  return text;
+};
+
 /**
  * Apply run styling (color, fontSize, fontFamily) to DOM Text nodes within a block.
  */
@@ -476,7 +493,7 @@ export const applyDocxSpacingToHtml = (
 
   const aligned = blocks.every(
     (block, index) =>
-      normalize(block.textContent ?? '') === normalize(spacings[index].text),
+      normalize(blockOwnText(block)) === normalize(spacings[index].text),
   );
   if (!aligned) return html;
 
