@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { SPACING_MAX_PT, SPACING_MIN_PT } from '../../utils/typography';
+import { isBlackOrWhiteShade } from '../../utils/color-utils';
 
 export type DocxRunFormatting = {
   text: string;
@@ -370,8 +371,17 @@ export const applyRunStylesToBlock = (
   block: HTMLElement,
   runs: DocxRunFormatting[],
 ): void => {
+  // Imported colour is literal hex, and the editor's dark-mode passes run only
+  // at document load — an import into an open editor never reaches them. Black
+  // on a dark background is invisible, so drop the shades that flip.
+  const safeColor = (color: string | null) =>
+    color && !isBlackOrWhiteShade(color) ? color : null;
+
   const styledRuns = runs.filter(
-    (r) => r.color !== null || r.fontSize !== null || r.fontFamily !== null,
+    (r) =>
+      safeColor(r.color) !== null ||
+      r.fontSize !== null ||
+      r.fontFamily !== null,
   );
   if (styledRuns.length === 0) return;
 
@@ -381,7 +391,7 @@ export const applyRunStylesToBlock = (
   for (const run of runs) {
     const start = offset;
     const end = offset + run.text.length;
-    if (run.color || run.fontSize || run.fontFamily) {
+    if (safeColor(run.color) || run.fontSize || run.fontFamily) {
       intervals.push({ start, end, run });
     }
     offset = end;
@@ -431,7 +441,8 @@ export const applyRunStylesToBlock = (
       }
 
       const span = block.ownerDocument.createElement('span');
-      if (interval.run.color) span.style.color = interval.run.color;
+      const color = safeColor(interval.run.color);
+      if (color) span.style.color = color;
       if (interval.run.fontSize) span.style.fontSize = interval.run.fontSize;
       if (interval.run.fontFamily)
         span.style.fontFamily = interval.run.fontFamily;

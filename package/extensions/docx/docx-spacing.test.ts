@@ -675,4 +675,38 @@ describe('applyDocxSpacingToHtml block matching', () => {
     const result = applyDocxSpacingToHtml(html, [bare('one'), bare('two')]);
     expect(result.match(/text-align: center/g)).toHaveLength(2);
   });
+
+  it('drops black and white shades that would be invisible in one theme', () => {
+    const html = '<p>black red white</p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'black red white',
+        runs: [
+          {
+            text: 'black ',
+            color: '#000000',
+            fontSize: null,
+            fontFamily: null,
+          },
+          { text: 'red ', color: '#cc0000', fontSize: null, fontFamily: null },
+          {
+            text: 'white',
+            color: '#ffffff',
+            fontSize: null,
+            fontFamily: null,
+          },
+        ],
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('rgb(204, 0, 0)');
+    expect(result).not.toContain('rgb(0, 0, 0)');
+    expect(result).not.toContain('rgb(255, 255, 255)');
+  });
 });
