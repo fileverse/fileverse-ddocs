@@ -493,8 +493,8 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
     ];
 
     const result = applyDocxSpacingToHtml(html, spacings);
-    expect(result).toContain('data-align="right"');
-    expect(result).toContain('dataalign="right"');
+    expect(result).toContain('data-align="end"');
+    expect(result).toContain('dataalign="end"');
   });
 
   it('defaults image data-align to start when alignment is left', () => {
@@ -648,6 +648,33 @@ describe('readDocxSpacing run formatting', () => {
     });
     expect(runs[1].fontFamily).toBe('Georgia');
     expect(runs[1].fontSize).toBe('19px');
+  });
+});
+
+describe('readDocxSpacing nested paragraphs', () => {
+  it('leaves text box paragraphs out and off their container', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>page text</w:t></w:r>` +
+        `<w:r><w:pict><v:shape><v:textbox><w:txbxContent>` +
+        `<w:p><w:r><w:t>boxed</w:t></w:r></w:p>` +
+        `</w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    // One page paragraph. Counting the boxed one skews every later block, and
+    // letting its runs bleed upward makes the container's text unmatchable.
+    expect(result).toHaveLength(1);
+    expect(result[0].text).toBe('page text');
+  });
+});
+
+describe('readDocxSpacing malformed input', () => {
+  it('throws instead of silently reporting no paragraphs', () => {
+    // DOMParser returns a <parsererror> document rather than throwing, so an
+    // unguarded parse loses every block with no signal that anything failed.
+    expect(() =>
+      readDocxSpacing('<w:document><unclosed>', NO_STYLES),
+    ).toThrow();
   });
 });
 
@@ -841,6 +868,65 @@ describe('applyDocxSpacingToHtml block matching', () => {
     // matters is that the loop carried on and later blocks were still styled.
     expect(result).toContain('text-align: center;">one</p>');
     expect(result).toContain('text-align: center;">three</p>');
+  });
+
+  it('resyncs after an unexpected block at the very start', () => {
+    // A count skew, not a content mismatch: without resync every block after
+    // the stray one is off by one and the whole document loses its formatting.
+    const result = applyDocxSpacingToHtml(
+      '<p>stray</p><p>one</p><p>two</p><p>three</p>',
+      [bare('one'), bare('two'), bare('three')],
+    );
+    expect(result.match(/text-align: center/g)).toHaveLength(3);
+    expect(result).toContain('<p>stray</p>');
+  });
+
+  it('resyncs when a paragraph reached the OOXML but not the html', () => {
+    const result = applyDocxSpacingToHtml('<p>one</p><p>three</p>', [
+      bare('one'),
+      bare('two'),
+      bare('three'),
+    ]);
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+  });
+
+  it('drops near-achromatic colours whichever band they fall in', () => {
+    const emitted = (hex: string) =>
+      applyDocxSpacingToHtml('<p>x</p>', [
+        {
+          spaceBefore: null,
+          spaceAfter: null,
+          lineHeight: null,
+          textAlign: null,
+          hasImage: false,
+          text: 'x',
+          runs: [{ text: 'x', color: hex, fontSize: null, fontFamily: null }],
+        },
+      ]);
+
+    // #262626 and #bfbfbf are one click away in Word's colour picker, and sit
+    // in the bands the hex list and the rgb range check both miss.
+    ['#333333', '#262626', '#eeeeee', '#bfbfbf', '#1a1a1b'].forEach((hex) => {
+      expect(emitted(hex)).not.toContain('color: rgb');
+    });
+    expect(emitted('#cc0000')).toContain('color: rgb(204, 0, 0)');
+  });
+
+  it('aligns an imported image with the vocabulary the toolbar reads', () => {
+    const html = '<p><img src="x.png"></p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: true,
+        text: '',
+        runs: [],
+      },
+    ]);
+    // The alignment menu tests dataAlign === 'end'; 'right' leaves no button active.
+    expect(result).toContain('data-align="end"');
   });
 
   it('drops an achromatic shade the exact-hex list does not name', () => {

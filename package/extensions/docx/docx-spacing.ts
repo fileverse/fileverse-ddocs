@@ -39,6 +39,13 @@ const TWIPS_PER_PT = 20;
  * 120 base, so percentage = line / 240 * 120 = line / 2. */
 const AUTO_LINE_PER_PERCENT = 2;
 
+/** How far ahead to hunt for a paragraph's block after a count skew. Small, so
+ *  a coincidental text match cannot pull the pairing far out of order. */
+const RESYNC_LOOKAHEAD = 3;
+
+/** Max channel spread still treated as grey rather than a chosen colour. */
+const NEAR_GREY_CHROMA = 16;
+
 type RawSpacing = {
   before?: string;
   after?: string;
@@ -92,8 +99,14 @@ const normalizeAlignment = (val?: string): string | null => {
   }
 };
 
-const parseXml = (xml: string): Document =>
-  new DOMParser().parseFromString(xml, 'application/xml');
+const parseXml = (xml: string): Document => {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  // DOMParser reports malformed XML as a <parsererror> root instead of
+  // throwing, which would otherwise read as a document with no paragraphs.
+  if (doc.getElementsByTagName('parsererror').length > 0)
+    throw new Error('Malformed OOXML');
+  return doc;
+};
 
 /** The w:spacing child of a w:pPr, as raw attributes. */
 const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
@@ -278,6 +291,29 @@ const resolveRunProperties = (
 // Character-for-character parity with mammoth matters twice: the alignment gate
 // compares this text against the DOM's, and spans are placed by offset into it.
 // w:tab stays a space — mammoth emits a literal tab and `normalize` collapses both.
+/** Runs this paragraph owns. A text box carries its own w:p, and letting its
+ *  runs bleed upward makes the container's text unmatchable against mammoth. */
+const ownRunElements = (node: Element): Element[] => {
+  const runs: Element[] = [];
+  for (const child of Array.from(node.children)) {
+    const tag = child.localName || child.nodeName.replace(/^w:/, '');
+    if (tag === 'p' || tag === 'txbxContent') continue;
+    if (tag === 'r') runs.push(child);
+    else runs.push(...ownRunElements(child));
+  }
+  return runs;
+};
+
+const isInsideTextBox = (paragraph: Element): boolean => {
+  let node = paragraph.parentElement;
+  while (node) {
+    const tag = node.localName || node.nodeName.replace(/^w:/, '');
+    if (tag === 'txbxContent') return true;
+    node = node.parentElement;
+  }
+  return false;
+};
+
 const runText = (run: Element): string => {
   let text = '';
   for (const child of Array.from(run.childNodes)) {
@@ -302,7 +338,7 @@ const getParagraphRuns = (
   paragraph: Element,
   styles: StyleTable,
 ): DocxRunFormatting[] => {
-  const runElements = Array.from(paragraph.getElementsByTagName('w:r'));
+  const runElements = ownRunElements(paragraph);
   return runElements
     .map((r) => {
       const rPr = r.getElementsByTagName('w:rPr')[0];
@@ -320,7 +356,7 @@ const getParagraphRuns = (
 };
 
 const paragraphText = (paragraph: Element): string =>
-  Array.from(paragraph.getElementsByTagName('w:r'))
+  ownRunElements(paragraph)
     .map((run) => runText(run))
     .join('');
 
@@ -335,33 +371,35 @@ export const readDocxSpacing = (
   const styles = readStyles(stylesXml);
   const doc = parseXml(documentXml);
 
-  return Array.from(doc.getElementsByTagName('w:p')).map((paragraph) => {
-    const pPr = paragraph.getElementsByTagName('w:pPr')[0];
-    const styleId =
-      pPr?.getElementsByTagName('w:pStyle')[0]?.getAttribute('w:val') ?? null;
+  return Array.from(doc.getElementsByTagName('w:p'))
+    .filter((paragraph) => !isInsideTextBox(paragraph))
+    .map((paragraph) => {
+      const pPr = paragraph.getElementsByTagName('w:pPr')[0];
+      const styleId =
+        pPr?.getElementsByTagName('w:pStyle')[0]?.getAttribute('w:val') ?? null;
 
-    const raw = mergeSpacing(
-      resolveStyleSpacing(styleId, styles),
-      readSpacingElement(pPr),
-    );
+      const raw = mergeSpacing(
+        resolveStyleSpacing(styleId, styles),
+        readSpacingElement(pPr),
+      );
 
-    const hasImage =
-      paragraph.getElementsByTagName('w:drawing').length > 0 ||
-      paragraph.getElementsByTagName('w:pict').length > 0 ||
-      paragraph.getElementsByTagName('v:imagedata').length > 0;
+      const hasImage =
+        paragraph.getElementsByTagName('w:drawing').length > 0 ||
+        paragraph.getElementsByTagName('w:pict').length > 0 ||
+        paragraph.getElementsByTagName('v:imagedata').length > 0;
 
-    const runs = getParagraphRuns(paragraph, styles);
+      const runs = getParagraphRuns(paragraph, styles);
 
-    return {
-      spaceBefore: toPt(raw.before),
-      spaceAfter: toPt(raw.after),
-      lineHeight: toLineHeight(raw),
-      textAlign: normalizeAlignment(raw.jc),
-      hasImage,
-      text: paragraphText(paragraph),
-      runs,
-    };
-  });
+      return {
+        spaceBefore: toPt(raw.before),
+        spaceAfter: toPt(raw.after),
+        lineHeight: toLineHeight(raw),
+        textAlign: normalizeAlignment(raw.jc),
+        hasImage,
+        text: paragraphText(paragraph),
+        runs,
+      };
+    });
 };
 
 /** Blocks mammoth emits that map one-to-one onto a w:p. */
@@ -378,16 +416,16 @@ const FOOTNOTE_REF_SELECTOR = 'a[href^="#footnote-"], a[href^="#endnote-"]';
 
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
-/** Imported colour is literal hex and the editor's dark-mode passes run only at
- *  document load, so anything achromatic has to go here and let the
- *  theme-responsive CSS own text colour. The shared helper checks hex against an
- *  exact list but range-checks rgb, and neither form alone catches every shade. */
+/** Greys carry no authorial signal, and the editor's dark-mode passes run only
+ *  at document load — so every near-achromatic value goes, letting the
+ *  theme-responsive CSS own text colour. Chroma, not a shade list: the shared
+ *  helper's hex list and rgb range together still leave whole bands uncovered. */
 const isThemeUnsafe = (color: string): boolean => {
   if (isBlackOrWhiteShade(color)) return true;
   const rgb = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
   if (!rgb) return false;
   const [r, g, b] = rgb.slice(1).map((pair) => Number.parseInt(pair, 16));
-  return isBlackOrWhiteShade(`rgb(${r}, ${g}, ${b})`);
+  return Math.max(r, g, b) - Math.min(r, g, b) <= NEAR_GREY_CHROMA;
 };
 
 /** Text nodes this block owns directly. A nested block owns its own text, and
@@ -512,18 +550,28 @@ export const applyDocxSpacingToHtml = (
   // relocates text boxes and appends footnotes. A block that does not match is
   // skipped alone, rather than costing the whole document its formatting.
   let skipped = 0;
+  let cursor = 0;
 
-  blocks.forEach((block, index) => {
-    const spacing = spacings[index];
-    if (!spacing) {
-      skipped += 1;
-      return;
-    }
+  blocks.forEach((block) => {
     try {
-      if (normalize(blockOwnText(block)) !== normalize(spacing.text)) {
+      // Pair by text rather than by position: an inserted or dropped block
+      // otherwise shifts every later one, which is how a single stray element
+      // used to cost the whole document its formatting.
+      const text = normalize(blockOwnText(block));
+      const limit = Math.min(cursor + 1 + RESYNC_LOOKAHEAD, spacings.length);
+      let found = -1;
+      for (let i = cursor; i < limit; i += 1) {
+        if (normalize(spacings[i].text) === text) {
+          found = i;
+          break;
+        }
+      }
+      if (found === -1) {
         skipped += 1;
         return;
       }
+      const spacing = spacings[found];
+      cursor = found + 1;
 
       const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage, runs } =
         spacing;
@@ -543,7 +591,7 @@ export const applyDocxSpacingToHtml = (
             textAlign === 'center'
               ? 'center'
               : textAlign === 'right'
-                ? 'right'
+                ? 'end'
                 : 'start';
           img.setAttribute('data-align', align);
           img.setAttribute('dataalign', align);

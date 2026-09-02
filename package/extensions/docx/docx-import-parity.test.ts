@@ -55,7 +55,7 @@ describe('DOCX Import Parity End-to-End', () => {
     );
     expect(finalHtml).toContain('<u>Centered</u>');
     expect(finalHtml).toContain('<mark data-color="#FFFF00">title</mark>');
-    expect(finalHtml).toContain('data-align="right"');
+    expect(finalHtml).toContain('data-align="end"');
   });
 
   it('zips run formatting (color, font size, font family) onto mammoth html', async () => {

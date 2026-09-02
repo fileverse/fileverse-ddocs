@@ -146,8 +146,23 @@ block instead of abandoning the document, plus a dev-only warn counting skips.
 **Validated:** simulating this against both files yields 13/13 and 67/67 blocks
 matched, **zero mismatches**.
 
-Two-pointer resync with lookahead was considered and deferred — speculative until
-the skip counter fires on a real file.
+**Resync (added 2026-09-02).** Per-block degradation bounds the damage only when
+a mismatch is *content-local*. For a **count skew** — a block inserted or dropped
+relative to the OOXML — positional pairing shifts every later block and the
+document still loses everything downstream. Measured: one stray block at the
+*start* cost all 3 of 3 blocks their formatting, while the same stray at the end
+cost none. Both original real-world causes were count skews.
+
+Blocks are therefore paired by text with a `RESYNC_LOOKAHEAD` of 3 rather than by
+index. The window is deliberately small so a coincidental text match cannot pull
+the pairing far out of order. The earlier deferral ("only if the skip counter
+fires on a real file") was unsound: that counter is a `console.warn` in a
+browser, so the trigger would never have been observed.
+
+**Text boxes.** `w:txbxContent` paragraphs are excluded, and a paragraph's runs
+are collected by pruning nested `w:p`/`w:txbxContent` subtrees rather than by a
+descendant-blind search. This mirrors `ownTextNodes` on the DOM side; the
+symmetry of those two halves is what the whole design rests on.
 
 ### 3.3 Footnote bodies (D-3)
 
@@ -185,8 +200,16 @@ black `#000000 #434343 #666666 #999999`, white `#ffffff #f3f3f3 #efefef #d9d9d9
 equal channels only). Neither form alone is complete: the list misses `#555555`,
 and the range misses `#efefef`, `#d9d9d9`, `#cccccc`, `#b7b7b7`.
 
-The import therefore tests **both** forms (`isThemeUnsafe` in `docx-spacing.ts`),
-so no achromatic value survives regardless of which branch would have named it.
+Testing **both** forms is still not a cover: their union leaves the bands 30-59
+and 181-240 open, and never inspects a near-grey with unequal channels. A branch
+review on 2026-09-02 showed `#333333`, `#262626` (Word's "Black, Text 1, Lighter
+15%"), `#eeeeee` and `#bfbfbf` ("White, Background 1, Darker 25%") all importing
+verbatim — each one click away in Word's picker.
+
+`isThemeUnsafe` therefore tests **chroma**, not a shade list: any colour whose
+channel spread is `<= NEAR_GREY_CHROMA` (16) is dropped. A grey is never a colour
+the author chose in a way ddoc must honour, and a computed test removes the whole
+class rather than two more entries.
 QA on 2026-09-02 confirmed the narrower check was a real gap: File B's `#555555`
 was importing as hard dark grey. Chromatic choices are untouched — File B now
 emits only `#cc0000`, `#188038`, `#1a73e8`, `#0563c1`.
@@ -236,6 +259,14 @@ put blank lines in deliberately, so restoring zero restores what they saw.
 Line-height is house typography; forcing 100% would make every import cramped to
 match a rendering decision the author never made. Without the reason written
 down, the next reader will "fix" the inconsistency.
+
+### 3.7b Image alignment vocabulary (D-9, 2026-09-02)
+
+`dataAlign`'s canonical vocabulary is `start | center | end`
+(`resizable-media-menu-util.ts`). The import emitted `right`, so a right-aligned
+imported image rendered correctly but left **no** alignment button active — the
+same defect class as the font picker showing "Default". It now emits `end`. The
+node view's `left`/`right` tolerance stays as belt-and-braces for pasted HTML.
 
 ### 3.8 Deferred
 
