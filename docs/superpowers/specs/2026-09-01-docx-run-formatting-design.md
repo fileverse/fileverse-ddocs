@@ -179,10 +179,21 @@ Rejected: threading theme through `readDocxSpacingFromArchive` (plumbing for no
 gain); re-arming the load-time passes after import (re-runs a whole-document pass
 mid-session and would stomp colours the user set by hand earlier).
 
-`isBlackOrWhiteShade` matches an exact hex list — black `#000000 #434343 #666666
-#999999`, white `#ffffff #f3f3f3 #efefef #d9d9d9 #cccccc #b7b7b7`. For File B this
-drops `#000000` ×8, `#ffffff` ×3, `#666666`; and keeps `#188038`, `#555555`,
-`#cc0000`, `#1a73e8`, `#0563c1`.
+`isBlackOrWhiteShade` is asymmetric: it matches **hex** against an exact list —
+black `#000000 #434343 #666666 #999999`, white `#ffffff #f3f3f3 #efefef #d9d9d9
+#cccccc #b7b7b7` — but **range-checks `rgb()`** (`r < 30 || r > 240 || 60..180`,
+equal channels only). Neither form alone is complete: the list misses `#555555`,
+and the range misses `#efefef`, `#d9d9d9`, `#cccccc`, `#b7b7b7`.
+
+The import therefore tests **both** forms (`isThemeUnsafe` in `docx-spacing.ts`),
+so no achromatic value survives regardless of which branch would have named it.
+QA on 2026-09-02 confirmed the narrower check was a real gap: File B's `#555555`
+was importing as hard dark grey. Chromatic choices are untouched — File B now
+emits only `#cc0000`, `#188038`, `#1a73e8`, `#0563c1`.
+
+Deliberately no theme dependency anywhere in the import path: dropped colour
+falls through to ddoc's theme-responsive CSS, which is the thing that actually
+knows the theme.
 
 **Out of scope, flagged:** the load-time-only normalisation passes remain
 load-time-only. Any *other* mid-session insertion path has the same hole. Worth

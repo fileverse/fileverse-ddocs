@@ -817,6 +817,28 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('font-family: Calibri, sans-serif');
   });
 
+  it('drops an achromatic shade the exact-hex list does not name', () => {
+    const html = '<p>grey red</p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'grey red',
+        runs: [
+          { text: 'grey ', color: '#555555', fontSize: null, fontFamily: null },
+          { text: 'red', color: '#cc0000', fontSize: null, fontFamily: null },
+        ],
+      },
+    ]);
+    // No hard achromatic colour survives import; the theme-responsive CSS owns
+    // text colour. Chromatic choices are the author's and are kept.
+    expect(result).not.toContain('rgb(85, 85, 85)');
+    expect(result).toContain('rgb(204, 0, 0)');
+  });
+
   it('leaves a font the editor does not know as the document named it', () => {
     const result = applyDocxSpacingToHtml('<p>styled</p>', [
       withFont('Courier New'),

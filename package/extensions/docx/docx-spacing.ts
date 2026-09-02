@@ -378,6 +378,18 @@ const FOOTNOTE_REF_SELECTOR = 'a[href^="#footnote-"], a[href^="#endnote-"]';
 
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
 
+/** Imported colour is literal hex and the editor's dark-mode passes run only at
+ *  document load, so anything achromatic has to go here and let the
+ *  theme-responsive CSS own text colour. The shared helper checks hex against an
+ *  exact list but range-checks rgb, and neither form alone catches every shade. */
+const isThemeUnsafe = (color: string): boolean => {
+  if (isBlackOrWhiteShade(color)) return true;
+  const rgb = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!rgb) return false;
+  const [r, g, b] = rgb.slice(1).map((pair) => Number.parseInt(pair, 16));
+  return isBlackOrWhiteShade(`rgb(${r}, ${g}, ${b})`);
+};
+
 /** Text nodes this block owns directly. A nested block owns its own text, and
  *  mammoth's injected footnote marker has no OOXML counterpart — excluding both
  *  is what keeps run offsets and the text comparison describing the same string. */
@@ -412,7 +424,7 @@ export const applyRunStylesToBlock = (
   // at document load — an import into an open editor never reaches them. Black
   // on a dark background is invisible, so drop the shades that flip.
   const safeColor = (color: string | null) =>
-    color && !isBlackOrWhiteShade(color) ? color : null;
+    color && !isThemeUnsafe(color) ? color : null;
 
   const styledRuns = runs.filter(
     (r) =>
