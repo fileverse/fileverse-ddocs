@@ -519,38 +519,44 @@ export const applyDocxSpacingToHtml = (
       skipped += 1;
       return;
     }
-    if (normalize(blockOwnText(block)) !== normalize(spacing.text)) {
+    try {
+      if (normalize(blockOwnText(block)) !== normalize(spacing.text)) {
+        skipped += 1;
+        return;
+      }
+
+      const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage, runs } =
+        spacing;
+      const element = block as HTMLElement;
+      // Absent spacing in OOXML means zero, not "unspecified" — Word renders it
+      // flush, so editor.css's default gap must not stack on top of it (TEC-2900).
+      // Line-height keeps the opposite rule: it is house typography, not authorial rhythm.
+      element.style.marginTop = `${spaceBefore ?? 0}pt`;
+      element.style.marginBottom = `${spaceAfter ?? 0}pt`;
+      if (lineHeight !== null) element.style.lineHeight = lineHeight;
+      if (textAlign !== null) element.style.textAlign = textAlign;
+
+      if (hasImage || element.querySelectorAll('img').length > 0) {
+        const images = element.querySelectorAll('img');
+        images.forEach((img) => {
+          const align =
+            textAlign === 'center'
+              ? 'center'
+              : textAlign === 'right'
+                ? 'right'
+                : 'start';
+          img.setAttribute('data-align', align);
+          img.setAttribute('dataalign', align);
+        });
+      }
+
+      if (runs && runs.length > 0) {
+        applyRunStylesToBlock(element, runs);
+      }
+    } catch {
+      // One malformed block must not cost the document its formatting —
+      // a whole-document bail is the bug this pass exists to remove.
       skipped += 1;
-      return;
-    }
-
-    const { spaceBefore, spaceAfter, lineHeight, textAlign, hasImage, runs } =
-      spacing;
-    const element = block as HTMLElement;
-    // Absent spacing in OOXML means zero, not "unspecified" — Word renders it
-    // flush, so editor.css's default gap must not stack on top of it (TEC-2900).
-    // Line-height keeps the opposite rule: it is house typography, not authorial rhythm.
-    element.style.marginTop = `${spaceBefore ?? 0}pt`;
-    element.style.marginBottom = `${spaceAfter ?? 0}pt`;
-    if (lineHeight !== null) element.style.lineHeight = lineHeight;
-    if (textAlign !== null) element.style.textAlign = textAlign;
-
-    if (hasImage || element.querySelectorAll('img').length > 0) {
-      const images = element.querySelectorAll('img');
-      images.forEach((img) => {
-        const align =
-          textAlign === 'center'
-            ? 'center'
-            : textAlign === 'right'
-              ? 'right'
-              : 'start';
-        img.setAttribute('data-align', align);
-        img.setAttribute('dataalign', align);
-      });
-    }
-
-    if (runs && runs.length > 0) {
-      applyRunStylesToBlock(element, runs);
     }
   });
 

@@ -817,6 +817,32 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('font-family: Calibri, sans-serif');
   });
 
+  it('keeps the rest of the document when one block throws', () => {
+    const html = '<p>one</p><p>two</p><p>three</p>';
+    // `runs` with a length but no filter() stands in for any unforeseen shape:
+    // the guarantee under test is that one bad block cannot cost the document.
+    const broken = {
+      spaceBefore: null,
+      spaceAfter: null,
+      lineHeight: null,
+      textAlign: 'center',
+      hasImage: false,
+      text: 'two',
+      runs: { length: 1 },
+    } as unknown as DocxParagraphSpacing;
+
+    const result = applyDocxSpacingToHtml(html, [
+      bare('one'),
+      broken,
+      bare('three'),
+    ]);
+
+    // The block that threw keeps whatever was applied before the throw; what
+    // matters is that the loop carried on and later blocks were still styled.
+    expect(result).toContain('text-align: center;">one</p>');
+    expect(result).toContain('text-align: center;">three</p>');
+  });
+
   it('drops an achromatic shade the exact-hex list does not name', () => {
     const html = '<p>grey red</p>';
     const result = applyDocxSpacingToHtml(html, [
