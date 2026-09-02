@@ -1,5 +1,9 @@
 import JSZip from 'jszip';
-import { SPACING_MAX_PT, SPACING_MIN_PT } from '../../utils/typography';
+import {
+  SPACING_MAX_PT,
+  SPACING_MIN_PT,
+  toEditorFontStack,
+} from '../../utils/typography';
 import { isBlackOrWhiteShade } from '../../utils/color-utils';
 
 export type DocxRunFormatting = {
@@ -175,6 +179,8 @@ const mergeRunProperties = (...layers: RawRunProperties[]): RawRunProperties =>
 
 type StyleTable = {
   docDefaults: RawSpacing;
+  /** Read only to recognise a direct value that restates it — never applied. */
+  defaultRun: RawRunProperties;
   byId: Map<
     string,
     { spacing: RawSpacing; run: RawRunProperties; basedOn: string | null }
@@ -187,6 +193,10 @@ const readStyles = (stylesXml: string): StyleTable => {
   const defaultPPr = doc
     .getElementsByTagName('w:pPrDefault')[0]
     ?.getElementsByTagName('w:pPr')[0];
+
+  const defaultRPr = doc
+    .getElementsByTagName('w:rPrDefault')[0]
+    ?.getElementsByTagName('w:rPr')[0];
 
   const byId = new Map<
     string,
@@ -205,7 +215,11 @@ const readStyles = (stylesXml: string): StyleTable => {
     });
   });
 
-  return { docDefaults: readSpacingElement(defaultPPr), byId };
+  return {
+    docDefaults: readSpacingElement(defaultPPr),
+    defaultRun: readRunPropertiesElement(defaultRPr),
+    byId,
+  };
 };
 
 /** Walk basedOn to the root, then merge back down so the nearest style wins. */
@@ -248,7 +262,17 @@ const resolveRunProperties = (
     current = style.basedOn;
   }
 
-  return mergeRunProperties(...chain, readRunPropertiesElement(rPr));
+  const resolved = mergeRunProperties(...chain, readRunPropertiesElement(rPr));
+
+  // Exporters restate the document default as direct formatting on some runs —
+  // Word does it for list items. Keeping it where it is spelled out while
+  // dropping it everywhere else is what made imported lists differ.
+  (['color', 'fontSize', 'fontFamily'] as const).forEach((key) => {
+    if (resolved[key] !== undefined && resolved[key] === styles.defaultRun[key])
+      delete resolved[key];
+  });
+
+  return resolved;
 };
 
 // Character-for-character parity with mammoth matters twice: the alignment gate
@@ -450,7 +474,7 @@ export const applyRunStylesToBlock = (
       if (color) span.style.color = color;
       if (interval.run.fontSize) span.style.fontSize = interval.run.fontSize;
       if (interval.run.fontFamily)
-        span.style.fontFamily = interval.run.fontFamily;
+        span.style.fontFamily = toEditorFontStack(interval.run.fontFamily);
 
       targetNode.parentNode?.replaceChild(span, targetNode);
       span.appendChild(targetNode);

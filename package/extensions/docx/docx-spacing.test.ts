@@ -545,10 +545,10 @@ describe('applyDocxSpacingToHtml alignment & image', () => {
 
     const result = applyDocxSpacingToHtml(html, spacings);
     expect(result).toContain(
-      '<strong><span style="color: rgb(255, 0, 0); font-size: 19px; font-family: Calibri;">Red Bold</span></strong>',
+      '<strong><span style="color: rgb(255, 0, 0); font-size: 19px; font-family: Calibri, sans-serif;">Red Bold</span></strong>',
     );
     expect(result).toContain(
-      '<span style="color: rgb(0, 0, 255); font-size: 24px; font-family: Arial;">Normal Blue</span>',
+      '<span style="color: rgb(0, 0, 255); font-size: 24px; font-family: Arial, Arial, Helvetica, sans-serif;">Normal Blue</span>',
     );
   });
 });
@@ -625,6 +625,29 @@ describe('readDocxSpacing run formatting', () => {
       fontSize: null,
       fontFamily: null,
     });
+  });
+
+  it('drops a direct font and size that only restate the document default', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:rFonts w:ascii="Calibri"/><w:sz w:val="22"/></w:rPr><w:t>Body</w:t></w:r>` +
+        `<w:r><w:rPr><w:rFonts w:ascii="Georgia"/><w:sz w:val="28"/></w:rPr><w:t>Chosen</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>`,
+    );
+
+    const runs = readDocxSpacing(xml, sty)[0].runs;
+    // Exporters restate the document default as direct formatting on some runs
+    // (Word does it for list items). Keeping it there while dropping it
+    // everywhere else is what made imported lists differ from body text.
+    expect(runs[0]).toEqual({
+      text: 'Body',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+    expect(runs[1].fontFamily).toBe('Georgia');
+    expect(runs[1].fontSize).toBe('19px');
   });
 });
 
@@ -773,5 +796,31 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('margin-bottom: 0pt');
     // Line-height is house typography, not authorial rhythm — left to CSS.
     expect(result).not.toContain('line-height');
+  });
+
+  const withFont = (family: string): DocxParagraphSpacing => ({
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+    textAlign: null,
+    hasImage: false,
+    text: 'styled',
+    runs: [{ text: 'styled', color: null, fontSize: null, fontFamily: family }],
+  });
+
+  it('emits the editor font stack so the toolbar can match the family', () => {
+    const result = applyDocxSpacingToHtml('<p>styled</p>', [
+      withFont('Calibri'),
+    ]);
+    // The picker matches entries by exact value and every entry is a full
+    // stack, so a bare family name leaves the toolbar showing "Default".
+    expect(result).toContain('font-family: Calibri, sans-serif');
+  });
+
+  it('leaves a font the editor does not know as the document named it', () => {
+    const result = applyDocxSpacingToHtml('<p>styled</p>', [
+      withFont('Courier New'),
+    ]);
+    expect(result).toContain('font-family: Courier New');
   });
 });
