@@ -1282,6 +1282,9 @@ const MarkdownPasteHandler = (
             );
           },
         }),
+        // Typing `~x~` strikes through. Subscript was the old behaviour and was
+        // wrong — a tilde is punctuation people write, and when they do wrap a
+        // word in one they mean the same thing `~~x~~` means.
         new InputRule({
           find: /(\S*)~((?:[^~]|\\~)+)~$/,
           handler: ({ state, range, match }) => {
@@ -1290,13 +1293,18 @@ const MarkdownPasteHandler = (
             }
             const { tr } = state;
             const start = range.from + match[1].length;
+            // `~~x~~` is Strike's own rule to complete; without this the single
+            // tilde fires on `~~x~` and strikes before the pair is closed.
+            if (state.doc.textBetween(Math.max(0, start - 1), start) === '~') {
+              return null;
+            }
             const end = range.to;
             const content = match[2].replace(/\\~/g, '~');
             tr.replaceWith(
               start,
               end,
               this.editor.schema.text(content, [
-                this.editor.schema.marks.subscript.create(),
+                this.editor.schema.marks.strike.create(),
               ]),
             );
           },

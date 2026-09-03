@@ -131,6 +131,23 @@ describe('DOCX import preserves literal text', () => {
     expect(text(editor)).not.toContain('\\');
   });
 
+  // Both halves of the rule in one document: formatting the author applied
+  // survives, punctuation the author typed stays punctuation.
+  it('keeps declared strikethrough while leaving typed tildes as text', async () => {
+    const editor = makeEditor();
+
+    await importDocx(
+      editor,
+      await buildDocx(
+        para(run('gone', '<w:strike/>'), run(' but ~kept~ stays')),
+      ),
+    );
+
+    expect(text(editor)).toBe('gone but ~kept~ stays');
+    expect(marks(editor).has('strike')).toBe(true);
+    expect(marks(editor).has('subscript')).toBe(false);
+  });
+
   // The shorthand is what goes away, not the formatting. A run Word really
   // marked as subscript still has to import as subscript.
   it('still honours subscript that the DOCX itself declares', async () => {
