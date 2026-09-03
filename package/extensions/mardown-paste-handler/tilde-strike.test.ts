@@ -39,6 +39,17 @@ const type = (editor: Editor, text: string) => {
   }
 };
 
+/** The text actually carrying the strike mark — a doc-wide has('strike') would
+ *  pass even if the mark had bled across the whole paragraph. */
+const struckText = (editor: Editor) => {
+  let struck = '';
+  editor.state.doc.descendants((node) => {
+    if (node.isText && node.marks.some((m) => m.type.name === 'strike'))
+      struck += node.text;
+  });
+  return struck;
+};
+
 const marksIn = (editor: Editor) => {
   const found = new Set<string>();
   editor.state.doc.descendants((node) =>
@@ -77,6 +88,26 @@ describe('typing tilde-wrapped text', () => {
 
     expect(marksIn(editor).has('strike')).toBe(false);
     expect(editor.state.doc.textContent).toBe('a ~~word~');
+  });
+
+  // The mark must not stay stored at the cursor: everything typed after the
+  // closing delimiter would inherit it, which is worse than the subscript the
+  // rule replaced.
+  it('stops striking at the closing tilde', () => {
+    const editor = makeEditor();
+
+    type(editor, 'I ~missed you~ and more');
+
+    expect(struckText(editor)).toBe('missed you');
+    expect(editor.state.doc.textContent).toBe('I missed you and more');
+  });
+
+  it('stops striking at the closing double tilde', () => {
+    const editor = makeEditor();
+
+    type(editor, 'I ~~missed you~~ and more');
+
+    expect(struckText(editor)).toBe('missed you');
   });
 
   it('leaves a lone tilde alone', () => {

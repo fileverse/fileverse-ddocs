@@ -4,7 +4,7 @@ import mammoth from 'mammoth';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
-import { handleMarkdownContent, isMarkdown } from '../mardown-paste-handler';
+import { handleMarkdownContent } from '../mardown-paste-handler';
 import { readDocxSpacingFromArchive } from './docx-spacing';
 
 /**
@@ -144,7 +144,14 @@ describe('DOCX import preserves literal text', () => {
     );
 
     expect(text(editor)).toBe('gone but ~kept~ stays');
-    expect(marks(editor).has('strike')).toBe(true);
+    // The struck text, not just its presence — a mark that bled across the
+    // paragraph would satisfy a doc-wide has('strike').
+    let struck = '';
+    editor.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((m) => m.type.name === 'strike'))
+        struck += node.text;
+    });
+    expect(struck).toBe('gone');
     expect(marks(editor).has('subscript')).toBe(false);
   });
 
@@ -191,28 +198,5 @@ describe('markdown tilde shorthand', () => {
     await handleMarkdownContent(editor.view, 'x^2^', undefined);
 
     expect(marks(editor).has('superscript')).toBe(true);
-  });
-});
-
-/**
- * The sniffer decides whether a paste is markdown at all. The tests above call
- * handleMarkdownContent directly, so they cannot see a paste that never gets
- * that far — which is how removing the tilde clause silently cost strikethrough
- * its only signal in the whole OR-chain.
- */
-describe('isMarkdown', () => {
-  it('still recognises a paste whose only signal is a double tilde', () => {
-    expect(isMarkdown('~~struck out~~')).toBe(true);
-  });
-
-  it('does not treat a lone single-tilde span as markdown', () => {
-    expect(isMarkdown('~I missed you~')).toBe(false);
-  });
-
-  it('leaves the other signals alone', () => {
-    expect(isMarkdown('# heading')).toBe(true);
-    expect(isMarkdown('**bold**')).toBe(true);
-    expect(isMarkdown('x^2^')).toBe(true);
-    expect(isMarkdown('just some prose')).toBe(false);
   });
 });

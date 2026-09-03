@@ -1243,6 +1243,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.superscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.superscript);
           },
         }),
         new InputRule({
@@ -1259,6 +1263,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.subscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.subscript);
           },
         }),
         new InputRule({
@@ -1280,6 +1288,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.superscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.superscript);
           },
         }),
         // Typing `~x~` strikes through. Subscript was the old behaviour and was
@@ -1307,6 +1319,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.strike.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.strike);
           },
         }),
         new InputRule({
@@ -1406,7 +1422,8 @@ export function isMarkdown(content: string): boolean {
     // Was carried by the old single-tilde subscript clause, which matched the
     // inner ~x~ of a ~~x~~. Nothing else in this chain fires for a paste whose
     // only markdown signal is a double tilde.
-    content.match(/~~[^~\n]+~~/g) !== null || // Strikethrough
+    content.match(/~~[^\s~][^~\n]*[^\s~]~~|~~[^\s~]~~/g) !== null || // Strikethrough
+    content.match(/<s>(.*?)<\/s>/g) !== null || // what export emits
     content.match(/^===\s*$/m) !== null // Page break
   );
 }
