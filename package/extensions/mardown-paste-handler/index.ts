@@ -1358,7 +1358,7 @@ const MarkdownPasteHandler = (
     },
   });
 
-function isMarkdown(content: string): boolean {
+export function isMarkdown(content: string): boolean {
   // Ignore LaTeX math blocks before checking other Markdown elements
   if (
     content.match(/\$\$[^$]*\$\$/g) !== null ||
@@ -1395,6 +1395,10 @@ function isMarkdown(content: string): boolean {
     content.match(/<sup>(.*?)<\/sup>/g) !== null ||
     content.match(/<sub>(.*?)<\/sub>/g) !== null ||
     content.match(/\^[^\s^]+\^/g) !== null || // New superscript syntax
+    // Was carried by the old single-tilde subscript clause, which matched the
+    // inner ~x~ of a ~~x~~. Nothing else in this chain fires for a paste whose
+    // only markdown signal is a double tilde.
+    content.match(/~~[^~\n]+~~/g) !== null || // Strikethrough
     content.match(/^===\s*$/m) !== null // Page break
   );
 }
