@@ -132,8 +132,12 @@ export const DocxFileHandler = Extension.create({
               // mammoth is asked for them above. handleMarkdownContent strips
               // empty paragraphs by default (markdown-it invents its own), so
               // opt out here or the whole ignoreEmptyParagraphs pass is undone.
+              // preserveLiteralText: this is HTML, not markdown. A tilde,
+              // caret or asterisk the author typed is text — reinterpreting it
+              // is what subscripted whole lines of dialogue.
               await handleMarkdownContent(view, spacedHtml, ipfsImageUploadFn, {
                 preserveEmptyParagraphs: true,
+                preserveLiteralText: true,
               });
               onDocxImport?.();
             } catch (err: any) {
