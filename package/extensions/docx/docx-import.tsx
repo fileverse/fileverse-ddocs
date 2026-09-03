@@ -6,6 +6,26 @@ import { IpfsImageUploadResponse } from '../../types';
 import { handleMarkdownContent } from '../mardown-paste-handler';
 import { readDocxSpacingFromArchive } from './docx-spacing';
 
+export const DOCX_STYLE_MAP = [
+  'u => u',
+  "highlight[color='yellow'] => mark[data-color='#FFFF00']",
+  "highlight[color='green'] => mark[data-color='#00FF00']",
+  "highlight[color='cyan'] => mark[data-color='#00FFFF']",
+  "highlight[color='magenta'] => mark[data-color='#FF00FF']",
+  "highlight[color='red'] => mark[data-color='#FF0000']",
+  "highlight[color='blue'] => mark[data-color='#0000FF']",
+  "highlight[color='darkBlue'] => mark[data-color='#00008B']",
+  "highlight[color='darkCyan'] => mark[data-color='#008B8B']",
+  "highlight[color='darkGreen'] => mark[data-color='#006400']",
+  "highlight[color='darkMagenta'] => mark[data-color='#8B008B']",
+  "highlight[color='darkRed'] => mark[data-color='#8B0000']",
+  "highlight[color='darkYellow'] => mark[data-color='#808000']",
+  "highlight[color='darkGray'] => mark[data-color='#A9A9A9']",
+  "highlight[color='lightGray'] => mark[data-color='#D3D3D3']",
+  "highlight[color='black'] => mark[data-color='#000000']",
+  'highlight => mark',
+];
+
 declare module '@tiptap/core' {
   interface Commands {
     uploadDocxFile: {
@@ -84,6 +104,7 @@ export const DocxFileHandler = Extension.create({
               const { value: extractedHtml } = await mammoth.convertToHtml(
                 { arrayBuffer },
                 {
+                  styleMap: DOCX_STYLE_MAP,
                   // Off by default. Empty paragraphs must survive for the
                   // spacing pass below to line up one-to-one with the w:p
                   // elements — and a blank line the author typed is content.

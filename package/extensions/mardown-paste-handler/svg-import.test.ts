@@ -100,7 +100,7 @@ describe('svg import', () => {
     const doc = await importMarkdown(figure);
     const media = firstMedia(doc);
     expect(media).toBeTruthy();
-    expect(media.attrs.dataAlign).toBe('right');
+    expect(media.attrs.dataAlign).toBe('end');
     expect(media.attrs['media-type']).toBe('img');
     expect(decodeSvgDataUri(media.attrs.src)).toContain('<circle');
     expect(media.childCount).toBe(1);
@@ -199,7 +199,7 @@ describe('svg import', () => {
     const doc = await importMarkdown(md);
     const media = firstMedia(doc);
     expect(decodeSvgDataUri(media.attrs.src)).toBe(sanitizeSvgForEmbed(SVG));
-    expect(media.attrs.dataAlign).toBe('right');
+    expect(media.attrs.dataAlign).toBe('end');
     expect(media.firstChild!.textContent).toBe('my caption');
   });
 

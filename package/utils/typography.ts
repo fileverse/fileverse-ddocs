@@ -9,6 +9,30 @@ export const FONT_SIZES = [
   8, 9, 10, 11, 12, 14, 16, 18, 24, 30, 32, 36, 48, 60, 72, 96,
 ] as const;
 
+/** The font picker's entries. Its values are what `setFontFamily` stores, so
+ *  anything written from elsewhere has to use the same stack to be recognised
+ *  as the active font — and to inherit the fallbacks. */
+export const FONT_STACK: Record<string, string> = {
+  Arial: 'Arial, Arial, Helvetica, sans-serif',
+  Calibri: 'Calibri, sans-serif',
+  'Comic Sans MS': 'Comic Sans MS, Comic Sans',
+  Cursive: 'Cursive',
+  Georgia: 'Georgia, serif',
+  Impact: 'Impact, Charcoal, sans-serif',
+  'Lucida Grande': 'Lucida Sans Unicode, Lucida Grande, sans-serif',
+  Monospace: 'monospace',
+  Palatino: 'Palatino Linotype, Book Antiqua, Palatino, serif',
+  Serif: 'serif',
+  'Times New Roman': 'Times New Roman, serif',
+  'Trebuchet MS': 'Trebuchet MS, sans-serif',
+  Verdana: 'Verdana, Geneva, sans-serif',
+};
+
+/** A family the picker knows becomes its full stack; anything else is passed
+ *  through, so an unrecognised font still renders under its own name. */
+export const toEditorFontStack = (family: string): string =>
+  FONT_STACK[family] ?? family;
+
 export const getFontSizeOptions = (editor?: Editor) => {
   return FONT_SIZES.map((size) => ({
     title: `${size}`,

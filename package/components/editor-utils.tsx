@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { List, type RowComponentProps } from 'react-window';
 import { ensureLoaded } from '../utils/font-loader';
+import { FONT_STACK } from '../utils/typography';
 import type { FontDescriptor } from '../types';
 import { IEditorTool, useEditorToolVisiibility } from '../hooks/use-visibility';
 import { Editor, JSONContent } from '@tiptap/react';
@@ -73,22 +74,6 @@ export interface IEditorToolElement {
 
 export type CopyAo3Html = (getHtml: () => Promise<string>) => Promise<boolean>;
 
-const fontStack = {
-  Arial: 'Arial, Arial, Helvetica, sans-serif',
-  Calibri: 'Calibri, sans-serif',
-  'Comic Sans MS': 'Comic Sans MS, Comic Sans',
-  Cursive: 'Cursive',
-  Georgia: 'Georgia, serif',
-  Impact: 'Impact, Charcoal, sans-serif',
-  'Lucida Grande': 'Lucida Sans Unicode, Lucida Grande, sans-serif',
-  Monospace: 'monospace',
-  Palatino: 'Palatino Linotype, Book Antiqua, Palatino, serif',
-  Serif: 'serif',
-  'Times New Roman': 'Times New Roman, serif',
-  'Trebuchet MS': 'Trebuchet MS, sans-serif',
-  Verdana: 'Verdana, Geneva, sans-serif',
-};
-
 type PickerEntry = {
   title: string;
   value: string;
@@ -108,7 +93,7 @@ export const baselineFonts: PickerEntry[] = [
       fontChain(editor, focus).unsetFontFamily().run();
     },
   },
-  ...Object.entries(fontStack).map<PickerEntry>(([key, value]) => ({
+  ...Object.entries(FONT_STACK).map<PickerEntry>(([key, value]) => ({
     title: key,
     value,
     command: (editor: Editor, focus = true) => {

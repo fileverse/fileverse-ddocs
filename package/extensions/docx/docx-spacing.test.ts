@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, afterEach, it, expect, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
   applyDocxSpacingToHtml,
@@ -8,19 +8,28 @@ import {
 } from './docx-spacing';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const WP =
+  'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const V = 'urn:schemas-microsoft-com:vml';
 
 const doc = (body: string) =>
-  `<?xml version="1.0"?><w:document xmlns:w="${W}"><w:body>${body}</w:body></w:document>`;
+  `<?xml version="1.0"?><w:document xmlns:w="${W}" xmlns:wp="${WP}" xmlns:v="${V}"><w:body>${body}</w:body></w:document>`;
 
 const styles = (inner: string) =>
   `<?xml version="1.0"?><w:styles xmlns:w="${W}">${inner}</w:styles>`;
 
-const para = (opts: { style?: string; spacing?: string; text?: string }) => {
+const para = (opts: {
+  style?: string;
+  spacing?: string;
+  text?: string;
+  alignment?: string;
+}) => {
+  const alignXml = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : '';
   const pPr =
-    opts.style || opts.spacing
+    opts.style || opts.spacing || opts.alignment
       ? `<w:pPr>${opts.style ? `<w:pStyle w:val="${opts.style}"/>` : ''}${
           opts.spacing ?? ''
-        }</w:pPr>`
+        }${alignXml}</w:pPr>`
       : '';
   return `<w:p>${pPr}<w:r><w:t>${opts.text ?? ''}</w:t></w:r></w:p>`;
 };
@@ -130,6 +139,116 @@ describe('readDocxSpacing', () => {
 
     expect(readDocxSpacing(xml, NO_STYLES)[0].spaceBefore).toBe(100);
   });
+
+  it('matches mammoth by contributing no text for a line break', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>foo</w:t></w:r><w:r><w:br/></w:r><w:r><w:t>bar</w:t></w:r></w:p>`,
+    );
+    // mammoth renders <p>foo<br />bar</p>, whose textContent is "foobar".
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('foobar');
+  });
+
+  it('matches mammoth by using a non-breaking hyphen for w:noBreakHyphen', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>a</w:t><w:noBreakHyphen/><w:t>b</w:t></w:r></w:p>`,
+    );
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('a‑b');
+  });
+
+  it('matches mammoth by using a soft hyphen for w:softHyphen', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>a</w:t><w:softHyphen/><w:t>b</w:t></w:r></w:p>`,
+    );
+    // U+00AD is not whitespace, so `normalize` cannot paper over a mismatch.
+    expect(readDocxSpacing(xml, NO_STYLES)[0].text).toBe('a\u00ADb');
+  });
+});
+
+describe('readDocxSpacing paragraph alignment', () => {
+  it('reads direct w:jc alignment on paragraph', () => {
+    const xml = doc(
+      para({ alignment: 'center', text: 'centered' }) +
+        para({ alignment: 'right', text: 'right-aligned' }) +
+        para({ alignment: 'both', text: 'justified' }) +
+        para({ text: 'default' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].textAlign).toBe('right');
+    expect(result[2].textAlign).toBe('justify');
+    expect(result[3].textAlign).toBeNull();
+  });
+
+  it('inherits alignment from paragraph style and basedOn chain', () => {
+    const xml = doc(
+      para({ style: 'CenteredStyle', text: 'styled' }) +
+        para({ style: 'ChildStyle', text: 'inherited' }),
+    );
+    const sty = styles(
+      `<w:style w:styleId="CenteredStyle"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>` +
+        `<w:style w:styleId="BaseRight"><w:pPr><w:jc w:val="right"/></w:pPr></w:style>` +
+        `<w:style w:styleId="ChildStyle"><w:basedOn w:val="BaseRight"/></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].textAlign).toBe('right');
+  });
+
+  it('lets direct w:jc win over style alignment', () => {
+    const xml = doc(
+      para({ style: 'CenteredStyle', alignment: 'right', text: 'override' }),
+    );
+    const sty = styles(
+      `<w:style w:styleId="CenteredStyle"><w:pPr><w:jc w:val="center"/></w:pPr></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].textAlign).toBe('right');
+  });
+
+  it('detects images in paragraph', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline/></w:drawing></w:r></w:p>` +
+        `<w:p><w:r><w:pict><v:shape/></w:pict></w:r></w:p>` +
+        `<w:p><w:r><v:imagedata/></w:r></w:p>` +
+        para({ text: 'no image' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].hasImage).toBe(true);
+    expect(result[0].textAlign).toBe('center');
+    expect(result[1].hasImage).toBe(true);
+    expect(result[2].hasImage).toBe(true);
+    expect(result[3].hasImage).toBe(false);
+  });
+
+  it('normalizes start/end/distribute and handles case-insensitivity and invalid values', () => {
+    const xml = doc(
+      para({ alignment: 'start' }) +
+        para({ alignment: 'END' }) +
+        para({ alignment: 'Distribute' }) +
+        para({ alignment: 'LEFT' }) +
+        para({ alignment: 'unknownValue' }),
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].textAlign).toBe('left');
+    expect(result[1].textAlign).toBe('right');
+    expect(result[2].textAlign).toBe('justify');
+    expect(result[3].textAlign).toBe('left');
+    expect(result[4].textAlign).toBeNull();
+  });
+
+  it('inherits alignment from docDefaults', () => {
+    const xml = doc(para({ text: 'plain' }));
+    const sty = styles(
+      `<w:docDefaults><w:pPrDefault><w:pPr><w:jc w:val="center"/></w:pPr></w:pPrDefault></w:docDefaults>`,
+    );
+
+    expect(readDocxSpacing(xml, sty)[0].textAlign).toBe('center');
+  });
 });
 
 describe('applyDocxSpacingToHtml', () => {
@@ -137,8 +256,14 @@ describe('applyDocxSpacingToHtml', () => {
     spaceBefore: null,
     spaceAfter: null,
     lineHeight: null,
+    textAlign: null,
+    hasImage: false,
     text: '',
     ...over,
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('writes the spacing as inline styles the editor already parses', () => {
@@ -154,12 +279,14 @@ describe('applyDocxSpacingToHtml', () => {
     expect(out).toContain('line-height: 138%');
   });
 
-  it('leaves untouched paragraphs without a style attribute', () => {
+  it('stamps zero margins on a paragraph the docx left unspecified', () => {
     const html = '<p>one</p>';
 
     const out = applyDocxSpacingToHtml(html, [spacing({ text: 'one' })]);
 
-    expect(out).not.toContain('style=');
+    // Absent in OOXML means zero, not "let CSS decide" — see TEC-2900.
+    expect(out).toContain('margin-top: 0pt');
+    expect(out).toContain('margin-bottom: 0pt');
   });
 
   it('covers headings and list items, not just paragraphs', () => {
@@ -171,31 +298,38 @@ describe('applyDocxSpacingToHtml', () => {
     ]);
 
     expect(out).toContain('<h1 style="margin-top: 24pt');
-    expect(out).toContain('<li style="margin-bottom: 4pt');
+    expect(out).toContain('<li style="margin-top: 0pt; margin-bottom: 4pt');
   });
 
-  // Degrade to no spacing rather than confidently wrong spacing: mammoth
-  // relocates text boxes and appends footnotes, so the two sequences can
-  // legitimately diverge on complex documents.
-  it('drops spacing entirely when the block count diverges', () => {
+  // Degrade per block rather than document-wide: mammoth relocates text boxes
+  // and appends footnotes, so the two sequences can legitimately diverge. A
+  // block that cannot be verified is skipped alone.
+  it('keeps spacing on matched blocks when the block count diverges', () => {
     const html = '<p>one</p><p>two</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = applyDocxSpacingToHtml(html, [
       spacing({ text: 'one', spaceBefore: 12 }),
     ]);
 
-    expect(out).toBe(html);
+    expect(out).toContain('margin-top: 12pt');
+    expect(out).toContain('<p>two</p>');
   });
 
-  it('drops spacing entirely when the text diverges', () => {
+  it('skips only the block whose text diverges', () => {
     const html = '<p>one</p><p>two</p>';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = applyDocxSpacingToHtml(html, [
       spacing({ text: 'one', spaceBefore: 12 }),
       spacing({ text: 'ELSEWHERE', spaceBefore: 12 }),
     ]);
 
-    expect(out).toBe(html);
+    expect(out).toContain('margin-top: 12pt');
+    expect(out).toContain('<p>two</p>');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Skipped 1 of'),
+    );
   });
 
   it('tolerates whitespace differences when comparing text', () => {
@@ -313,5 +447,595 @@ describe('readDocxSpacing edge cases', () => {
 
   it('returns nothing for a document with no paragraphs', () => {
     expect(readDocxSpacing(doc(''), NO_STYLES)).toEqual([]);
+  });
+});
+
+describe('applyDocxSpacingToHtml alignment & image', () => {
+  it('applies text-align to paragraph and heading elements', () => {
+    const html = '<p>center me</p><h1>right me</h1>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'center',
+        hasImage: false,
+        text: 'center me',
+      },
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: false,
+        text: 'right me',
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toBe(
+      '<p style="margin-top: 0pt; margin-bottom: 0pt; text-align: center;">center me</p>' +
+        '<h1 style="margin-top: 0pt; margin-bottom: 0pt; text-align: right;">right me</h1>',
+    );
+  });
+
+  it('sets data-align and dataalign on img inside aligned paragraph', () => {
+    const html = '<p><img src="test.png"></p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: true,
+        text: '',
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('data-align="end"');
+    expect(result).toContain('dataalign="end"');
+  });
+
+  it('defaults image data-align to start when alignment is left', () => {
+    const html = '<p><img src="test.png"></p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'left',
+        hasImage: true,
+        text: '',
+        runs: [],
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('data-align="start"');
+  });
+
+  it('applies color, font-size, and font-family to text nodes within paragraph', () => {
+    const html = '<p><strong>Red Bold</strong> and Normal Blue</p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'Red Bold and Normal Blue',
+        runs: [
+          {
+            text: 'Red Bold',
+            color: '#FF0000',
+            fontSize: '19px',
+            fontFamily: 'Calibri',
+          },
+          { text: ' and ', color: null, fontSize: null, fontFamily: null },
+          {
+            text: 'Normal Blue',
+            color: '#0000FF',
+            fontSize: '24px',
+            fontFamily: 'Arial',
+          },
+        ],
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain(
+      '<strong><span style="color: rgb(255, 0, 0); font-size: 19px; font-family: Calibri, sans-serif;">Red Bold</span></strong>',
+    );
+    expect(result).toContain(
+      '<span style="color: rgb(0, 0, 255); font-size: 24px; font-family: Arial, Arial, Helvetica, sans-serif;">Normal Blue</span>',
+    );
+  });
+});
+
+describe('readDocxSpacing run formatting', () => {
+  it('extracts direct color, font-size, and font-family from w:rPr', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:color w:val="FF0000"/><w:sz w:val="32"/><w:rFonts w:ascii="Arial"/></w:rPr><w:t>Custom Run</w:t></w:r></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    expect(result[0].runs).toHaveLength(1);
+    expect(result[0].runs[0]).toEqual({
+      text: 'Custom Run',
+      color: '#FF0000',
+      fontSize: '21px',
+      fontFamily: 'Arial',
+    });
+  });
+
+  it('inherits run formatting from character styles and basedOn chain', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:rStyle w:val="ChildChar"/></w:rPr><w:t>Styled Run</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:style w:type="character" w:styleId="BaseChar"><w:rPr><w:color w:val="0000FF"/><w:sz w:val="28"/><w:rFonts w:ascii="Georgia"/></w:rPr></w:style>` +
+        `<w:style w:type="character" w:styleId="ChildChar"><w:basedOn w:val="BaseChar"/><w:rPr><w:color w:val="00FF00"/></w:rPr></w:style>`,
+    );
+
+    const result = readDocxSpacing(xml, sty);
+    expect(result[0].runs[0]).toEqual({
+      text: 'Styled Run',
+      color: '#00FF00',
+      fontSize: '19px',
+      fontFamily: 'Georgia',
+    });
+  });
+
+  it('converts half-points to px so the size stepper stays coherent', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:sz w:val="32"/></w:rPr><w:t>Sized</w:t></w:r></w:p>`,
+    );
+    // 32 half-points = 16pt = 21.33px.
+    expect(readDocxSpacing(xml, NO_STYLES)[0].runs[0].fontSize).toBe('21px');
+  });
+
+  it('does not bake in paragraph-style run properties', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Title</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:style w:type="paragraph" w:styleId="Heading1"><w:rPr><w:sz w:val="40"/><w:color w:val="2e74b5"/></w:rPr></w:style>`,
+    );
+
+    // Heading identity belongs to the block type and editor.css, not to an
+    // inline span the toolbar cannot explain.
+    expect(readDocxSpacing(xml, sty)[0].runs[0]).toEqual({
+      text: 'Title',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+  });
+
+  it('does not bake in document default run properties', () => {
+    const xml = doc(`<w:p><w:r><w:t>Body</w:t></w:r></w:p>`);
+    const sty = styles(
+      `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>`,
+    );
+
+    expect(readDocxSpacing(xml, sty)[0].runs[0]).toEqual({
+      text: 'Body',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+  });
+
+  it('drops a direct font and size that only restate the document default', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr><w:rFonts w:ascii="Calibri"/><w:sz w:val="22"/></w:rPr><w:t>Body</w:t></w:r>` +
+        `<w:r><w:rPr><w:rFonts w:ascii="Georgia"/><w:sz w:val="28"/></w:rPr><w:t>Chosen</w:t></w:r></w:p>`,
+    );
+    const sty = styles(
+      `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>`,
+    );
+
+    const runs = readDocxSpacing(xml, sty)[0].runs;
+    // Exporters restate the document default as direct formatting on some runs
+    // (Word does it for list items). Keeping it there while dropping it
+    // everywhere else is what made imported lists differ from body text.
+    expect(runs[0]).toEqual({
+      text: 'Body',
+      color: null,
+      fontSize: null,
+      fontFamily: null,
+    });
+    expect(runs[1].fontFamily).toBe('Georgia');
+    expect(runs[1].fontSize).toBe('19px');
+  });
+});
+
+describe('readDocxSpacing nested paragraphs', () => {
+  it('leaves text box paragraphs out and off their container', () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>page text</w:t></w:r>` +
+        `<w:r><w:pict><v:shape><v:textbox><w:txbxContent>` +
+        `<w:p><w:r><w:t>boxed</w:t></w:r></w:p>` +
+        `</w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+    // One page paragraph. Counting the boxed one skews every later block, and
+    // letting its runs bleed upward makes the container's text unmatchable.
+    expect(result).toHaveLength(1);
+    expect(result[0].text).toBe('page text');
+  });
+});
+
+describe('readDocxSpacing malformed input', () => {
+  it('throws instead of silently reporting no paragraphs', () => {
+    // DOMParser returns a <parsererror> document rather than throwing, so an
+    // unguarded parse loses every block with no signal that anything failed.
+    expect(() =>
+      readDocxSpacing('<w:document><unclosed>', NO_STYLES),
+    ).toThrow();
+  });
+});
+
+describe('applyDocxSpacingToHtml block matching', () => {
+  const bare = (text: string): DocxParagraphSpacing => ({
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+    textAlign: 'center',
+    hasImage: false,
+    text,
+    runs: [],
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("matches a nested list by each item's own text", () => {
+    const html = '<ul><li>lvl0<ul><li>lvl1</li></ul></li></ul>';
+    const result = applyDocxSpacingToHtml(html, [bare('lvl0'), bare('lvl1')]);
+    // Both items styled: the outer li must not be judged by "lvl0lvl1".
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+  });
+
+  it('ignores mammoth footnote blocks and reference markers', () => {
+    const html =
+      '<p>Text with a note<sup><a href="#footnote-0" id="footnote-ref-0">[1]</a></sup>.</p>' +
+      '<ol><li id="footnote-0"><p>The note body. <a href="#footnote-ref-0">↑</a></p></li></ol>';
+    // One w:p in document.xml: the footnote's paragraph lives in footnotes.xml.
+    const result = applyDocxSpacingToHtml(html, [bare('Text with a note.')]);
+    expect(result).toContain('text-align: center');
+    // The footnote body must be left alone, not styled as a second block.
+    expect(result.match(/text-align: center/g)).toHaveLength(1);
+  });
+
+  it('offsets run styling past a footnote marker mammoth injected', () => {
+    const html =
+      '<p>Alpha<sup><a href="#footnote-0" id="footnote-ref-0">[1]</a></sup> bravo charlie</p>';
+    // The OOXML has no counterpart for the marker, so run offsets are measured
+    // against "Alpha bravo charlie"; counting the marker displaces every run
+    // after it by its length.
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'Alpha bravo charlie',
+        runs: [
+          { text: 'Alpha ', color: null, fontSize: null, fontFamily: null },
+          {
+            text: 'bravo',
+            color: '#cc0000',
+            fontSize: null,
+            fontFamily: null,
+          },
+          { text: ' charlie', color: null, fontSize: null, fontFamily: null },
+        ],
+      },
+    ]);
+
+    expect(result).toContain('id="footnote-ref-0">[1]</a>');
+    expect(result).toContain(
+      '<span style="color: rgb(204, 0, 0);">bravo</span>',
+    );
+  });
+
+  it('keeps superscript that is not a footnote reference', () => {
+    const html = '<p>E = mc<sup>2</sup></p>';
+    const result = applyDocxSpacingToHtml(html, [bare('E = mc2')]);
+    expect(result).toContain('text-align: center');
+  });
+
+  it('skips only the paragraph that does not match', () => {
+    const html = '<p>one</p><p>UNEXPECTED</p><p>three</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = applyDocxSpacingToHtml(html, [
+      bare('one'),
+      bare('two'),
+      bare('three'),
+    ]);
+    // The first and third still line up positionally and must survive.
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+    expect(result).toContain('<p>UNEXPECTED</p>');
+  });
+
+  it('still applies to the blocks it can when counts differ', () => {
+    const html = '<p>one</p><p>two</p><p>extra</p>';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = applyDocxSpacingToHtml(html, [bare('one'), bare('two')]);
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+  });
+
+  it('drops black and white shades that would be invisible in one theme', () => {
+    const html = '<p>black red white</p>';
+    const spacings: DocxParagraphSpacing[] = [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'black red white',
+        runs: [
+          {
+            text: 'black ',
+            color: '#000000',
+            fontSize: null,
+            fontFamily: null,
+          },
+          { text: 'red ', color: '#cc0000', fontSize: null, fontFamily: null },
+          {
+            text: 'white',
+            color: '#ffffff',
+            fontSize: null,
+            fontFamily: null,
+          },
+        ],
+      },
+    ];
+
+    const result = applyDocxSpacingToHtml(html, spacings);
+    expect(result).toContain('rgb(204, 0, 0)');
+    expect(result).not.toContain('rgb(0, 0, 0)');
+    expect(result).not.toContain('rgb(255, 255, 255)');
+  });
+
+  it('stamps an explicit zero when the docx specifies no paragraph spacing', () => {
+    const html = '<p>flush</p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'flush',
+        runs: [],
+      },
+    ]);
+    // Absent in OOXML means zero; null would let editor.css's 1.5rem apply on
+    // top of the blank lines the author used as spacing (TEC-2900).
+    expect(result).toContain('margin-top: 0pt');
+    expect(result).toContain('margin-bottom: 0pt');
+    // Line-height is house typography, not authorial rhythm — left to CSS.
+    expect(result).not.toContain('line-height');
+  });
+
+  const withFont = (family: string): DocxParagraphSpacing => ({
+    spaceBefore: null,
+    spaceAfter: null,
+    lineHeight: null,
+    textAlign: null,
+    hasImage: false,
+    text: 'styled',
+    runs: [{ text: 'styled', color: null, fontSize: null, fontFamily: family }],
+  });
+
+  it('emits the editor font stack so the toolbar can match the family', () => {
+    const result = applyDocxSpacingToHtml('<p>styled</p>', [
+      withFont('Calibri'),
+    ]);
+    // The picker matches entries by exact value and every entry is a full
+    // stack, so a bare family name leaves the toolbar showing "Default".
+    expect(result).toContain('font-family: Calibri, sans-serif');
+  });
+
+  it('keeps the rest of the document when one block throws', () => {
+    const html = '<p>one</p><p>two</p><p>three</p>';
+    // `runs` with a length but no filter() stands in for any unforeseen shape:
+    // the guarantee under test is that one bad block cannot cost the document.
+    const broken = {
+      spaceBefore: null,
+      spaceAfter: null,
+      lineHeight: null,
+      textAlign: 'center',
+      hasImage: false,
+      text: 'two',
+      runs: { length: 1 },
+    } as unknown as DocxParagraphSpacing;
+
+    const result = applyDocxSpacingToHtml(html, [
+      bare('one'),
+      broken,
+      bare('three'),
+    ]);
+
+    // The block that threw keeps whatever was applied before the throw; what
+    // matters is that the loop carried on and later blocks were still styled.
+    expect(result).toContain('text-align: center;">one</p>');
+    expect(result).toContain('text-align: center;">three</p>');
+  });
+
+  it('resyncs after an unexpected block at the very start', () => {
+    // A count skew, not a content mismatch: without resync every block after
+    // the stray one is off by one and the whole document loses its formatting.
+    const result = applyDocxSpacingToHtml(
+      '<p>stray</p><p>one</p><p>two</p><p>three</p>',
+      [bare('one'), bare('two'), bare('three')],
+    );
+    expect(result.match(/text-align: center/g)).toHaveLength(3);
+    expect(result).toContain('<p>stray</p>');
+  });
+
+  it('resyncs when a paragraph reached the OOXML but not the html', () => {
+    const result = applyDocxSpacingToHtml('<p>one</p><p>three</p>', [
+      bare('one'),
+      bare('two'),
+      bare('three'),
+    ]);
+    expect(result.match(/text-align: center/g)).toHaveLength(2);
+  });
+
+  it('drops near-achromatic colours whichever band they fall in', () => {
+    const emitted = (hex: string) =>
+      applyDocxSpacingToHtml('<p>x</p>', [
+        {
+          spaceBefore: null,
+          spaceAfter: null,
+          lineHeight: null,
+          textAlign: null,
+          hasImage: false,
+          text: 'x',
+          runs: [{ text: 'x', color: hex, fontSize: null, fontFamily: null }],
+        },
+      ]);
+
+    // #262626 and #bfbfbf are one click away in Word's colour picker, and sit
+    // in the bands the hex list and the rgb range check both miss.
+    ['#333333', '#262626', '#eeeeee', '#bfbfbf', '#1a1a1b'].forEach((hex) => {
+      expect(emitted(hex)).not.toContain('color: rgb');
+    });
+    expect(emitted('#cc0000')).toContain('color: rgb(204, 0, 0)');
+  });
+
+  it('aligns an imported image with the vocabulary the toolbar reads', () => {
+    const html = '<p><img src="x.png"></p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: 'right',
+        hasImage: true,
+        text: '',
+        runs: [],
+      },
+    ]);
+    // The alignment menu tests dataAlign === 'end'; 'right' leaves no button active.
+    expect(result).toContain('data-align="end"');
+  });
+
+  it('drops an achromatic shade the exact-hex list does not name', () => {
+    const html = '<p>grey red</p>';
+    const result = applyDocxSpacingToHtml(html, [
+      {
+        spaceBefore: null,
+        spaceAfter: null,
+        lineHeight: null,
+        textAlign: null,
+        hasImage: false,
+        text: 'grey red',
+        runs: [
+          { text: 'grey ', color: '#555555', fontSize: null, fontFamily: null },
+          { text: 'red', color: '#cc0000', fontSize: null, fontFamily: null },
+        ],
+      },
+    ]);
+    // No hard achromatic colour survives import; the theme-responsive CSS owns
+    // text colour. Chromatic choices are the author's and are kept.
+    expect(result).not.toContain('rgb(85, 85, 85)');
+    expect(result).toContain('rgb(204, 0, 0)');
+  });
+
+  it('leaves a font the editor does not know as the document named it', () => {
+    const result = applyDocxSpacingToHtml('<p>styled</p>', [
+      withFont('Courier New'),
+    ]);
+    expect(result).toContain('font-family: Courier New');
+  });
+});
+
+/**
+ * Every property lookup reads a DIRECT child. A descendant query picks up
+ * nested copies — a text box's own paragraph, or the pre-edit values that
+ * w:pPrChange / w:rPrChange keep around — and stamps them on the container.
+ */
+describe('readDocxSpacing property scoping', () => {
+  it("does not take a text box paragraph's properties for the container", () => {
+    const xml = doc(
+      // The drawing sits inside a w:r, as it does in a real document — which
+      // is also what makes ownRunElements' short-circuit at the outer run
+      // load-bearing here.
+      `<w:p><w:r><w:t>Caption</w:t></w:r>` +
+        `<w:r><w:drawing><wp:inline><w:txbxContent>` +
+        `<w:p><w:pPr><w:spacing w:before="1200" w:after="1200"/><w:jc w:val="center"/></w:pPr>` +
+        `<w:r><w:t>Boxed</w:t></w:r></w:p>` +
+        `</w:txbxContent></wp:inline></w:drawing></w:r></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+
+    // The text box's own w:p is filtered out, so only the container remains —
+    // and it has no w:pPr, so it must report nothing rather than 60pt centred.
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      text: 'Caption',
+      spaceBefore: null,
+      spaceAfter: null,
+      textAlign: null,
+    });
+  });
+
+  it('reads current paragraph spacing, not the pre-edit copy in w:pPrChange', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:spacing w:after="240"/>` +
+        `<w:pPrChange><w:pPr><w:spacing w:after="960"/></w:pPr></w:pPrChange>` +
+        `</w:pPr><w:r><w:t>tracked</w:t></w:r></w:p>`,
+    );
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].spaceAfter).toBe(12);
+  });
+
+  it('ignores a run property that only exists in w:rPrChange', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr>` +
+        `<w:rPrChange><w:rPr><w:rFonts w:ascii="Georgia"/></w:rPr></w:rPrChange>` +
+        `</w:rPr><w:t>tracked</w:t></w:r></w:p>`,
+    );
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].runs[0].fontFamily).toBeNull();
+  });
+});
+
+/**
+ * The reader accepts 3-8 hex digits, but the theme-safety check matches six.
+ * Anything it lets through un-normalised skips that check entirely — which is
+ * how #000 reached the document as invisible-in-dark-mode text.
+ */
+describe('readDocxSpacing colour normalisation', () => {
+  const colorOf = (val: string) =>
+    readDocxSpacing(
+      doc(
+        `<w:p><w:r><w:rPr><w:color w:val="${val}"/></w:rPr><w:t>x</w:t></w:r></w:p>`,
+      ),
+      NO_STYLES,
+    )[0].runs[0].color;
+
+  it('expands a three-digit shorthand to six', () => {
+    expect(colorOf('f00')).toBe('#ff0000');
+    expect(colorOf('000')).toBe('#000000');
+  });
+
+  it('drops the alpha pair from an eight-digit value', () => {
+    expect(colorOf('0000FFCC')).toBe('#0000FF');
+  });
+
+  it('rejects a digit count that is not a colour', () => {
+    expect(colorOf('12345')).toBeNull();
+    expect(colorOf('zzzzzz')).toBeNull();
   });
 });

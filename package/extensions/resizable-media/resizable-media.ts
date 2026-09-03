@@ -8,6 +8,16 @@ import { InlineLoaderPlugin } from '../../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../../types';
 import { wrapBlockNode } from '../../utils/block-schema';
 
+/** The toolbar's alignment buttons test for start | center | end, so a `left`
+ *  or `right` renders fine but leaves no button active. Pasted HTML and inline
+ *  styles both speak left/right, and `justify` has no support anywhere, so
+ *  every read is folded to the vocabulary. */
+const canonicalAlign = (value: string | null | undefined): string => {
+  if (value === 'left' || value === 'start') return 'start';
+  if (value === 'right' || value === 'end') return 'end';
+  return 'center';
+};
+
 // Background color of a media element, from an inline style or the
 // data-background-color round-trip attribute (whichever is present).
 const readBackgroundColor = (el: HTMLElement | null): string | null =>
@@ -107,7 +117,16 @@ export const ResizableMedia = Node.create<MediaOptions>({
         default: 'auto',
       },
       dataAlign: {
-        default: 'center', // 'left' | 'center' | 'right'
+        default: 'center', // 'start' | 'center' | 'end'
+        // Attribute-level parsing outranks every rule's getAttrs — including
+        // TipTap's implicit reader, which picks up renderHTML's lowercased
+        // `dataalign`. Folding here is the only place that catches every path.
+        parseHTML: (element: HTMLElement) =>
+          canonicalAlign(
+            element.getAttribute('data-align') ||
+              element.getAttribute('dataalign') ||
+              element.style.textAlign,
+          ),
       },
       dataFloat: {
         default: null, // 'left' | 'right'
@@ -178,7 +197,9 @@ export const ResizableMedia = Node.create<MediaOptions>({
             src: media.getAttribute('src'),
             'media-type':
               media.getAttribute('media-type') || (img ? 'img' : 'video'),
-            dataAlign: root.getAttribute('data-align') || 'center',
+            dataAlign: canonicalAlign(
+              root.getAttribute('data-align') || root.getAttribute('dataalign'),
+            ),
           };
           const float = root.getAttribute('data-float');
           if (float) attrs.dataFloat = float;
@@ -219,12 +240,17 @@ export const ResizableMedia = Node.create<MediaOptions>({
             '[data-type="media-caption-wrapper"]',
           ) || document.createElement('div'),
         getAttrs: (el) => {
-          const img = (el as HTMLElement).querySelector('img');
-          const video = (el as HTMLElement).querySelector('video');
+          const root = el as HTMLElement;
+          const img = root.querySelector('img');
+          const video = root.querySelector('video');
+          const align = canonicalAlign(
+            root.getAttribute('data-align') || root.getAttribute('dataalign'),
+          );
           if (img) {
             return {
               src: img.getAttribute('src'),
               'media-type': 'img',
+              dataAlign: align,
               backgroundColor: readBackgroundColor(img),
             };
           }
@@ -232,6 +258,7 @@ export const ResizableMedia = Node.create<MediaOptions>({
             return {
               src: video.getAttribute('src'),
               'media-type': 'video',
+              dataAlign: align,
             };
           }
           return {};
@@ -239,11 +266,20 @@ export const ResizableMedia = Node.create<MediaOptions>({
       },
       {
         tag: 'img',
-        getAttrs: (el) => ({
-          src: (el as HTMLImageElement).getAttribute('src'),
-          'media-type': 'img',
-          backgroundColor: readBackgroundColor(el as HTMLElement),
-        }),
+        getAttrs: (el) => {
+          const img = el as HTMLImageElement;
+          const align = canonicalAlign(
+            img.getAttribute('data-align') ||
+              img.getAttribute('dataalign') ||
+              img.style.textAlign,
+          );
+          return {
+            src: img.getAttribute('src'),
+            'media-type': 'img',
+            dataAlign: align,
+            backgroundColor: readBackgroundColor(img),
+          };
+        },
       },
       {
         tag: 'video',
