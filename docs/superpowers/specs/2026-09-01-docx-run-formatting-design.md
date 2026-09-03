@@ -265,8 +265,24 @@ down, the next reader will "fix" the inconsistency.
 `dataAlign`'s canonical vocabulary is `start | center | end`
 (`resizable-media-menu-util.ts`). The import emitted `right`, so a right-aligned
 imported image rendered correctly but left **no** alignment button active — the
-same defect class as the font picker showing "Default". It now emits `end`. The
-node view's `left`/`right` tolerance stays as belt-and-braces for pasted HTML.
+same defect class as the font picker showing "Default". It now emits `end`.
+
+**Widened 2026-09-03 (review response).** The fold happens in the `dataAlign`
+attribute's `parseHTML`, which is the only choke point: TipTap's attribute-level
+parsing outranks every rule's `getAttrs`, and its *implicit* reader picks up
+`renderHTML`'s lowercased `dataalign` — so scoping the fold to the newly added
+bare-`img` rule is not possible. That means the pre-existing `figure` and `div`
+paste paths are folded too, and five assertions in `media-figure.test.ts` /
+`svg-import.test.ts` moved from `right`/`left` to `end`/`start`. Rendered output
+is unchanged either way — the node view and the print CSS both already pair the
+two vocabularies — so this is a stored-token change, not a visual one.
+
+No migration: nodes already in Yjs keep `left`/`right`, render and print
+correctly, and converge on any HTML round trip. The one residual symptom is that
+those legacy nodes still light no toolbar button, which a tolerant `isActive`
+would fix for them and for `iframe.ts`'s `dataAlign: 'left'` default at the same
+time. The node view's `left`/`right` tolerance therefore now serves stored
+documents rather than pasted HTML.
 
 ### 3.8 Deferred
 

@@ -8,17 +8,18 @@ import { InlineLoaderPlugin } from '../../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../../types';
 import { wrapBlockNode } from '../../utils/block-schema';
 
-// Background color of a media element, from an inline style or the
-// data-background-color round-trip attribute (whichever is present).
 /** The toolbar's alignment buttons test for start | center | end, so a `left`
  *  or `right` renders fine but leaves no button active. Pasted HTML and inline
- *  styles both speak left/right, so every read is folded to the vocabulary. */
+ *  styles both speak left/right, and `justify` has no support anywhere, so
+ *  every read is folded to the vocabulary. */
 const canonicalAlign = (value: string | null | undefined): string => {
   if (value === 'left' || value === 'start') return 'start';
   if (value === 'right' || value === 'end') return 'end';
   return 'center';
 };
 
+// Background color of a media element, from an inline style or the
+// data-background-color round-trip attribute (whichever is present).
 const readBackgroundColor = (el: HTMLElement | null): string | null =>
   el?.style?.backgroundColor ||
   el?.getAttribute('data-background-color') ||
@@ -196,10 +197,9 @@ export const ResizableMedia = Node.create<MediaOptions>({
             src: media.getAttribute('src'),
             'media-type':
               media.getAttribute('media-type') || (img ? 'img' : 'video'),
-            dataAlign:
-              root.getAttribute('data-align') ||
-              root.getAttribute('dataalign') ||
-              'center',
+            dataAlign: canonicalAlign(
+              root.getAttribute('data-align') || root.getAttribute('dataalign'),
+            ),
           };
           const float = root.getAttribute('data-float');
           if (float) attrs.dataFloat = float;
@@ -243,10 +243,9 @@ export const ResizableMedia = Node.create<MediaOptions>({
           const root = el as HTMLElement;
           const img = root.querySelector('img');
           const video = root.querySelector('video');
-          const align =
-            root.getAttribute('data-align') ||
-            root.getAttribute('dataalign') ||
-            'center';
+          const align = canonicalAlign(
+            root.getAttribute('data-align') || root.getAttribute('dataalign'),
+          );
           if (img) {
             return {
               src: img.getAttribute('src'),

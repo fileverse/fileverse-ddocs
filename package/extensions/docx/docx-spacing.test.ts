@@ -967,11 +967,14 @@ describe('applyDocxSpacingToHtml block matching', () => {
 describe('readDocxSpacing property scoping', () => {
   it("does not take a text box paragraph's properties for the container", () => {
     const xml = doc(
+      // The drawing sits inside a w:r, as it does in a real document — which
+      // is also what makes ownRunElements' short-circuit at the outer run
+      // load-bearing here.
       `<w:p><w:r><w:t>Caption</w:t></w:r>` +
-        `<w:drawing><w:txbxContent>` +
+        `<w:r><w:drawing><wp:inline><w:txbxContent>` +
         `<w:p><w:pPr><w:spacing w:before="1200" w:after="1200"/><w:jc w:val="center"/></w:pPr>` +
         `<w:r><w:t>Boxed</w:t></w:r></w:p>` +
-        `</w:txbxContent></w:drawing></w:p>`,
+        `</w:txbxContent></wp:inline></w:drawing></w:r></w:p>`,
     );
 
     const result = readDocxSpacing(xml, NO_STYLES);

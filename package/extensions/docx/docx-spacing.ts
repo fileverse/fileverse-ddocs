@@ -142,7 +142,8 @@ const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
 
 /** ST_HexColor is six digits, but this reader has always taken 3-8 so a sloppy
  *  exporter still gets a colour. Normalising here is what keeps isThemeUnsafe's
- *  six-digit test total — #000 and #000000FF used to walk straight past it. */
+ *  six-digit test total — #000 and #000000FF used to walk straight past it.
+ *  An 8-digit value loses its alpha pair, and 4/5/7 digits are not a colour. */
 const normalizeHexColor = (value: string): string | undefined => {
   const hex = value.replace(/^#/, '');
   if (/^[0-9a-f]{3}$/i.test(hex))
@@ -219,13 +220,14 @@ type StyleTable = {
 const readStyles = (stylesXml: string): StyleTable => {
   const doc = parseXml(stylesXml);
 
-  const defaultPPr = doc
-    .getElementsByTagName('w:pPrDefault')[0]
-    ?.getElementsByTagName('w:pPr')[0];
-
-  const defaultRPr = doc
-    .getElementsByTagName('w:rPrDefault')[0]
-    ?.getElementsByTagName('w:rPr')[0];
+  const defaultPPr = ownChild(
+    doc.getElementsByTagName('w:pPrDefault')[0],
+    'pPr',
+  );
+  const defaultRPr = ownChild(
+    doc.getElementsByTagName('w:rPrDefault')[0],
+    'rPr',
+  );
 
   const byId = new Map<
     string,
