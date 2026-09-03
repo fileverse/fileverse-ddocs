@@ -1,6 +1,9 @@
 import JSZip from 'jszip';
-import { SPACING_MAX_PT, SPACING_MIN_PT } from '../../utils/typography';
-import { toEditorFontStack } from '../../utils/font-loader';
+import {
+  SPACING_MAX_PT,
+  SPACING_MIN_PT,
+  toEditorFontStack,
+} from '../../utils/typography';
 import { isBlackOrWhiteShade } from '../../utils/color-utils';
 
 export type DocxRunFormatting = {

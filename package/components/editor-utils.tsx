@@ -10,7 +10,8 @@ import React, {
   useState,
 } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { ensureLoaded, FONT_STACK } from '../utils/font-loader';
+import { ensureLoaded } from '../utils/font-loader';
+import { FONT_STACK } from '../utils/typography';
 import type { FontDescriptor } from '../types';
 import { IEditorTool, useEditorToolVisiibility } from '../hooks/use-visibility';
 import { Editor, JSONContent } from '@tiptap/react';
