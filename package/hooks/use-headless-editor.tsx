@@ -387,12 +387,14 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
 
         const { editor, ydoc } = getEditor();
 
-        // Feed extracted HTML into your existing import pipeline
+        // Feed extracted HTML into your existing import pipeline. It is HTML,
+        // so markdown shorthand must not be rewritten over it — a tilde or
+        // caret the author typed is text.
         await handleMarkdownContent(
           editor.view,
           spacedHtml,
           ipfsImageUploadFn,
-          { preserveEmptyParagraphs: true },
+          { preserveEmptyParagraphs: true, preserveLiteralText: true },
         );
 
         const yjsContent = Y.encodeStateAsUpdate(ydoc);

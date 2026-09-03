@@ -1243,6 +1243,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.superscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.superscript);
           },
         }),
         new InputRule({
@@ -1259,6 +1263,10 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.subscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.subscript);
           },
         }),
         new InputRule({
@@ -1280,8 +1288,15 @@ const MarkdownPasteHandler = (
                 this.editor.schema.marks.superscript.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.superscript);
           },
         }),
+        // Typing `~x~` strikes through. Subscript was the old behaviour and was
+        // wrong — a tilde is punctuation people write, and when they do wrap a
+        // word in one they mean the same thing `~~x~~` means.
         new InputRule({
           find: /(\S*)~((?:[^~]|\\~)+)~$/,
           handler: ({ state, range, match }) => {
@@ -1290,15 +1305,24 @@ const MarkdownPasteHandler = (
             }
             const { tr } = state;
             const start = range.from + match[1].length;
+            // `~~x~~` is Strike's own rule to complete; without this the single
+            // tilde fires on `~~x~` and strikes before the pair is closed.
+            if (state.doc.textBetween(Math.max(0, start - 1), start) === '~') {
+              return null;
+            }
             const end = range.to;
             const content = match[2].replace(/\\~/g, '~');
             tr.replaceWith(
               start,
               end,
               this.editor.schema.text(content, [
-                this.editor.schema.marks.subscript.create(),
+                this.editor.schema.marks.strike.create(),
               ]),
             );
+            // Otherwise the mark stays stored at the cursor and everything
+            // typed after the closing delimiter inherits it. TipTap's own
+            // markInputRule ends the same way.
+            tr.removeStoredMark(this.editor.schema.marks.strike);
           },
         }),
         new InputRule({
@@ -1358,7 +1382,7 @@ const MarkdownPasteHandler = (
     },
   });
 
-function isMarkdown(content: string): boolean {
+export function isMarkdown(content: string): boolean {
   // Ignore LaTeX math blocks before checking other Markdown elements
   if (
     content.match(/\$\$[^$]*\$\$/g) !== null ||
@@ -1395,7 +1419,11 @@ function isMarkdown(content: string): boolean {
     content.match(/<sup>(.*?)<\/sup>/g) !== null ||
     content.match(/<sub>(.*?)<\/sub>/g) !== null ||
     content.match(/\^[^\s^]+\^/g) !== null || // New superscript syntax
-    content.match(/~([^\s~](?:[^~]*[^\s~])?)~/g) !== null || // New subscript syntax
+    // Was carried by the old single-tilde subscript clause, which matched the
+    // inner ~x~ of a ~~x~~. Nothing else in this chain fires for a paste whose
+    // only markdown signal is a double tilde.
+    content.match(/~~[^\s~][^~\n]*[^\s~]~~|~~[^\s~]~~/g) !== null || // Strikethrough
+    content.match(/<s>(.*?)<\/s>/g) !== null || // what export emits
     content.match(/^===\s*$/m) !== null // Page break
   );
 }
@@ -1485,6 +1513,10 @@ export async function handleMarkdownContent(
      *  paste leaves it off — markdown-it emits stray empty paragraphs of its
      *  own that nobody typed. */
     preserveEmptyParagraphs?: boolean;
+    /** Input is HTML, not markdown — skip every markdown-shorthand rewrite so
+     *  literal `*`, `^` and `~` survive. DOCX import sets this: a tilde the
+     *  author typed is text, not formatting. */
+    preserveLiteralText?: boolean;
   },
 ) {
   // Remove YAML frontmatter before parsing
@@ -1508,18 +1540,22 @@ export async function handleMarkdownContent(
   // Protect formulas from being interpreted as markdown by escaping asterisks
   // Only escape asterisks that are clearly part of math expressions (e.g., 4*6, [1,2]*[3,4])
   // Use precise patterns to avoid breaking markdown formatting like **bold**, *italic*, or lists
-  cleanMarkdown = cleanMarkdown.replace(
-    /(\d)\*(\d)/g, // Match digit*digit (e.g., 4*6)
-    '$1\\*$2',
-  );
-  cleanMarkdown = cleanMarkdown.replace(
-    /(\])\*(\[)/g, // Match ]*[ (e.g., [1,2]*[3,4])
-    '$1\\*$2',
-  );
-  cleanMarkdown = cleanMarkdown.replace(
-    /(\))\*(\()/g, // Match )*( (e.g., (a+b)*(c+d))
-    '$1\\*$2',
-  );
+  // The backslash only disappears again if markdown-it parses the result;
+  // HTML input is passed through verbatim, so the escape would land in the doc.
+  if (!options?.preserveLiteralText) {
+    cleanMarkdown = cleanMarkdown.replace(
+      /(\d)\*(\d)/g, // Match digit*digit (e.g., 4*6)
+      '$1\\*$2',
+    );
+    cleanMarkdown = cleanMarkdown.replace(
+      /(\])\*(\[)/g, // Match ]*[ (e.g., [1,2]*[3,4])
+      '$1\\*$2',
+    );
+    cleanMarkdown = cleanMarkdown.replace(
+      /(\))\*(\()/g, // Match )*( (e.g., (a+b)*(c+d))
+      '$1\\*$2',
+    );
+  }
 
   // Convert Markdown to HTML. `breaks` (single newline → <br>) is opt-in for
   // Split View so a single Enter shows as a new line on the right;
@@ -1696,23 +1732,20 @@ export async function handleMarkdownContent(
 
   const subsupRegex = /<(sup|sub)>(.*?)<\/\1>/g;
   const superscriptRegex = /\^([^\s^]+)\^/g;
-  const subscriptRegex = /~([^\s~](?:[^~]*[^\s~])?)~/g;
 
   // Process superscript and subscript tags in the HTML string
   convertedHtml = convertedHtml.replace(subsupRegex, (content) => {
     return `${content}`;
   });
 
-  // Process markdown-style superscript and subscript
-  convertedHtml = convertedHtml.replace(
-    superscriptRegex,
-    '<sup data-type="sup">$1</sup>',
-  );
-
-  convertedHtml = convertedHtml.replace(
-    subscriptRegex,
-    '<sub data-type="sub">$1</sub>',
-  );
+  // Markdown-style superscript. There is deliberately no single-tilde subscript
+  // shorthand: `~x~` is literal text and `~~x~~` is struck through by markdown-it.
+  if (!options?.preserveLiteralText) {
+    convertedHtml = convertedHtml.replace(
+      superscriptRegex,
+      '<sup data-type="sup">$1</sup>',
+    );
+  }
 
   // Reinsert the shielded math regions (HTML-escaped) BEFORE sanitization so
   // DOMPurify stays the last gate over the full document.
