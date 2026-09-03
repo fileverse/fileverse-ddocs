@@ -10,6 +10,15 @@ import { wrapBlockNode } from '../../utils/block-schema';
 
 // Background color of a media element, from an inline style or the
 // data-background-color round-trip attribute (whichever is present).
+/** The toolbar's alignment buttons test for start | center | end, so a `left`
+ *  or `right` renders fine but leaves no button active. Pasted HTML and inline
+ *  styles both speak left/right, so every read is folded to the vocabulary. */
+const canonicalAlign = (value: string | null | undefined): string => {
+  if (value === 'left' || value === 'start') return 'start';
+  if (value === 'right' || value === 'end') return 'end';
+  return 'center';
+};
+
 const readBackgroundColor = (el: HTMLElement | null): string | null =>
   el?.style?.backgroundColor ||
   el?.getAttribute('data-background-color') ||
@@ -107,12 +116,16 @@ export const ResizableMedia = Node.create<MediaOptions>({
         default: 'auto',
       },
       dataAlign: {
-        default: 'center', // 'left' | 'center' | 'right'
+        default: 'center', // 'start' | 'center' | 'end'
+        // Attribute-level parsing outranks every rule's getAttrs — including
+        // TipTap's implicit reader, which picks up renderHTML's lowercased
+        // `dataalign`. Folding here is the only place that catches every path.
         parseHTML: (element: HTMLElement) =>
-          element.getAttribute('data-align') ||
-          element.getAttribute('dataalign') ||
-          element.style.textAlign ||
-          'center',
+          canonicalAlign(
+            element.getAttribute('data-align') ||
+              element.getAttribute('dataalign') ||
+              element.style.textAlign,
+          ),
       },
       dataFloat: {
         default: null, // 'left' | 'right'
@@ -256,11 +269,11 @@ export const ResizableMedia = Node.create<MediaOptions>({
         tag: 'img',
         getAttrs: (el) => {
           const img = el as HTMLImageElement;
-          const align =
+          const align = canonicalAlign(
             img.getAttribute('data-align') ||
-            img.getAttribute('dataalign') ||
-            img.style.textAlign ||
-            'center';
+              img.getAttribute('dataalign') ||
+              img.style.textAlign,
+          );
           return {
             src: img.getAttribute('src'),
             'media-type': 'img',

@@ -8,7 +8,10 @@ import { MediaCaption } from './media-caption';
 import { Editor } from '@tiptap/core';
 
 describe('ResizableMedia parseHTML tag: img', () => {
-  it('parses data-align from bare img element', () => {
+  // Pasted HTML speaks left/right; the toolbar's buttons test start/center/end,
+  // so the value is folded on the way in rather than rendering with no button
+  // active.
+  it('folds a right-aligned bare img to the canonical end', () => {
     const editor = new Editor({
       extensions: [
         Document,
@@ -23,11 +26,11 @@ describe('ResizableMedia parseHTML tag: img', () => {
 
     const mediaNode = editor.state.doc.firstChild;
     expect(mediaNode?.type.name).toBe('resizableMedia');
-    expect(mediaNode?.attrs.dataAlign).toBe('right');
+    expect(mediaNode?.attrs.dataAlign).toBe('end');
     editor.destroy();
   });
 
-  it('parses dataalign attribute from bare img element', () => {
+  it('folds a left dataalign attribute to the canonical start', () => {
     const editor = new Editor({
       extensions: [
         Document,
@@ -42,7 +45,7 @@ describe('ResizableMedia parseHTML tag: img', () => {
 
     const mediaNode = editor.state.doc.firstChild;
     expect(mediaNode?.type.name).toBe('resizableMedia');
-    expect(mediaNode?.attrs.dataAlign).toBe('left');
+    expect(mediaNode?.attrs.dataAlign).toBe('start');
     editor.destroy();
   });
 

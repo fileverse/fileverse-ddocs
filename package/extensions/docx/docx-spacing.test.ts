@@ -958,3 +958,81 @@ describe('applyDocxSpacingToHtml block matching', () => {
     expect(result).toContain('font-family: Courier New');
   });
 });
+
+/**
+ * Every property lookup reads a DIRECT child. A descendant query picks up
+ * nested copies — a text box's own paragraph, or the pre-edit values that
+ * w:pPrChange / w:rPrChange keep around — and stamps them on the container.
+ */
+describe('readDocxSpacing property scoping', () => {
+  it("does not take a text box paragraph's properties for the container", () => {
+    const xml = doc(
+      `<w:p><w:r><w:t>Caption</w:t></w:r>` +
+        `<w:drawing><w:txbxContent>` +
+        `<w:p><w:pPr><w:spacing w:before="1200" w:after="1200"/><w:jc w:val="center"/></w:pPr>` +
+        `<w:r><w:t>Boxed</w:t></w:r></w:p>` +
+        `</w:txbxContent></w:drawing></w:p>`,
+    );
+
+    const result = readDocxSpacing(xml, NO_STYLES);
+
+    // The text box's own w:p is filtered out, so only the container remains —
+    // and it has no w:pPr, so it must report nothing rather than 60pt centred.
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      text: 'Caption',
+      spaceBefore: null,
+      spaceAfter: null,
+      textAlign: null,
+    });
+  });
+
+  it('reads current paragraph spacing, not the pre-edit copy in w:pPrChange', () => {
+    const xml = doc(
+      `<w:p><w:pPr><w:spacing w:after="240"/>` +
+        `<w:pPrChange><w:pPr><w:spacing w:after="960"/></w:pPr></w:pPrChange>` +
+        `</w:pPr><w:r><w:t>tracked</w:t></w:r></w:p>`,
+    );
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].spaceAfter).toBe(12);
+  });
+
+  it('ignores a run property that only exists in w:rPrChange', () => {
+    const xml = doc(
+      `<w:p><w:r><w:rPr>` +
+        `<w:rPrChange><w:rPr><w:rFonts w:ascii="Georgia"/></w:rPr></w:rPrChange>` +
+        `</w:rPr><w:t>tracked</w:t></w:r></w:p>`,
+    );
+
+    expect(readDocxSpacing(xml, NO_STYLES)[0].runs[0].fontFamily).toBeNull();
+  });
+});
+
+/**
+ * The reader accepts 3-8 hex digits, but the theme-safety check matches six.
+ * Anything it lets through un-normalised skips that check entirely — which is
+ * how #000 reached the document as invisible-in-dark-mode text.
+ */
+describe('readDocxSpacing colour normalisation', () => {
+  const colorOf = (val: string) =>
+    readDocxSpacing(
+      doc(
+        `<w:p><w:r><w:rPr><w:color w:val="${val}"/></w:rPr><w:t>x</w:t></w:r></w:p>`,
+      ),
+      NO_STYLES,
+    )[0].runs[0].color;
+
+  it('expands a three-digit shorthand to six', () => {
+    expect(colorOf('f00')).toBe('#ff0000');
+    expect(colorOf('000')).toBe('#000000');
+  });
+
+  it('drops the alpha pair from an eight-digit value', () => {
+    expect(colorOf('0000FFCC')).toBe('#0000FF');
+  });
+
+  it('rejects a digit count that is not a colour', () => {
+    expect(colorOf('12345')).toBeNull();
+    expect(colorOf('zzzzzz')).toBeNull();
+  });
+});

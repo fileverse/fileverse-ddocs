@@ -108,11 +108,24 @@ const parseXml = (xml: string): Document => {
   return doc;
 };
 
+/** A direct child, never a descendant. w:pPrChange and w:rPrChange nest a copy
+ *  of the PREVIOUS properties, and w:txbxContent nests a whole paragraph — a
+ *  descendant query reads either as though it were this element's own. */
+const ownChild = (
+  parent: Element | null | undefined,
+  tag: string,
+): Element | undefined =>
+  parent
+    ? Array.from(parent.children).find(
+        (child) =>
+          (child.localName || child.nodeName.replace(/^w:/, '')) === tag,
+      )
+    : undefined;
+
 /** The w:spacing child of a w:pPr, as raw attributes. */
 const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
-  const spacing = pPr?.getElementsByTagName('w:spacing')[0];
-  const jc =
-    pPr?.getElementsByTagName('w:jc')[0]?.getAttribute('w:val') ?? undefined;
+  const spacing = ownChild(pPr, 'spacing');
+  const jc = ownChild(pPr, 'jc')?.getAttribute('w:val') ?? undefined;
 
   const attr = (name: string) => {
     const value = spacing?.getAttribute(`w:${name}`);
@@ -127,25 +140,28 @@ const readSpacingElement = (pPr: Element | null | undefined): RawSpacing => {
   };
 };
 
+/** ST_HexColor is six digits, but this reader has always taken 3-8 so a sloppy
+ *  exporter still gets a colour. Normalising here is what keeps isThemeUnsafe's
+ *  six-digit test total — #000 and #000000FF used to walk straight past it. */
+const normalizeHexColor = (value: string): string | undefined => {
+  const hex = value.replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(hex))
+    return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`;
+  if (/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(hex)) return `#${hex.slice(0, 6)}`;
+  return undefined;
+};
+
 /** Read direct run properties (w:color, w:sz, w:rFonts) */
 const readRunPropertiesElement = (
   rPr: Element | null | undefined,
 ): RawRunProperties => {
   if (!rPr) return {};
 
-  const colorEl = rPr.getElementsByTagName('w:color')[0];
-  const colorVal = colorEl?.getAttribute('w:val');
-  let color: string | undefined;
-  if (colorVal && colorVal !== 'auto') {
-    color = colorVal.startsWith('#')
-      ? colorVal
-      : /^[0-9a-fA-F]{3,8}$/.test(colorVal)
-        ? `#${colorVal}`
-        : undefined;
-  }
+  const colorVal = ownChild(rPr, 'color')?.getAttribute('w:val');
+  const color =
+    colorVal && colorVal !== 'auto' ? normalizeHexColor(colorVal) : undefined;
 
-  const szEl = rPr.getElementsByTagName('w:sz')[0];
-  const szVal = szEl?.getAttribute('w:val');
+  const szVal = ownChild(rPr, 'sz')?.getAttribute('w:val');
   let fontSize: string | undefined;
   if (szVal) {
     const halfPoints = Number.parseFloat(szVal);
@@ -156,7 +172,7 @@ const readRunPropertiesElement = (
     }
   }
 
-  const fontEl = rPr.getElementsByTagName('w:rFonts')[0];
+  const fontEl = ownChild(rPr, 'rFonts');
   const fontFamily =
     fontEl?.getAttribute('w:ascii') ||
     fontEl?.getAttribute('w:hAnsi') ||
@@ -220,11 +236,9 @@ const readStyles = (stylesXml: string): StyleTable => {
     const id = style.getAttribute('w:styleId');
     if (!id) return;
     byId.set(id, {
-      spacing: readSpacingElement(style.getElementsByTagName('w:pPr')[0]),
-      run: readRunPropertiesElement(style.getElementsByTagName('w:rPr')[0]),
-      basedOn:
-        style.getElementsByTagName('w:basedOn')[0]?.getAttribute('w:val') ??
-        null,
+      spacing: readSpacingElement(ownChild(style, 'pPr')),
+      run: readRunPropertiesElement(ownChild(style, 'rPr')),
+      basedOn: ownChild(style, 'basedOn')?.getAttribute('w:val') ?? null,
     });
   });
 
@@ -341,9 +355,8 @@ const getParagraphRuns = (
   const runElements = ownRunElements(paragraph);
   return runElements
     .map((r) => {
-      const rPr = r.getElementsByTagName('w:rPr')[0];
-      const rStyleId =
-        rPr?.getElementsByTagName('w:rStyle')[0]?.getAttribute('w:val') ?? null;
+      const rPr = ownChild(r, 'rPr');
+      const rStyleId = ownChild(rPr, 'rStyle')?.getAttribute('w:val') ?? null;
       const resolved = resolveRunProperties(rPr, rStyleId, styles);
       return {
         text: runText(r),
@@ -374,9 +387,8 @@ export const readDocxSpacing = (
   return Array.from(doc.getElementsByTagName('w:p'))
     .filter((paragraph) => !isInsideTextBox(paragraph))
     .map((paragraph) => {
-      const pPr = paragraph.getElementsByTagName('w:pPr')[0];
-      const styleId =
-        pPr?.getElementsByTagName('w:pStyle')[0]?.getAttribute('w:val') ?? null;
+      const pPr = ownChild(paragraph, 'pPr');
+      const styleId = ownChild(pPr, 'pStyle')?.getAttribute('w:val') ?? null;
 
       const raw = mergeSpacing(
         resolveStyleSpacing(styleId, styles),

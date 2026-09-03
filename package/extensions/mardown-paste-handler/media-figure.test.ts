@@ -149,7 +149,7 @@ describe('media figure import (schema parse)', () => {
     );
     expect(media).toBeTruthy();
     expect(media.attrs.src).toBe('a.png');
-    expect(media.attrs.dataAlign).toBe('right');
+    expect(media.attrs.dataAlign).toBe('end');
     expect(media.attrs['media-type']).toBe('img');
     expect(media.childCount).toBe(1);
     expect(media.firstChild!.type.name).toBe('mediaCaption');
@@ -164,7 +164,7 @@ describe('media figure import (schema parse)', () => {
           '</figure>',
       ),
     );
-    expect(media.attrs.dataAlign).toBe('left');
+    expect(media.attrs.dataAlign).toBe('start');
     expect(media.attrs.dataFloat).toBe('right');
     expect(media.attrs.width).toBe('420');
     expect(media.attrs.ipfsHash).toBe('Qm123');
@@ -216,7 +216,7 @@ describe('media figure import (schema parse)', () => {
     expect(media.attrs.src).toBe('a.png');
     expect(media.attrs.alt).toBe('chart');
     expect(media.attrs.width).toBe('420');
-    expect(media.attrs.dataAlign).toBe('right');
+    expect(media.attrs.dataAlign).toBe('end');
     expect(media.firstChild!.textContent).toBe('my caption');
   });
 });
