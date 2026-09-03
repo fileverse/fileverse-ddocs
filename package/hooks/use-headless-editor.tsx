@@ -14,6 +14,8 @@ import {
   SCHEMA_VERSION_META_KEY,
 } from '../utils/schema-version';
 import { handleMarkdownContent } from '../extensions/mardown-paste-handler';
+import { DOCX_STYLE_MAP } from '../extensions/docx/docx-import';
+import { readDocxSpacingFromArchive } from '../extensions/docx/docx-spacing';
 import { IpfsImageUploadResponse } from '../types';
 import mammoth from 'mammoth';
 import { CommentExtension as Comment } from '../extensions/comment';
@@ -352,10 +354,15 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
       try {
         const arrayBuffer = await file.arrayBuffer();
 
-        // Use Mammoth with image conversion → embed as <img src="data:...">
+        // Same mammoth configuration as the in-editor import
+        // (extensions/docx/docx-import.tsx): the style map is what carries
+        // underline and highlight, and empty paragraphs must survive so the
+        // spacing pass can pair 1:1 with the w:p elements.
         const { value: extractedHtml } = await mammoth.convertToHtml(
           { arrayBuffer },
           {
+            styleMap: DOCX_STYLE_MAP,
+            ignoreEmptyParagraphs: false,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             convertImage: (mammoth as any).images.inline(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -370,13 +377,22 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
           },
         );
 
+        // Mammoth is a semantic converter and drops every presentation
+        // attribute, so spacing, alignment, font and colour are read off the
+        // same buffer and zipped back on.
+        const spacedHtml = await readDocxSpacingFromArchive(
+          arrayBuffer,
+          extractedHtml,
+        );
+
         const { editor, ydoc } = getEditor();
 
         // Feed extracted HTML into your existing import pipeline
         await handleMarkdownContent(
           editor.view,
-          extractedHtml,
+          spacedHtml,
           ipfsImageUploadFn,
+          { preserveEmptyParagraphs: true },
         );
 
         const yjsContent = Y.encodeStateAsUpdate(ydoc);
