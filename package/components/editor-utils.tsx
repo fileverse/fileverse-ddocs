@@ -10,7 +10,7 @@ import React, {
   useState,
 } from 'react';
 import { List, type RowComponentProps } from 'react-window';
-import { ensureLoaded } from '../utils/font-loader';
+import { ensureLoaded, FONT_STACK } from '../utils/font-loader';
 import type { FontDescriptor } from '../types';
 import { IEditorTool, useEditorToolVisiibility } from '../hooks/use-visibility';
 import { Editor, JSONContent } from '@tiptap/react';
@@ -128,11 +128,7 @@ export function buildPickerEntries(
 // Font-size / line-height helpers moved to utils/typography (re-exported
 // here for backward compatibility).
 export * from '../utils/typography';
-import {
-  FONT_STACK,
-  getFontSizeOptions,
-  getLineHeightOptions,
-} from '../utils/typography';
+import { getFontSizeOptions, getLineHeightOptions } from '../utils/typography';
 import { getSpacingToggles } from './editor-toolbar/spacing-toggles';
 
 export const ERR_MSG_MAP = {
