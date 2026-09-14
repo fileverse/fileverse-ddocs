@@ -65,7 +65,7 @@ npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities @fileverse/ui @fi
 | `framer-motion`      | `>=11.2.10` |
 | `frimousse`          | `>=0.3.0`   |
 
-During the `unstable-styles` prerelease, install `@fileverse/ui@5.4.0-unstable-styles-2` exactly — a prerelease tag never satisfies a caret range, so the exact pin is required until the stable release, which pairs with `^5.4.0`.
+The peer range is `@fileverse/ui@^5.4.0`. If you ever test a prerelease pairing, pin both packages exactly: a prerelease never satisfies a caret range.
 
 These are externalized from the bundle to avoid duplication when your app already uses them. If you don't have them installed, npm (v7+) will auto-install them for you.
 
