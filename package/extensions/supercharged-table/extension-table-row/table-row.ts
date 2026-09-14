@@ -161,7 +161,10 @@ export const TableRow = Node.create<TableRowOptions>({
         },
       );
 
+      let controlsShown = false;
+
       const showControls = () => {
+        controlsShown = true;
         repositionControlsCenter();
         controlSection.classList.remove('hidden');
       };
@@ -169,6 +172,7 @@ export const TableRow = Node.create<TableRowOptions>({
       const hideControls = () => {
         setTimeout(() => {
           if (isCursorInsideControlSection) return;
+          controlsShown = false;
           controlSection.classList.add('hidden');
         }, 100);
       };
@@ -215,20 +219,27 @@ export const TableRow = Node.create<TableRowOptions>({
         repositionControlsCenter();
       }, 100);
 
-      editor.on('selectionUpdate', repositionControlsCenter);
-      editor.on('update', repositionControlsCenter);
-      scrollableParent?.addEventListener('scroll', repositionControlsCenter);
-      document.addEventListener('scroll', repositionControlsCenter);
+      // Every row node view used to queue a setTimeout + getBoundingClientRect
+      // on every editor update and selection change, even while its controls
+      // were not showing. With N rows that is N timers per keystroke across
+      // the document. Reposition lazily: showControls() already repositions
+      // on hover, so only track the row while its controls are visible.
+      const repositionIfVisible = () => {
+        if (!controlsShown) return;
+        repositionControlsCenter();
+      };
+
+      editor.on('selectionUpdate', repositionIfVisible);
+      editor.on('update', repositionIfVisible);
+      scrollableParent?.addEventListener('scroll', repositionIfVisible);
+      document.addEventListener('scroll', repositionIfVisible);
 
       const destroy = () => {
         controlSection.remove();
-        editor.off('selectionUpdate', repositionControlsCenter);
-        editor.off('update', repositionControlsCenter);
-        scrollableParent?.removeEventListener(
-          'scroll',
-          repositionControlsCenter,
-        );
-        document.removeEventListener('scroll', repositionControlsCenter);
+        editor.off('selectionUpdate', repositionIfVisible);
+        editor.off('update', repositionIfVisible);
+        scrollableParent?.removeEventListener('scroll', repositionIfVisible);
+        document.removeEventListener('scroll', repositionIfVisible);
       };
 
       return {

@@ -26,13 +26,6 @@ const SearchReplace = ({
   viewerMode?: 'suggest' | 'view-only';
 }) => {
   const [, force] = useReducer((x) => x + 1, 0);
-  useEffect(() => {
-    if (!editor) return;
-    editor.on('transaction', force);
-    return () => {
-      editor.off('transaction', force);
-    };
-  }, [editor]);
   const [showReplace, setShowReplace] = useState(false);
   const isNonOwner = typeof viewerMode !== 'undefined';
   const { searchTerm, replaceTerm, showSearchReplacePopover } =
@@ -43,6 +36,16 @@ const SearchReplace = ({
         showSearchReplacePopover: s.showSearchReplacePopover,
       })),
     );
+  // Result count and current match live in editor.storage, so the popover
+  // re-renders on transactions to stay current. Subscribe only while it is
+  // open: with it closed this forced a React render on every keystroke.
+  useEffect(() => {
+    if (!editor || !showSearchReplacePopover) return;
+    editor.on('transaction', force);
+    return () => {
+      editor.off('transaction', force);
+    };
+  }, [editor, showSearchReplacePopover]);
 
   const { setShowReplacePopover, setSearchTerm, setReplaceTerm } =
     useSearchReplaceStore((s) => s.actions);

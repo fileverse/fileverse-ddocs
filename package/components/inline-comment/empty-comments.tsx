@@ -47,14 +47,15 @@ const EmptyComments = ({
     // Start observing the document element for data-theme attribute changes
     observer.observe(document.documentElement, { attributes: true });
 
-    // Set up an interval to periodically check localStorage
-    // This is a fallback method to ensure we catch all theme changes
+    // Fallback poll for theme changes the observers above miss. This used to
+    // run at 0ms, a continuous ~4ms localStorage read for the lifetime of the
+    // component; once a second is plenty for a fallback.
     const intervalId = setInterval(() => {
       const currentTheme = getThemeFromLS();
       if (currentTheme !== theme) {
         setTheme(currentTheme);
       }
-    }, 0);
+    }, 1000);
 
     window.addEventListener('storage', handleStorageChange);
 

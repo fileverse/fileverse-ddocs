@@ -70,6 +70,12 @@ export interface CommentStorage {
   activeCommentId: string | null;
 }
 
+declare module '@tiptap/core' {
+  interface Storage {
+    comment: CommentStorage;
+  }
+}
+
 export interface DraftCommentRange {
   draftId: string;
   from: number;
