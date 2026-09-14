@@ -4,38 +4,8 @@ import CodeBlockLowlight, {
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import CodeBlockNodeView from './components/code-block-node-view';
 import { TextSelection } from 'prosemirror-state';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
-
-const rangeTouchesNodeType = (
-  doc: ProseMirrorNode,
-  from: number,
-  to: number,
-  typeName: string,
-) => {
-  const start = Math.max(0, Math.min(from, doc.content.size));
-  const end = Math.max(start, Math.min(to, doc.content.size));
-
-  const endpointInside = (pos: number) => {
-    const $pos = doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth -= 1) {
-      if ($pos.node(depth).type.name === typeName) return true;
-    }
-    return false;
-  };
-
-  if (endpointInside(start) || endpointInside(end)) return true;
-
-  let touches = false;
-  doc.nodesBetween(start, end, (node) => {
-    if (node.type.name === typeName) {
-      touches = true;
-      return false;
-    }
-    return !touches;
-  });
-  return touches;
-};
+import { transactionTouchesNodeType } from '../../utils/transaction-range';
 
 /**
  * True when a transaction can change the highlighting of some code block:
@@ -45,22 +15,7 @@ const rangeTouchesNodeType = (
 export const transactionCouldTouchCodeBlock = (
   transaction: Transaction,
   typeName: string,
-) => {
-  if (!transaction.docChanged) return false;
-
-  let touches = false;
-  transaction.mapping.maps.forEach((map, index) => {
-    if (touches) return;
-    const beforeDoc = transaction.docs[index] ?? transaction.before;
-    const afterDoc = transaction.docs[index + 1] ?? transaction.doc;
-    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      touches ||=
-        rangeTouchesNodeType(beforeDoc, oldStart, oldEnd, typeName) ||
-        rangeTouchesNodeType(afterDoc, newStart, newEnd, typeName);
-    });
-  });
-  return touches;
-};
+) => transactionTouchesNodeType(transaction, typeName);
 
 export interface MermaidLimits {
   maxSourceBytes?: number;

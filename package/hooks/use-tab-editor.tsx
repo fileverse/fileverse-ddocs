@@ -78,6 +78,7 @@ import {
   transactionCouldTouchHeading,
 } from '../extensions/table-of-contents';
 import { useTabEditorCache } from './use-tab-editor-cache';
+import { transactionTouchesNodeType } from '../utils/transaction-range';
 
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
@@ -102,6 +103,23 @@ const usercolors = [
   '#0ad7f2',
   '#1bff39',
 ];
+// The page estimate rebuilds the document's HTML and lays it out in a hidden
+// iframe. At ~60k words that is ~70ms of main-thread work 500ms after every
+// typing pause, right where the next keystroke lands. The footer shows the
+// value as "~N", so above this size a measurement is reused, scaled by the
+// change in character count, until the text drifts by a few percent, a page
+// break is touched, or a minute passes. Smaller documents stay exact.
+const PAGE_COUNT_EXACT_MAX_CHARACTERS = 40_000;
+const PAGE_COUNT_REMEASURE_DRIFT = 0.02;
+const PAGE_COUNT_REMEASURE_INTERVAL_MS = 60_000;
+
+type PageCountMeasurement = {
+  characters: number;
+  pageCount: number;
+  at: number;
+  structuralVersion: number;
+};
+
 type ScheduledIdleTask = {
   kind: 'idle' | 'timeout';
   handle: number;
@@ -974,6 +992,12 @@ export const useTabEditor = ({
     null,
   );
   const lastPageCountByTabRef = useRef<Record<string, number>>({});
+  const lastPageMeasurementByTabRef = useRef<
+    Record<string, PageCountMeasurement>
+  >({});
+  // Bumped when an update touches a page break, which changes the page
+  // count without changing the character count.
+  const pageStructureVersionRef = useRef(0);
 
   useEffect(() => {
     if (!setPageCount) {
@@ -1024,7 +1048,14 @@ export const useTabEditor = ({
       setSelectedWordCount(words);
     };
 
-    const updateCounts = () => {
+    const updateCounts = (event?: { transaction?: Transaction }) => {
+      if (
+        event?.transaction &&
+        transactionTouchesNodeType(event.transaction, 'pageBreak')
+      ) {
+        pageStructureVersionRef.current += 1;
+      }
+
       if (statsDebounceRef.current) {
         clearTimeout(statsDebounceRef.current);
       }
@@ -1047,6 +1078,30 @@ export const useTabEditor = ({
               return;
             }
 
+            const characters = editor.storage.characterCount.characters() ?? 0;
+            const lastMeasurement =
+              lastPageMeasurementByTabRef.current[activeTabId];
+            if (
+              lastMeasurement &&
+              characters > PAGE_COUNT_EXACT_MAX_CHARACTERS &&
+              lastMeasurement.structuralVersion ===
+                pageStructureVersionRef.current &&
+              Math.abs(characters - lastMeasurement.characters) <
+                lastMeasurement.characters * PAGE_COUNT_REMEASURE_DRIFT &&
+              Date.now() - lastMeasurement.at < PAGE_COUNT_REMEASURE_INTERVAL_MS
+            ) {
+              const scaled = Math.max(
+                1,
+                Math.round(
+                  (lastMeasurement.pageCount * characters) /
+                    Math.max(1, lastMeasurement.characters),
+                ),
+              );
+              lastPageCountByTabRef.current[activeTabId] = scaled;
+              setPageCount(scaled);
+              return;
+            }
+
             const requestId = ++pageCountRequestIdRef.current;
             // Cancel the queued estimate before scheduling a new one, else
             // slower stale HTML can win after a newer edit.
@@ -1064,6 +1119,9 @@ export const useTabEditor = ({
               }
 
               const html = editor.getHTML();
+              const measuredCharacters =
+                editor.storage.characterCount.characters() ?? 0;
+              const measuredStructuralVersion = pageStructureVersionRef.current;
 
               pageCounter
                 .getPageCount(html)
@@ -1075,6 +1133,12 @@ export const useTabEditor = ({
                     !editor.isDestroyed
                   ) {
                     lastPageCountByTabRef.current[activeTabId] = pageCount;
+                    lastPageMeasurementByTabRef.current[activeTabId] = {
+                      characters: measuredCharacters,
+                      pageCount,
+                      at: Date.now(),
+                      structuralVersion: measuredStructuralVersion,
+                    };
                     setPageCount(pageCount);
                   }
                 })
