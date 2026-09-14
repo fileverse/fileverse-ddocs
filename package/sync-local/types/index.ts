@@ -2,6 +2,23 @@
 import { Data, IDocCollabUsers } from '../../types';
 import * as Y from 'yjs';
 
+/** Collab wire cipher. `ecies` is the historical secp256k1 ECIES; `xchacha` is
+ *  XChaCha20-Poly1305 under an HKDF subkey of the roomKey (FVXC1). */
+export type WireFormat = 'ecies' | 'xchacha';
+
+/** Host telemetry for the wire migration; the package never imports a reporter. */
+export type WireTelemetryEvent =
+  | { type: 'announced'; format: WireFormat }
+  | { type: 'write'; format: WireFormat }
+  | {
+      type: 'hydrate';
+      eciesRows: number;
+      xchachaRows: number;
+      snapshotFormat: WireFormat | null;
+      incomplete: boolean;
+    }
+  | { type: 'refused' };
+
 // ─── Collaboration prop types ───
 
 /** Connection identity — changes to these trigger reconnect */
@@ -142,7 +159,14 @@ export interface CollabCallbacks {
   onStateChange?: (state: CollabState) => void;
   onError?: (error: CollabError) => void;
   onCollaboratorsChange?: (collaborators: IDocCollabUsers[]) => void;
-  onHandshakeData?: (data: { data: AckResponse; roomKey: string }) => void;
+  onHandshakeData?: (data: {
+    data: AckResponse;
+    roomKey: string;
+    wireFormat: WireFormat;
+  }) => void;
+  /** The write format the server announced for this room (auth ack or live ratchet). */
+  onWireFormat?: (format: WireFormat) => void;
+  onWireTelemetry?: (event: WireTelemetryEvent) => void;
   /** Live rename from the room owner; title is roomKey-encrypted. */
   onTitleUpdate?: (encryptedTitle: string | null) => void;
   /** Decrypt-miss self-heal: resolves the CURRENT-epoch roomKey (same resolution the host
@@ -194,6 +218,7 @@ export enum ServerErrorCode {
   JOIN_DISABLED = 'JOIN_DISABLED',
   EDIT_REVOKED = 'EDIT_REVOKED',
   ROOM_NOT_ESTABLISHED = 'ROOM_NOT_ESTABLISHED',
+  WIRE_FORMAT_UNSUPPORTED = 'WIRE_FORMAT_UNSUPPORTED',
 }
 
 export interface AckResponse<T = Record<string, any>> {
@@ -263,6 +288,7 @@ export interface ISocketInitConfig {
   }) => void;
   onPresenceChange?: (collaborators: IDocCollabUsers[]) => void;
   onTitleUpdate?: (encryptedTitle: string | null) => void;
+  onWireFormat?: (data: { roomId: string; wireFormat: WireFormat }) => void;
   onSessionTerminated: (data: { roomId: string }) => void;
   onReconnectFailed: () => void;
 }
@@ -293,4 +319,5 @@ export interface IAuthArgs {
   editUcan?: string;
   actorHandle?: string;
   joinOnly?: boolean;
+  wireFormats?: WireFormat[];
 }

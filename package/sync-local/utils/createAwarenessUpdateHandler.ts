@@ -2,11 +2,13 @@ import { encodeAwarenessUpdate, type Awareness } from 'y-protocols/awareness';
 import { toUint8Array } from 'js-base64';
 import { crypto as cryptoUtils } from '../crypto';
 import { SocketClient } from '../socketClient';
+import type { WireFormat } from '../types';
 
 export const createAwarenessUpdateHandler = (
   awareness: Awareness,
   socketClient: SocketClient,
   roomKey: string,
+  getWireFormat: () => WireFormat,
 ) => {
   let pending: number[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -24,6 +26,7 @@ export const createAwarenessUpdateHandler = (
       const encryptedUpdate = cryptoUtils.encryptData(
         toUint8Array(roomKey),
         update,
+        getWireFormat(),
       );
       socketClient.broadcastAwareness(encryptedUpdate);
     }

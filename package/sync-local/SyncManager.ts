@@ -4,11 +4,12 @@ import { fromUint8Array, toUint8Array } from 'js-base64';
 import { Awareness, removeAwarenessStates } from 'y-protocols/awareness.js';
 
 import { SocketClient } from './socketClient';
-import { crypto as cryptoUtils } from './crypto';
+import { crypto as cryptoUtils, isXChaChaCipher } from './crypto';
 import { createAwarenessUpdateHandler } from './utils/createAwarenessUpdateHandler';
 import {
   advanceFloor,
   computeLocalOnlyUpdate,
+  floorEligibleSeqs,
   shouldAuthorSnapshot,
 } from './floor';
 import {
@@ -22,6 +23,8 @@ import {
   CollabContext,
   CollabError,
   ServerErrorCode,
+  WireFormat,
+  WireTelemetryEvent,
 } from './types';
 import {
   transition,
@@ -45,6 +48,10 @@ interface HydrationWalk {
   merged: Uint8Array | null;
   pages: number;
   tailRows: number;
+  incomplete: boolean;
+  snapshotFormat: WireFormat | null;
+  eciesRows: number;
+  xchachaRows: number;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -103,10 +110,57 @@ export class SyncManager {
   private isProcessing = false;
   private syncId = 0;
   private floor = 0;
+  // Set when a catch-up read skipped a row it could not decrypt. While set, the floor is
+  // pinned below that row, no snapshot is authored and no local-only diff is broadcast.
+  // Cleared by the next miss-free catch-up read.
+  private hydrationIncomplete = false;
+  // Announced write format for the current room; every outbound seal goes through
+  // encryptForWire so a ratchet applies to the next batch without any other change.
+  private wireFormat: WireFormat = 'ecies';
+  private lastReportedWriteFormat: WireFormat | null = null;
+
+  getWireFormat(): WireFormat {
+    return this.wireFormat;
+  }
+
+  private encryptForWire(bytes: Uint8Array): string {
+    const sealed = cryptoUtils.encryptData(
+      this.roomKeyBytes!,
+      bytes,
+      this.wireFormat,
+    );
+    if (this.lastReportedWriteFormat !== this.wireFormat) {
+      this.lastReportedWriteFormat = this.wireFormat;
+      this.emitWireTelemetry({
+        type: 'write',
+        format: this.wireFormat,
+      });
+    }
+    return sealed;
+  }
+
+  private emitWireTelemetry(event: WireTelemetryEvent): void {
+    try {
+      this.callbacksRef?.onWireTelemetry?.(event);
+    } catch (err) {
+      console.error('SyncManager: onWireTelemetry callback threw', err);
+    }
+  }
+
+  private setWireFormat(format: WireFormat): void {
+    if (format === this.wireFormat) return;
+    this.wireFormat = format;
+    try {
+      this.callbacksRef?.onWireFormat?.(format);
+    } catch (err) {
+      console.error('SyncManager: onWireFormat callback threw', err);
+    }
+  }
+
   private updatesSinceSnapshot = 0;
   private isAuthoringSnapshot = false;
   private readonly SNAPSHOT_THRESHOLD = 100;
-  private tailCompactTimer: ReturnType<typeof setTimeout> | null = null;
+  private deferredSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   // Gap catch-up (rotation room-migration skew / missed broadcasts): see runGapCatchUp.
   private gapCatchUpTimer: ReturnType<typeof setTimeout> | null = null;
   private gapCatchUpInFlight = false;
@@ -279,7 +333,16 @@ export class SyncManager {
       onRotationPrepare: config.onRotationPrepare,
       actorHandle: config.actorHandle,
       joinOnly: config.joinOnly,
-      onHandshakeData: this.callbacksRef?.onHandshakeData,
+      onHandshakeData: (payload) => {
+        if (payload.data?.statusCode === 200) {
+          this.setWireFormat(payload.wireFormat);
+          this.emitWireTelemetry({
+            type: 'announced',
+            format: payload.wireFormat,
+          });
+        }
+        this.callbacksRef?.onHandshakeData?.(payload);
+      },
       roomInfo: config.roomInfo,
       onEpochAvailable: async (data: { epoch: number; payload: string }) => {
         try {
@@ -490,6 +553,7 @@ export class SyncManager {
           this._awareness,
           this.socketClient,
           this.roomKey,
+          () => this.wireFormat,
         );
         this._awareness.on('update', handler);
         this._awarenessUpdateHandler = handler;
@@ -653,10 +717,7 @@ export class SyncManager {
 
     const updates = this.updateQueue;
     this.updateQueue = [];
-    const encrypted = cryptoUtils.encryptData(
-      this.roomKeyBytes!,
-      Y.mergeUpdates(updates),
-    );
+    const encrypted = this.encryptForWire(Y.mergeUpdates(updates));
     try {
       // Bounded by the socket client's own emit timeout; we await the ACK so a graceful
       // unmount/route-change does not drop the last batch (the pre-existing bug).
@@ -688,7 +749,7 @@ export class SyncManager {
     this.updateQueue = [];
 
     const merged = Y.mergeUpdates(updates);
-    const encrypted = cryptoUtils.encryptData(this.roomKeyBytes!, merged);
+    const encrypted = this.encryptForWire(merged);
 
     void this.sendUpdateBatchAttempt(updates, encrypted);
   }
@@ -731,10 +792,7 @@ export class SyncManager {
             // that completed elsewhere (e.g. a joined healingPromise) while this send was
             // in flight; resending it would land old-key ciphertext in the new session's
             // durable log, undecryptable to fresh joiners.
-            const freshEncrypted = cryptoUtils.encryptData(
-              this.roomKeyBytes!,
-              Y.mergeUpdates(updates),
-            );
+            const freshEncrypted = this.encryptForWire(Y.mergeUpdates(updates));
             await this.sendUpdateBatchAttempt(updates, freshEncrypted);
             return;
           }
@@ -901,7 +959,7 @@ export class SyncManager {
   buildPendingBeaconPayload(): string | null {
     if (this.updateQueue.length === 0 || !this.roomKeyBytes) return null;
     const merged = Y.mergeUpdates(this.updateQueue);
-    return cryptoUtils.encryptData(this.roomKeyBytes, merged);
+    return this.encryptForWire(merged);
   }
 
   fireBeacon(): void {
@@ -1063,6 +1121,22 @@ export class SyncManager {
             }
           },
           onHandShakeError: (e, statusCode, errorCode) => {
+            // The room is locked to a wire format this bundle predates. Terminal for every
+            // role: no reconnect, the host prompts a reload.
+            if (errorCode === ServerErrorCode.WIRE_FORMAT_UNSUPPORTED) {
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+              this.emitWireTelemetry({ type: 'refused' });
+              this.socketClient?.disconnect();
+              this.resetInternalState();
+              this.send({
+                type: 'SESSION_TERMINATED',
+                reason: 'WIRE_FORMAT_UNSUPPORTED',
+              });
+              return;
+            }
             // Join-only (workspace member) connections degrade quietly: every handshake
             // rejection is a terminal no-session outcome, never an error surface. The
             // distinct ROOM_NOT_ESTABLISHED reason lets the host render read-only until
@@ -1179,6 +1253,9 @@ export class SyncManager {
           onTitleUpdate: (encryptedTitle) => {
             this.callbacksRef?.onTitleUpdate?.(encryptedTitle);
           },
+          onWireFormat: (data) => {
+            this.setWireFormat(data.wireFormat);
+          },
           onSessionTerminated: async () => {
             // A live-socket push of this event during a NORMAL rotation is reachable two
             // ways: a peer that PREPARE'd, blipped, and re-authed into the still-draining
@@ -1261,16 +1338,17 @@ export class SyncManager {
     }
   }
 
-  private decodeInto(target: Uint8Array[], encrypted: string): void {
+  private decodeInto(target: Uint8Array[], encrypted: string): boolean {
     const decrypted = this.tryDecrypt(encrypted);
     if (!decrypted) {
       // Undecryptable rows (e.g. a guessed-documentId injection, or a genuine rotation
-      // miss) are skipped, not fatal.
+      // miss) are skipped, not fatal. The caller pins the floor below this row.
       console.warn('SyncManager: failed to decrypt hydration row, skipping');
       void this.onDecryptMiss();
-      return;
+      return false;
     }
     target.push(decrypted);
+    return true;
   }
 
   // Pull the server's snapshot + seq-tail from the current floor, apply it to the Y.Doc,
@@ -1288,47 +1366,98 @@ export class SyncManager {
       (this.isReady && this.syncId === syncId);
     let sinceSeq: number | undefined = this.floor > 0 ? this.floor : undefined;
     let appliedTail = false;
+    // A miss pins the floor for the rest of this walk only. Every walk starts clean and
+    // re-reads from the pinned floor, so a clean walk proves the row decrypts now and
+    // clears hydrationIncomplete at the end.
+    let walkIncomplete = false;
 
-    for (;;) {
-      const res = await this.socketClient?.fetchHydrationRange(sinceSeq);
-      if (!syncStillCurrent()) return appliedTail;
-      const d = res?.data;
-      if (!d) return appliedTail;
-
-      const updates: Uint8Array[] = [];
-      const pageSeqs: number[] = [];
-      for (const row of d.history) {
-        this.decodeInto(updates, row.data);
-        if (row.updateType !== 'snapshot' && typeof row.seq === 'number') {
-          pageSeqs.push(row.seq);
+    try {
+      for (;;) {
+        const res = await this.socketClient?.fetchHydrationRange(sinceSeq);
+        if (!syncStillCurrent()) {
+          if (walkIncomplete) {
+            this.hydrationIncomplete = true;
+            if (walk) walk.incomplete = true;
+          }
+          return appliedTail;
         }
-      }
-      if (walk) {
-        walk.pages += 1;
-        walk.tailRows += pageSeqs.length;
-      }
-      if (updates.length) {
-        const pageMerged = Y.mergeUpdates(updates);
-        Y.applyUpdate(this.ydoc, pageMerged, 'self');
-        appliedTail = appliedTail || pageSeqs.length > 0;
+        const d = res?.data;
+        if (!d) {
+          if (walkIncomplete) {
+            this.hydrationIncomplete = true;
+            if (walk) walk.incomplete = true;
+          }
+          return appliedTail;
+        }
+
+        const updates: Uint8Array[] = [];
+        const rowsForFloor: Array<{
+          seq: number | null;
+          isTail: boolean;
+          decrypted: boolean;
+        }> = [];
+        let snapshotDecrypted = true;
+        for (const row of d.history) {
+          const decrypted = this.decodeInto(updates, row.data);
+          const isTail = row.updateType !== 'snapshot';
+          if (!isTail && !decrypted) snapshotDecrypted = false;
+          rowsForFloor.push({
+            seq: typeof row.seq === 'number' ? row.seq : null,
+            isTail,
+            decrypted,
+          });
+          if (walk && decrypted) {
+            if (isXChaChaCipher(row.data)) walk.xchachaRows += 1;
+            else walk.eciesRows += 1;
+          }
+        }
+        const eligible = floorEligibleSeqs(rowsForFloor, walkIncomplete);
+        walkIncomplete = eligible.incomplete;
+        const pageSeqs = eligible.seqs;
         if (walk) {
-          walk.merged = walk.merged
-            ? Y.mergeUpdates([walk.merged, pageMerged])
-            : pageMerged;
+          walk.pages += 1;
+          walk.tailRows += rowsForFloor.filter((r) => r.isTail).length;
+          if (d.snapshot && walk.snapshotFormat === null) {
+            walk.snapshotFormat = isXChaChaCipher(d.snapshot.data)
+              ? 'xchacha'
+              : 'ecies';
+          }
         }
-      }
+        if (updates.length) {
+          const pageMerged = Y.mergeUpdates(updates);
+          Y.applyUpdate(this.ydoc, pageMerged, 'self');
+          appliedTail =
+            appliedTail || rowsForFloor.some((r) => r.isTail && r.seq !== null);
+          if (walk) {
+            walk.merged = walk.merged
+              ? Y.mergeUpdates([walk.merged, pageMerged])
+              : pageMerged;
+          }
+        }
 
-      const snapFloor =
-        d.snapshot && typeof d.snapshot.floorSeq === 'number'
-          ? d.snapshot.floorSeq
-          : 0;
-      this.floor = advanceFloor(Math.max(this.floor, snapFloor), pageSeqs);
+        const snapFloor =
+          d.snapshot &&
+          typeof d.snapshot.floorSeq === 'number' &&
+          snapshotDecrypted &&
+          !walkIncomplete
+            ? d.snapshot.floorSeq
+            : 0;
+        this.floor = advanceFloor(Math.max(this.floor, snapFloor), pageSeqs);
 
-      if (d.hasMore && typeof d.nextSeq === 'number') {
-        sinceSeq = d.nextSeq;
-        continue;
+        if (d.hasMore && typeof d.nextSeq === 'number') {
+          sinceSeq = d.nextSeq;
+          continue;
+        }
+        this.hydrationIncomplete = walkIncomplete;
+        if (walk) walk.incomplete = walkIncomplete;
+        return appliedTail;
       }
-      return appliedTail;
+    } catch (err) {
+      if (walkIncomplete) {
+        this.hydrationIncomplete = true;
+        if (walk) walk.incomplete = true;
+      }
+      throw err;
     }
   }
 
@@ -1340,6 +1469,7 @@ export class SyncManager {
   private async authorSnapshot(
     publishedMarker: string | null,
     syncId: number,
+    opts?: { allowEmptyFloor?: boolean },
   ): Promise<void> {
     if (this.joinOnly || !this.isConnected) return;
     if (this.isAuthoringSnapshot) return;
@@ -1349,12 +1479,20 @@ export class SyncManager {
         this.isCurrentSyncAttempt(syncId) || this.isReady;
 
       await this.catchUpFloor(syncId);
-      if (!syncStillCurrent() || this.floor <= 0) return;
+      // Never stamp a floor above content this client never applied.
+      if (this.hydrationIncomplete) {
+        // Cannot author over a row this client could not read; retry at the normal cadence
+        // rather than on every send.
+        this.updatesSinceSnapshot = 0;
+        return;
+      }
+      if (!syncStillCurrent()) return;
+      // A floor of 0 after a clean walk is an empty log or a seeded snapshot-only log
+      // (floorSeq 0, no tail). The cadence path never authors there; the wire-format
+      // re-author must, or a seeded document keeps its ECIES snapshot until its first edit.
+      if (this.floor <= 0 && !opts?.allowEmptyFloor) return;
 
-      const data = cryptoUtils.encryptData(
-        this.roomKeyBytes!,
-        Y.encodeStateAsUpdate(this.ydoc),
-      );
+      const data = this.encryptForWire(Y.encodeStateAsUpdate(this.ydoc));
       const res = await this.socketClient?.sendSnapshot({
         data,
         floorSeq: this.floor,
@@ -1376,7 +1514,15 @@ export class SyncManager {
     // local edits ride the update queue there, so no post-sync broadcast is needed.
     const fullWalk = this.floor === 0;
     const hadLocalState = this.ydoc.store.clients.size > 0;
-    const walk: HydrationWalk = { merged: null, pages: 0, tailRows: 0 };
+    const walk: HydrationWalk = {
+      merged: null,
+      pages: 0,
+      tailRows: 0,
+      incomplete: false,
+      snapshotFormat: null,
+      eciesRows: 0,
+      xchachaRows: 0,
+    };
 
     await this.withRetry(async () => {
       const appliedTail = await this.catchUpFloor(syncId, walk);
@@ -1386,7 +1532,14 @@ export class SyncManager {
         this.send({ type: 'SET_UNMERGED_UPDATES', hasUpdates: true });
       }
 
+      // The diff is taken against the state vector of what was merged, so it carries the
+      // client's own unmerged content; ops a missed row also held are re-sent idempotently.
+      // Suppressing it would strand offline-authored content while the floor is pinned.
       if (!fullWalk || !hadLocalState) return;
+      // With nothing merged at all (no page ever read, or an unreadable snapshot and no
+      // readable row) the diff would be the whole local doc; that is the full-state row
+      // per join, not a diff. An empty log still seeds: pages is 1 and incomplete false.
+      if (walk.pages === 0 || (walk.incomplete && walk.merged === null)) return;
       // Broadcast ONLY what the log provably lacks (e.g. offline/IndexedDB edits, tab
       // metadata minted before connect) — never the full state: a full-state row per join
       // grew the durable log by one document copy per visit.
@@ -1396,28 +1549,67 @@ export class SyncManager {
       await this.broadcastLocalContents(fromUint8Array(diff), syncId);
     }, 'hydrate');
 
-    this.maybeCompactTail(walk);
+    // Only a completed first walk describes the log: a walk that never read a page (the
+    // session terminated during connect) or a reconnect walk (no snapshot is served above
+    // the floor) would report an empty log.
+    if (fullWalk && walk.pages > 0 && syncStillCurrent()) {
+      this.emitWireTelemetry({
+        type: 'hydrate',
+        eciesRows: walk.eciesRows,
+        xchachaRows: walk.xchachaRows,
+        snapshotFormat: walk.snapshotFormat,
+        incomplete: walk.incomplete,
+      });
+    }
+    // A room locked to XChaCha whose newest snapshot is still ECIES: author one so the
+    // live hydration path stops depending on ECIES rows. Once per open, never on a
+    // reconnect walk (no snapshot is served above a pinned floor), never while incomplete.
+    // Deferred with the compaction jitter so simultaneous joiners do not all write the
+    // same full-state snapshot in the same second; a compaction authors a snapshot of its
+    // own, which converts the format as a side effect, so a document needing both gets
+    // one write.
+    const reauthor =
+      fullWalk &&
+      this.wireFormat === 'xchacha' &&
+      walk.snapshotFormat === 'ecies' &&
+      !walk.incomplete &&
+      !this.joinOnly &&
+      syncStillCurrent();
+    if (!this.maybeCompactTail(walk) && reauthor) {
+      this.scheduleDeferredSnapshot('wire-format snapshot re-author', {
+        allowEmptyFloor: true,
+      });
+    }
   }
 
   // A tail that took multiple pages (or hundreds of rows) makes every future open pay
-  // serial round-trips — whoever hydrated it and can write collapses it into one
-  // snapshot. Jitter spreads simultaneous joiners; a lost race is harmless (snapshots
-  // are keep-latest and floors monotone).
-  private maybeCompactTail(walk: HydrationWalk): void {
+  // serial round-trips: whoever hydrated it and can write collapses it into one
+  // snapshot. Returns whether a compaction was scheduled.
+  private maybeCompactTail(walk: HydrationWalk): boolean {
     if (
       walk.pages < this.TAIL_COMPACT_PAGES &&
       walk.tailRows < this.TAIL_COMPACT_ROWS
     ) {
-      return;
+      return false;
     }
-    if (this.joinOnly) return;
-    if (this.tailCompactTimer) clearTimeout(this.tailCompactTimer);
-    this.tailCompactTimer = setTimeout(
+    if (this.joinOnly) return false;
+    this.scheduleDeferredSnapshot('tail compaction');
+    return true;
+  }
+
+  // One timer for every deferred author: the jitter spreads simultaneous joiners, and a
+  // lost race is harmless (snapshots are keep-latest and floors monotone).
+  private scheduleDeferredSnapshot(
+    label: string,
+    opts?: { allowEmptyFloor?: boolean },
+  ): void {
+    if (this.deferredSnapshotTimer) clearTimeout(this.deferredSnapshotTimer);
+    this.deferredSnapshotTimer = setTimeout(
       () => {
-        this.tailCompactTimer = null;
+        this.deferredSnapshotTimer = null;
         if (!this.isConnected) return;
-        this.authorSnapshot(null, this.syncId).catch((err) => {
-          console.error('SyncManager: tail compaction failed', err);
+        this.authorSnapshot(null, this.syncId, opts).catch((err) => {
+          console.error(`SyncManager: ${label} failed`, err);
         });
       },
       1000 + Math.floor(Math.random() * 4000),
@@ -1432,6 +1624,7 @@ export class SyncManager {
         awareness,
         this.socketClient,
         this.roomKey,
+        () => this.wireFormat,
       );
       awareness.on('update', handler);
       this.socketClient.registerAwareness(awareness);
@@ -1461,10 +1654,7 @@ export class SyncManager {
 
     if (!unbroadcastedUpdate) return;
 
-    const updateToSend = cryptoUtils.encryptData(
-      this.roomKeyBytes!,
-      toUint8Array(unbroadcastedUpdate),
-    );
+    const updateToSend = this.encryptForWire(toUint8Array(unbroadcastedUpdate));
     if (!syncStillCurrent()) return;
 
     const response = await this.socketClient?.sendUpdate({
@@ -1537,7 +1727,7 @@ export class SyncManager {
     const nextUpdate = Y.mergeUpdates(this.updateQueue);
     // Re-encrypted in place on a 'current-key-ok' retry below — the plaintext (`nextUpdate`)
     // doesn't change across a retry, but the key it's encrypted under might.
-    let updateToSend = cryptoUtils.encryptData(this.roomKeyBytes!, nextUpdate);
+    let updateToSend = this.encryptForWire(nextUpdate);
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -1574,10 +1764,7 @@ export class SyncManager {
               // Re-encrypt first: `updateToSend` may predate a rekey that completed
               // elsewhere (e.g. a joined healingPromise) since this attempt started.
               this.staleAckRetries += 1;
-              updateToSend = cryptoUtils.encryptData(
-                this.roomKeyBytes!,
-                nextUpdate,
-              );
+              updateToSend = this.encryptForWire(nextUpdate);
               continue;
             }
             this.surfaceSessionTerminated('SESSION_TERMINATED');
@@ -1785,9 +1972,9 @@ export class SyncManager {
       clearTimeout(this.mirrorIdleTimer);
       this.mirrorIdleTimer = null;
     }
-    if (this.tailCompactTimer) {
-      clearTimeout(this.tailCompactTimer);
-      this.tailCompactTimer = null;
+    if (this.deferredSnapshotTimer) {
+      clearTimeout(this.deferredSnapshotTimer);
+      this.deferredSnapshotTimer = null;
     }
     if (this.gapCatchUpTimer) {
       clearTimeout(this.gapCatchUpTimer);
@@ -1803,6 +1990,9 @@ export class SyncManager {
     this.roomKeyBytes = null;
     this.isOwner = false;
     this.floor = 0;
+    this.hydrationIncomplete = false;
+    this.wireFormat = 'ecies';
+    this.lastReportedWriteFormat = null;
     this.updatesSinceSnapshot = 0;
     this.isAuthoringSnapshot = false;
     // Rotation state must not bleed into the next session on manager reuse — e.g. a

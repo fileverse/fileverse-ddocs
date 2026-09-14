@@ -42,11 +42,14 @@ export type {
   CollabError,
   CollabErrorCode,
   CollabStatus,
+  WireFormat,
+  WireTelemetryEvent,
 } from './package/sync-local/types';
 export {
   encryptForRoomKey,
   decryptForRoomKey,
 } from './package/sync-local/crypto/room-key';
+export { WIRE_TAG, isXChaChaCipher } from './package/sync-local/crypto';
 export {
   fetchSessionState,
   seedSession,

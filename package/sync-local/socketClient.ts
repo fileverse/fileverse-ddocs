@@ -10,6 +10,7 @@ import {
   SnapshotResponse,
   IAuthArgs,
   AckResponse,
+  WireFormat,
 } from './types';
 import {
   assignSessionColors,
@@ -60,13 +61,21 @@ interface ISocketClientConfig {
   onCutover?: (data: { roomId: string; epoch: number }) => void | Promise<void>;
   actorHandle?: string;
   joinOnly?: boolean;
-  onHandshakeData?: (response: { data: AckResponse; roomKey: string }) => void;
+  onHandshakeData?: (response: {
+    data: AckResponse;
+    roomKey: string;
+    wireFormat: WireFormat;
+  }) => void;
   roomInfo?: {
     documentTitle: string;
     portalAddress: string;
     commentKey: string;
   };
 }
+
+const toWireFormat = (value: unknown): WireFormat =>
+  value === 'xchacha' ? 'xchacha' : 'ecies';
+
 export class SocketClient {
   private _socketUrl: string;
   private _restBase: string;
@@ -109,6 +118,12 @@ export class SocketClient {
   private actorHandle?: string;
   private joinOnly?: boolean;
   private roomKey: string;
+  // What the server announced for this room. ECIES until an ack or ratchet says otherwise.
+  private wireFormat: WireFormat = 'ecies';
+
+  getWireFormat(): WireFormat {
+    return this.wireFormat;
+  }
   private roomInfo?: {
     documentTitle: string;
     portalAddress: string;
@@ -599,12 +614,17 @@ export class SocketClient {
       collaborationToken: token,
       sessionDid: this.collaborationKeyPair?.did(),
       documentId: this.roomId,
+      wireFormats: ['ecies', 'xchacha'],
     };
 
+    // roomInfo is sealed in the last announced format: on a first auth that is ECIES
+    // even if this ack ratchets the room. Readers accept both; the owner's next auth
+    // rewrites it.
     if (this.roomInfo)
       args.roomInfo = crypto.encryptData(
         toUint8Array(this.roomKey),
         new TextEncoder().encode(JSON.stringify(this.roomInfo)),
+        this.wireFormat,
       );
 
     if (this.ownerKeyPair) args.ownerToken = await this.getOwnerToken();
@@ -634,10 +654,18 @@ export class SocketClient {
 
     const response = await this._emitWithAck('/auth', args);
 
+    // A lock is permanent, so a socket that already learned xchacha (an earlier ack, or a
+    // live ratchet that landed between this socket's join and its ack) never steps back to
+    // ECIES on a later ack.
+    if (response.statusCode === 200 && this.wireFormat !== 'xchacha') {
+      this.wireFormat = toWireFormat(response.data?.wireFormat);
+    }
+
     // Always notify consumer with handshake data (for room info, link copying, etc.)
     this._onHandshakeData?.({
       data: response,
       roomKey: this.roomKey,
+      wireFormat: this.wireFormat,
     });
 
     return response;
@@ -781,6 +809,18 @@ export class SocketClient {
         },
       );
 
+      this._socket.on(
+        '/document/wire_format' as any,
+        (data: { roomId: string; wireFormat: WireFormat }) => {
+          if (data?.roomId !== this.roomId) return;
+          this.wireFormat = toWireFormat(data.wireFormat);
+          config.onWireFormat?.({
+            roomId: data.roomId,
+            wireFormat: this.wireFormat,
+          });
+        },
+      );
+
       this._socket.on('/room/membership_change', (data) => {
         this._fetchRoomMembers()
           .then(() => this._recomputePresence())
@@ -906,6 +946,7 @@ export class SocketClient {
               const encryptedUpdate = crypto.encryptData(
                 toUint8Array(key),
                 update,
+                this.wireFormat,
               );
               this.broadcastAwareness(encryptedUpdate);
             }

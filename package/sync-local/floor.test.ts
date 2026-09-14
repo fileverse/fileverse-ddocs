@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import {
   advanceFloor,
   computeLocalOnlyUpdate,
+  floorEligibleSeqs,
   shouldAuthorSnapshot,
 } from './floor';
 
@@ -123,5 +124,40 @@ describe('shouldAuthorSnapshot', () => {
         threshold: 100,
       }),
     ).toBe(false);
+  });
+});
+
+describe('floorEligibleSeqs', () => {
+  const ok = (seq: number) => ({ seq, isTail: true, decrypted: true });
+  const miss = (seq: number) => ({ seq, isTail: true, decrypted: false });
+  const snapshot = (decrypted: boolean) => ({
+    seq: null,
+    isTail: false,
+    decrypted,
+  });
+
+  it('returns every tail seq when everything decrypts', () => {
+    const r = floorEligibleSeqs([snapshot(true), ok(3), ok(4), ok(6)], false);
+    expect(r).toEqual({ seqs: [3, 4, 6], incomplete: false });
+  });
+
+  it('pins the floor below the first miss and flags incomplete', () => {
+    const r = floorEligibleSeqs([ok(3), ok(4), miss(5), ok(6)], false);
+    expect(r).toEqual({ seqs: [3, 4], incomplete: true });
+  });
+
+  it('stays pinned on later pages once incomplete', () => {
+    const r = floorEligibleSeqs([ok(9), ok(10)], true);
+    expect(r).toEqual({ seqs: [], incomplete: true });
+  });
+
+  it('a snapshot miss pins everything on that page', () => {
+    const r = floorEligibleSeqs([snapshot(false), ok(3), ok(4)], false);
+    expect(r).toEqual({ seqs: [], incomplete: true });
+  });
+
+  it('a decrypted snapshot contributes no seq of its own', () => {
+    const r = floorEligibleSeqs([snapshot(true)], false);
+    expect(r).toEqual({ seqs: [], incomplete: false });
   });
 });
