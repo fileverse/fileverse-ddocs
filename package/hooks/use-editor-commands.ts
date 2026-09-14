@@ -182,51 +182,44 @@ export const useEditorCommands = (
   // readEffectiveSpacing below reads getComputedStyle — a forced style recalc —
   // and this hook renders with the consumer's menu bar, which has no memo
   // boundary. Same reasoning as the module-scope selectors above.
-  const selector = useCallback(
-    ({ editor: e }: { editor: Editor | null }) => {
-      if (!e || e.isDestroyed) return null;
-      // Which half of the add/remove toggle each edge should offer. Read here
-      // rather than at dispatch time so the menu LABEL flips as soon as the
-      // spacing changes — writing a margin moves nothing else in this snapshot.
-      const spacing = readEffectiveSpacing(e);
-      return {
-        canUndo: e.can().undo(),
-        canRedo: e.can().redo(),
-        hasSelection: !e.state.selection.empty,
-        bold: e.isActive('bold'),
-        italic: e.isActive('italic'),
-        underline: e.isActive('underline'),
-        strike: e.isActive('strike'),
-        superscript: e.isActive('superscript'),
-        subscript: e.isActive('subscript'),
-        code: e.isActive('code'),
-        codeBlock: e.isActive('codeBlock'),
-        quote: e.isActive('blockquote'),
-        link: e.isActive('link'),
-        direction: e.isActive('paragraph', { dir: 'rtl' })
-          ? 'rtl'
-          : e.isActive('paragraph', { dir: 'ltr' })
-            ? 'ltr'
-            : null,
-        bulletList: e.isActive('bulletList'),
-        orderedList: e.isActive('orderedList'),
-        taskList: e.isActive('taskList'),
-        inTable: e.isActive('table'),
-        canMergeCells: e.can().mergeCells(),
-        heading: currentHeading(e),
-        align: currentAlign(e),
-        lineHeight: getCurrentLineHeight(e, readLineHeight(e)),
-        spaceBefore: spacingToggleAction(spacing.spaceBefore),
-        spaceAfter: spacingToggleAction(spacing.spaceAfter),
-        fontFamily: (e.getAttributes('textStyle').fontFamily as string) ?? null,
-        canInsertComment:
-          inlineCommentAvailable &&
-          Boolean(handleInlineComment) &&
-          hasTextTargetAtSelection(e),
-      };
-    },
-    [handleInlineComment, inlineCommentAvailable],
-  );
+  const selector = useCallback(({ editor: e }: { editor: Editor | null }) => {
+    if (!e || e.isDestroyed) return null;
+    // Which half of the add/remove toggle each edge should offer. Read here
+    // rather than at dispatch time so the menu LABEL flips as soon as the
+    // spacing changes — writing a margin moves nothing else in this snapshot.
+    const spacing = readEffectiveSpacing(e);
+    return {
+      canUndo: e.can().undo(),
+      canRedo: e.can().redo(),
+      hasSelection: !e.state.selection.empty,
+      bold: e.isActive('bold'),
+      italic: e.isActive('italic'),
+      underline: e.isActive('underline'),
+      strike: e.isActive('strike'),
+      superscript: e.isActive('superscript'),
+      subscript: e.isActive('subscript'),
+      code: e.isActive('code'),
+      codeBlock: e.isActive('codeBlock'),
+      quote: e.isActive('blockquote'),
+      link: e.isActive('link'),
+      direction: e.isActive('paragraph', { dir: 'rtl' })
+        ? 'rtl'
+        : e.isActive('paragraph', { dir: 'ltr' })
+          ? 'ltr'
+          : null,
+      bulletList: e.isActive('bulletList'),
+      orderedList: e.isActive('orderedList'),
+      taskList: e.isActive('taskList'),
+      inTable: e.isActive('table'),
+      canMergeCells: e.can().mergeCells(),
+      heading: currentHeading(e),
+      align: currentAlign(e),
+      lineHeight: getCurrentLineHeight(e, readLineHeight(e)),
+      spaceBefore: spacingToggleAction(spacing.spaceBefore),
+      spaceAfter: spacingToggleAction(spacing.spaceAfter),
+      fontFamily: (e.getAttributes('textStyle').fontFamily as string) ?? null,
+    };
+  }, []);
 
   const state = useEditorState({ editor, selector });
 
@@ -316,13 +309,25 @@ export const useEditorCommands = (
         },
         { isActive: state.link },
       ),
-      'insert.comment': cmd(
-        () => {
+      'insert.comment': {
+        run: () => {
           if (!selectWordAtCursor(editor)) return;
           handleInlineComment?.();
         },
-        { isEnabled: state.canInsertComment },
-      ),
+        // Read at render time, not snapshotted: hasTextTargetAtSelection
+        // flips on every space typed (no word under a cursor that follows
+        // whitespace), and as a snapshot field that re-rendered every menu
+        // consumer on roughly a third of keystrokes in a large document.
+        // Menus render when they open, which is when the value is needed;
+        // run() re-checks via selectWordAtCursor regardless.
+        get isEnabled() {
+          return (
+            inlineCommentAvailable &&
+            Boolean(handleInlineComment) &&
+            hasTextTargetAtSelection(editor)
+          );
+        },
+      },
 
       // --- format: marks ---
       'format.bold': cmd(() => editor.chain().focus().toggleBold().run(), {
@@ -472,5 +477,12 @@ export const useEditorCommands = (
         },
       ),
     };
-  }, [editor, state, onError, ipfsImageUploadFn, handleInlineComment]);
+  }, [
+    editor,
+    state,
+    onError,
+    ipfsImageUploadFn,
+    handleInlineComment,
+    inlineCommentAvailable,
+  ]);
 };
