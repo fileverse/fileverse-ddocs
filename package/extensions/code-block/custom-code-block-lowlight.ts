@@ -4,6 +4,63 @@ import CodeBlockLowlight, {
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import CodeBlockNodeView from './components/code-block-node-view';
 import { TextSelection } from 'prosemirror-state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, type Transaction } from '@tiptap/pm/state';
+
+const rangeTouchesNodeType = (
+  doc: ProseMirrorNode,
+  from: number,
+  to: number,
+  typeName: string,
+) => {
+  const start = Math.max(0, Math.min(from, doc.content.size));
+  const end = Math.max(start, Math.min(to, doc.content.size));
+
+  const endpointInside = (pos: number) => {
+    const $pos = doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === typeName) return true;
+    }
+    return false;
+  };
+
+  if (endpointInside(start) || endpointInside(end)) return true;
+
+  let touches = false;
+  doc.nodesBetween(start, end, (node) => {
+    if (node.type.name === typeName) {
+      touches = true;
+      return false;
+    }
+    return !touches;
+  });
+  return touches;
+};
+
+/**
+ * True when a transaction can change the highlighting of some code block:
+ * a changed range starts or ends inside one, or contains one (insert,
+ * delete, paste, remote sync). Typing in a paragraph elsewhere is false.
+ */
+export const transactionCouldTouchCodeBlock = (
+  transaction: Transaction,
+  typeName: string,
+) => {
+  if (!transaction.docChanged) return false;
+
+  let touches = false;
+  transaction.mapping.maps.forEach((map, index) => {
+    if (touches) return;
+    const beforeDoc = transaction.docs[index] ?? transaction.before;
+    const afterDoc = transaction.docs[index + 1] ?? transaction.doc;
+    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
+      touches ||=
+        rangeTouchesNodeType(beforeDoc, oldStart, oldEnd, typeName) ||
+        rangeTouchesNodeType(afterDoc, newStart, newEnd, typeName);
+    });
+  });
+  return touches;
+};
 
 export interface MermaidLimits {
   maxSourceBytes?: number;
@@ -26,6 +83,35 @@ export const CustomCodeBlockLowlight =
     },
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockNodeView);
+    },
+    addProseMirrorPlugins() {
+      const plugins = this.parent?.() ?? [];
+      const name = this.name;
+
+      // The upstream lowlight plugin's apply() runs findChildren over the
+      // WHOLE document twice on every transaction before it decides whether
+      // anything needs re-highlighting. On a large document that is a full
+      // tree walk per keystroke for text typed nowhere near a code block.
+      // Keep its behaviour, but only enter it when the transaction's changed
+      // ranges can reach a code block; otherwise map the existing
+      // decorations forward, which is exactly what it does when it declines.
+      return plugins.map((plugin) => {
+        const apply = plugin.spec.state?.apply;
+        if (!apply) return plugin;
+
+        return new Plugin({
+          ...plugin.spec,
+          state: {
+            ...plugin.spec.state!,
+            apply(transaction, value, oldState, newState) {
+              if (!transactionCouldTouchCodeBlock(transaction, name)) {
+                return value.map(transaction.mapping, transaction.doc);
+              }
+              return apply.call(this, transaction, value, oldState, newState);
+            },
+          },
+        });
+      });
     },
     addAttributes() {
       return {
