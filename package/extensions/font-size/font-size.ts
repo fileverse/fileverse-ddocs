@@ -65,6 +65,8 @@ export const FontSize = Extension.create({
   },
 
   addCommands() {
+    // Only a cursor needs these carried over. Over a range setMark merges each
+    // run's own attrs; spreading one run's attrs would overwrite every colour.
     const getExistingTextStyleAttrs = (editor: typeof this.editor) => {
       const attrs = editor.getAttributes('textStyle');
       // Read paragraph node directly — storedMarks can be cleared by blur,
@@ -99,7 +101,10 @@ export const FontSize = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...existing, fontSize })
+            .setMark(
+              'textStyle',
+              selection.empty ? { ...existing, fontSize } : { fontSize },
+            )
             .run();
         },
       unsetFontSize:
@@ -117,7 +122,12 @@ export const FontSize = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...existing, fontSize: null })
+            .setMark(
+              'textStyle',
+              selection.empty
+                ? { ...existing, fontSize: null }
+                : { fontSize: null },
+            )
             .removeEmptyTextStyle()
             .run();
         },
@@ -142,7 +152,10 @@ export const FontSize = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...attrs, fontSize })
+            .setMark(
+              'textStyle',
+              selection.empty ? { ...attrs, fontSize } : { fontSize },
+            )
             .run();
         },
       decreaseFontSize:
@@ -168,7 +181,10 @@ export const FontSize = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...attrs, fontSize: `${nextSize}px` })
+            .setMark(
+              'textStyle',
+              selection.empty ? { ...attrs, fontSize } : { fontSize },
+            )
             .run();
         },
     };

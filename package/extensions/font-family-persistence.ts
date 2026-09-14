@@ -13,6 +13,8 @@ export const FontFamilyPersistence = Extension.create({
   name: 'fontFamilyPersistence',
 
   addCommands() {
+    // Only a cursor needs these carried over. Over a range setMark merges each
+    // run's own attrs; spreading one run's attrs would overwrite every colour.
     const getExistingTextStyleAttrs = (editor: typeof this.editor) => {
       const attrs = editor.getAttributes('textStyle');
       // Read paragraph node directly — storedMarks can be cleared by blur,
@@ -47,7 +49,10 @@ export const FontFamilyPersistence = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...existing, fontFamily })
+            .setMark(
+              'textStyle',
+              selection.empty ? { ...existing, fontFamily } : { fontFamily },
+            )
             .run();
         },
       unsetFontFamily:
@@ -65,7 +70,12 @@ export const FontFamilyPersistence = Extension.create({
             });
           }
           return chain()
-            .setMark('textStyle', { ...existing, fontFamily: null })
+            .setMark(
+              'textStyle',
+              selection.empty
+                ? { ...existing, fontFamily: null }
+                : { fontFamily: null },
+            )
             .removeEmptyTextStyle()
             .run();
         },
