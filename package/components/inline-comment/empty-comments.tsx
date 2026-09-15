@@ -29,42 +29,36 @@ const EmptyComments = ({
       }
     };
 
-    // Create a MutationObserver to detect changes to the document's data-theme attribute
-    // This helps catch theme changes made by ThemeToggle in the same tab
+    // Same-tab changes: consumers apply the theme to <html> as a class
+    // (ddocs.new's ThemeProvider, the ui ThemeProvider) or a data-theme
+    // attribute, and write localStorage in the same effect, so a change to
+    // either attribute is the signal to re-read localStorage. This replaces
+    // a setInterval poll that ran for the lifetime of the component.
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (
+      const themeAttributeChanged = mutations.some(
+        (mutation) =>
           mutation.type === 'attributes' &&
-          mutation.attributeName === 'data-theme' &&
-          mutation.target === document.documentElement
-        ) {
-          // When document theme attribute changes, check localStorage again
-          setTheme(getThemeFromLS());
-        }
-      });
+          mutation.target === document.documentElement &&
+          (mutation.attributeName === 'class' ||
+            mutation.attributeName === 'data-theme'),
+      );
+      if (themeAttributeChanged) {
+        setTheme(getThemeFromLS());
+      }
     });
 
-    // Start observing the document element for data-theme attribute changes
-    observer.observe(document.documentElement, { attributes: true });
-
-    // Fallback poll for theme changes the observers above miss. This used to
-    // run at 0ms, a continuous ~4ms localStorage read for the lifetime of the
-    // component; once a second is plenty for a fallback.
-    const intervalId = setInterval(() => {
-      const currentTheme = getThemeFromLS();
-      if (currentTheme !== theme) {
-        setTheme(currentTheme);
-      }
-    }, 1000);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
 
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       observer.disconnect();
-      clearInterval(intervalId);
     };
-  }, [theme]);
+  }, []);
 
   return (
     <div className="flex flex-col items-center justify-center h-full color-text-default">

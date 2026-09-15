@@ -4,18 +4,8 @@ import CodeBlockLowlight, {
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import CodeBlockNodeView from './components/code-block-node-view';
 import { TextSelection } from 'prosemirror-state';
-import { Plugin, type Transaction } from '@tiptap/pm/state';
+import { Plugin } from '@tiptap/pm/state';
 import { transactionTouchesNodeType } from '../../utils/transaction-range';
-
-/**
- * True when a transaction can change the highlighting of some code block:
- * a changed range starts or ends inside one, or contains one (insert,
- * delete, paste, remote sync). Typing in a paragraph elsewhere is false.
- */
-export const transactionCouldTouchCodeBlock = (
-  transaction: Transaction,
-  typeName: string,
-) => transactionTouchesNodeType(transaction, typeName);
 
 export interface MermaidLimits {
   maxSourceBytes?: number;
@@ -50,16 +40,24 @@ export const CustomCodeBlockLowlight =
       // Keep its behaviour, but only enter it when the transaction's changed
       // ranges can reach a code block; otherwise map the existing
       // decorations forward, which is exactly what it does when it declines.
+      //
+      // Only the lowlight plugin carries `state` (the parent CodeBlock's
+      // paste handler plugin has none). Spreading its spec keeps the same
+      // PluginKey, which is what lets the upstream `props.decorations`
+      // closure (`lowlightPlugin.getState(state)`) resolve to this wrapper's
+      // state. Typing INSIDE a code block still pays the upstream scan; an
+      // incremental re-highlight is a separate change.
       return plugins.map((plugin) => {
-        const apply = plugin.spec.state?.apply;
-        if (!apply) return plugin;
+        const state = plugin.spec.state;
+        if (!state?.apply) return plugin;
+        const apply = state.apply;
 
         return new Plugin({
           ...plugin.spec,
           state: {
-            ...plugin.spec.state!,
+            ...state,
             apply(transaction, value, oldState, newState) {
-              if (!transactionCouldTouchCodeBlock(transaction, name)) {
+              if (!transactionTouchesNodeType(transaction, name)) {
                 return value.map(transaction.mapping, transaction.doc);
               }
               return apply.call(this, transaction, value, oldState, newState);

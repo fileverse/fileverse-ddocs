@@ -78,7 +78,7 @@ import {
   transactionCouldTouchHeading,
 } from '../extensions/table-of-contents';
 import { useTabEditorCache } from './use-tab-editor-cache';
-import { transactionTouchesNodeType } from '../utils/transaction-range';
+import { transactionContainedNodeTypes } from '../utils/transaction-range';
 
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
@@ -107,11 +107,39 @@ const usercolors = [
 // iframe. At ~60k words that is ~70ms of main-thread work 500ms after every
 // typing pause, right where the next keystroke lands. The footer shows the
 // value as "~N", so above this size a measurement is reused, scaled by the
-// change in character count, until the text drifts by a few percent, a page
-// break is touched, or a minute passes. Smaller documents stay exact.
+// change in character count, until the text drifts by a few percent, an
+// edit touches a block that changes height without changing the character
+// count, or a minute passes. Smaller documents stay exact.
 const PAGE_COUNT_EXACT_MAX_CHARACTERS = 40_000;
 const PAGE_COUNT_REMEASURE_DRIFT = 0.02;
+// Catches what neither guard can see: attribute-only changes such as line
+// height, spacing or heading level, and image loads that change a block's
+// height after the fact.
 const PAGE_COUNT_REMEASURE_INTERVAL_MS = 60_000;
+
+// Node types whose height tracks their character count closely enough for
+// the scaled estimate when inserted or removed whole. Inserting or deleting
+// anything else as a whole node (page break, image, table, code block,
+// heading, columns, embed, and any type added later) forces a real
+// measurement. Typing inside any block, including those, lists no whole
+// node and is covered by the character drift.
+const PAGE_COUNT_TEXT_LIKE_NODE_TYPES = new Set([
+  'text',
+  'paragraph',
+  'dBlock',
+  'listItem',
+  'bulletList',
+  'orderedList',
+  'taskList',
+  'taskItem',
+]);
+
+const transactionChangesPageStructure = (transaction: Transaction) => {
+  for (const typeName of transactionContainedNodeTypes(transaction)) {
+    if (!PAGE_COUNT_TEXT_LIKE_NODE_TYPES.has(typeName)) return true;
+  }
+  return false;
+};
 
 type PageCountMeasurement = {
   characters: number;
@@ -991,12 +1019,12 @@ export const useTabEditor = ({
   const pageCounterRef = useRef<ReturnType<typeof createPageCounter> | null>(
     null,
   );
-  const lastPageCountByTabRef = useRef<Record<string, number>>({});
   const lastPageMeasurementByTabRef = useRef<
     Record<string, PageCountMeasurement>
   >({});
-  // Bumped when an update touches a page break, which changes the page
-  // count without changing the character count.
+  // Bumped when an edit touches a block that moves pages without moving the
+  // character count, and on every tab activation (edits that reached an
+  // inactive tab's editor were not observed).
   const pageStructureVersionRef = useRef(0);
 
   useEffect(() => {
@@ -1048,11 +1076,20 @@ export const useTabEditor = ({
       setSelectedWordCount(words);
     };
 
-    const updateCounts = (event?: { transaction?: Transaction }) => {
-      if (
-        event?.transaction &&
-        transactionTouchesNodeType(event.transaction, 'pageBreak')
-      ) {
+    const updateCounts = (event?: {
+      transaction?: Transaction;
+      appendedTransactions?: Transaction[];
+    }) => {
+      if (event) {
+        const transactions = [
+          ...(event.transaction ? [event.transaction] : []),
+          ...(event.appendedTransactions ?? []),
+        ];
+        if (transactions.some(transactionChangesPageStructure)) {
+          pageStructureVersionRef.current += 1;
+        }
+      } else {
+        // Initial call for this (re)activated tab.
         pageStructureVersionRef.current += 1;
       }
 
@@ -1068,7 +1105,9 @@ export const useTabEditor = ({
           activeEditorRef.current === editor &&
           !editor.isDestroyed
         ) {
-          setCharacterCount?.(editor.storage.characterCount.characters() ?? 0);
+          // characters() walks the whole document text; read it once per tick.
+          const characters = editor.storage.characterCount.characters() ?? 0;
+          setCharacterCount?.(characters);
           setWordCount?.(editor.storage.characterCount.words() ?? 0);
 
           if (setPageCount) {
@@ -1078,7 +1117,6 @@ export const useTabEditor = ({
               return;
             }
 
-            const characters = editor.storage.characterCount.characters() ?? 0;
             const lastMeasurement =
               lastPageMeasurementByTabRef.current[activeTabId];
             if (
@@ -1090,19 +1128,21 @@ export const useTabEditor = ({
                 lastMeasurement.characters * PAGE_COUNT_REMEASURE_DRIFT &&
               Date.now() - lastMeasurement.at < PAGE_COUNT_REMEASURE_INTERVAL_MS
             ) {
+              // lastMeasurement.characters is above the exact-size threshold
+              // here (the drift check cannot pass against a zero), so no guard.
               const scaled = Math.max(
                 1,
                 Math.round(
                   (lastMeasurement.pageCount * characters) /
-                    Math.max(1, lastMeasurement.characters),
+                    lastMeasurement.characters,
                 ),
               );
-              lastPageCountByTabRef.current[activeTabId] = scaled;
               setPageCount(scaled);
               return;
             }
 
             const requestId = ++pageCountRequestIdRef.current;
+            const docAtSchedule = editor.state.doc;
             // Cancel the queued estimate before scheduling a new one, else
             // slower stale HTML can win after a newer edit.
             cancelIdleTask(pageCountIdleTaskRef.current);
@@ -1119,8 +1159,12 @@ export const useTabEditor = ({
               }
 
               const html = editor.getHTML();
+              // Reuse the count from the debounce tick unless the doc moved
+              // on between it and this idle slot.
               const measuredCharacters =
-                editor.storage.characterCount.characters() ?? 0;
+                editor.state.doc === docAtSchedule
+                  ? characters
+                  : (editor.storage.characterCount.characters() ?? 0);
               const measuredStructuralVersion = pageStructureVersionRef.current;
 
               pageCounter
@@ -1132,7 +1176,6 @@ export const useTabEditor = ({
                     editor &&
                     !editor.isDestroyed
                   ) {
-                    lastPageCountByTabRef.current[activeTabId] = pageCount;
                     lastPageMeasurementByTabRef.current[activeTabId] = {
                       characters: measuredCharacters,
                       pageCount,
@@ -1152,7 +1195,8 @@ export const useTabEditor = ({
                     // Reuse the last good count for this tab, else transient
                     // measurement failures collapse the footer back to 1.
                     setPageCount(
-                      lastPageCountByTabRef.current[activeTabId] ?? 1,
+                      lastPageMeasurementByTabRef.current[activeTabId]
+                        ?.pageCount ?? 1,
                     );
                   }
                 });
@@ -1996,8 +2040,7 @@ const useExtensionSyncWithCollaboration = ({
     if (session.isEns) {
       awareness.setLocalStateField('user', {
         name: session.username,
-        color:
-          awareness.getLocalState()?.user?.color || userColorRef.current,
+        color: awareness.getLocalState()?.user?.color || userColorRef.current,
         isEns: session.isEns,
       });
     }

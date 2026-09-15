@@ -70,12 +70,6 @@ export interface CommentStorage {
   activeCommentId: string | null;
 }
 
-declare module '@tiptap/core' {
-  interface Storage {
-    comment: CommentStorage;
-  }
-}
-
 export interface DraftCommentRange {
   draftId: string;
   from: number;
@@ -643,29 +637,44 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
           dispatch?.(tr);
           return true;
         },
-      setCommentActive: (commentId: string) => () => {
-        const previousActiveCommentId = this.storage.activeCommentId;
-        if (!commentId) return false;
-        this.storage.activeCommentId = commentId;
-        // Update UI classes in-place so "active comment" does not create doc updates.
-        syncActiveCommentClassInDOM(
-          getEditorDomSafely(this.editor),
-          previousActiveCommentId,
-          commentId,
-        );
-        return true;
-      },
-      unsetCommentActive: () => () => {
-        const previousActiveCommentId = this.storage.activeCommentId;
-        this.storage.activeCommentId = null;
-        // Reset active styling without touching persisted mark attributes.
-        syncActiveCommentClassInDOM(
-          getEditorDomSafely(this.editor),
-          previousActiveCommentId,
-          null,
-        );
-        return true;
-      },
+      // Both commands only touch extension storage and DOM classes, never
+      // the document, yet every editor.commands.* call dispatches the
+      // transaction it is handed. Callers run these on every transaction
+      // (the comment bubble menu's shouldShow, the store's focus handlers),
+      // so without `preventDispatch` each keystroke paid for a second, empty
+      // transaction through every plugin, decoration pass and listener.
+      // The DOM sync still runs on a same-id call: ProseMirror can redraw
+      // the comment spans without a selection change (marking part of the
+      // span bold) and the class refresh is what restores the highlight.
+      setCommentActive:
+        (commentId: string) =>
+        ({ tr }) => {
+          tr.setMeta('preventDispatch', true);
+          const previousActiveCommentId = this.storage.activeCommentId;
+          if (!commentId) return false;
+          this.storage.activeCommentId = commentId;
+          // Update UI classes in-place so "active comment" does not create doc updates.
+          syncActiveCommentClassInDOM(
+            getEditorDomSafely(this.editor),
+            previousActiveCommentId,
+            commentId,
+          );
+          return true;
+        },
+      unsetCommentActive:
+        () =>
+        ({ tr }) => {
+          tr.setMeta('preventDispatch', true);
+          const previousActiveCommentId = this.storage.activeCommentId;
+          this.storage.activeCommentId = null;
+          // Reset active styling without touching persisted mark attributes.
+          syncActiveCommentClassInDOM(
+            getEditorDomSafely(this.editor),
+            previousActiveCommentId,
+            null,
+          );
+          return true;
+        },
       setDraftComment:
         (draftId: string) =>
         ({ state, tr, dispatch }) => {

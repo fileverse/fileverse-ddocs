@@ -124,7 +124,9 @@ export const TableRow = Node.create<TableRowOptions>({
       const controlSection = getElementWithAttributes(
         'section',
         {
-          class: '',
+          // Hidden until the row is hovered; showControls() positions it
+          // before revealing it.
+          class: 'hidden',
           contenteditable: 'false',
         },
         {
@@ -161,18 +163,14 @@ export const TableRow = Node.create<TableRowOptions>({
         },
       );
 
-      let controlsShown = false;
-
       const showControls = () => {
-        controlsShown = true;
-        repositionControlsCenter();
+        applyControlsPosition();
         controlSection.classList.remove('hidden');
       };
 
       const hideControls = () => {
         setTimeout(() => {
           if (isCursorInsideControlSection) return;
-          controlsShown = false;
           controlSection.classList.add('hidden');
         }, 100);
       };
@@ -196,37 +194,31 @@ export const TableRow = Node.create<TableRowOptions>({
 
       let rectBefore = '';
 
-      const repositionControlsCenter = () => {
-        setTimeout(() => {
-          const rowCoords = tableRow.getBoundingClientRect();
-          const stringifiedRowCoords = JSON.stringify(rowCoords);
+      const applyControlsPosition = () => {
+        const rowCoords = tableRow.getBoundingClientRect();
+        const stringifiedRowCoords = JSON.stringify(rowCoords);
 
-          if (rectBefore === stringifiedRowCoords) return;
+        if (rectBefore === stringifiedRowCoords) return;
 
-          controlSection.style.top = `${
-            rowCoords.top + document.documentElement.scrollTop
-          }px`;
-          controlSection.style.left = `${
-            rowCoords.x + document.documentElement.scrollLeft - 8
-          }px`;
-          controlSection.style.height = `${rowCoords.height + 1}px`;
+        controlSection.style.top = `${
+          rowCoords.top + document.documentElement.scrollTop
+        }px`;
+        controlSection.style.left = `${
+          rowCoords.x + document.documentElement.scrollLeft - 8
+        }px`;
+        controlSection.style.height = `${rowCoords.height + 1}px`;
 
-          rectBefore = stringifiedRowCoords;
-        });
+        rectBefore = stringifiedRowCoords;
       };
-
-      setTimeout(() => {
-        repositionControlsCenter();
-      }, 100);
 
       // Every row node view used to queue a setTimeout + getBoundingClientRect
       // on every editor update and selection change, even while its controls
-      // were not showing. With N rows that is N timers per keystroke across
-      // the document. Reposition lazily: showControls() already repositions
-      // on hover, so only track the row while its controls are visible.
+      // were hidden. With N rows that is N timers per keystroke across the
+      // document. Track the row only while its controls are showing;
+      // showControls() positions them synchronously before revealing them.
       const repositionIfVisible = () => {
-        if (!controlsShown) return;
-        repositionControlsCenter();
+        if (controlSection.classList.contains('hidden')) return;
+        setTimeout(applyControlsPosition);
       };
 
       editor.on('selectionUpdate', repositionIfVisible);

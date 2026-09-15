@@ -83,18 +83,10 @@ export const CommentBubbleCard = ({
             !disabled) ??
           false;
 
-        // shouldShow runs on every transaction, and every editor.commands.*
-        // call dispatches a transaction of its own. Unguarded, this dispatched
-        // a second, empty transaction per keystroke, re-running every plugin,
-        // decoration pass and listener. Only touch the active state when it
-        // actually changes.
-        const activeCommentId = editor.storage.comment?.activeCommentId ?? null;
         if (shouldShow) {
           const commentId = editor.getAttributes('comment')?.commentId;
-          if (commentId && commentId !== activeCommentId) {
-            editor.commands.setCommentActive(commentId);
-          }
-        } else if (activeCommentId !== null) {
+          editor.commands.setCommentActive(commentId);
+        } else {
           // Unset active state when bubble menu should hide
           editor.commands.unsetCommentActive();
         }
