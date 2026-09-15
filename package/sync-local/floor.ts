@@ -54,3 +54,20 @@ export function computeLocalOnlyUpdate(
   }
   return diff;
 }
+
+// Seqs that may advance the floor from one hydration page. A row that failed to decrypt
+// pins the floor below it for the rest of the walk, so a later snapshot can never stamp a
+// floorSeq above content this client never applied.
+export function floorEligibleSeqs(
+  rows: Array<{ seq: number | null; isTail: boolean; decrypted: boolean }>,
+  alreadyIncomplete: boolean,
+): { seqs: number[]; incomplete: boolean } {
+  const seqs: number[] = [];
+  let incomplete = alreadyIncomplete;
+  for (const row of rows) {
+    if (!row.decrypted) incomplete = true;
+    if (incomplete) continue;
+    if (row.isTail && typeof row.seq === 'number') seqs.push(row.seq);
+  }
+  return { seqs, incomplete };
+}

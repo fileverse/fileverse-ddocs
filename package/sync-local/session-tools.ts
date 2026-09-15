@@ -145,6 +145,7 @@ export async function seedSession(args: {
     const data = cryptoUtils.encryptData(
       toUint8Array(args.newRoomKey),
       args.state,
+      client.getWireFormat(),
     );
     const res = await client.sendSnapshot({ data, floorSeq: 0 });
     if (!res?.status) {
