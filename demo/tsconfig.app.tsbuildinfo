@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/documentstylingpanel.tsx","./src/main.tsx","./src/utils.ts","./src/vite-env.d.ts","./src/components/devbar.tsx","./src/components/docswitcher.tsx","./src/crypto/index.ts","./src/storage/collab-store.ts","./src/storage/doc-store.ts"],"errors":true,"version":"5.9.3"}

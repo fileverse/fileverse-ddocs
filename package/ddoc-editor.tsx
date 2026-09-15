@@ -968,9 +968,7 @@ const DdocEditor = forwardRef(
                       !isSplitViewActive &&
                         !isPreviewMode &&
                         !isFocusMode &&
-                        (isNavbarVisible
-                          ? '-mt-[1.5rem] md:!mt-[0.8rem]'
-                          : null),
+                        (isNavbarVisible ? 'md:!mt-[0.8rem]' : null),
                       !isSplitViewActive && isPreviewMode && 'md:!mt-[1rem]',
                       {
                         'md:!mt-[0.7rem]':
