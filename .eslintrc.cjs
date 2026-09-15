@@ -24,4 +24,13 @@ module.exports = {
       },
     ],
   },
+  overrides: [
+    {
+      // CommonJS build-time config: loaded by Node inside the consumer's Tailwind process.
+      files: ['*.cjs'],
+      env: { node: true, browser: false },
+      parserOptions: { sourceType: 'script' },
+      rules: { '@typescript-eslint/no-var-requires': 'off' },
+    },
+  ],
 };
