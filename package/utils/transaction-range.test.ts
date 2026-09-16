@@ -5,8 +5,9 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
 import Text from '@tiptap/extension-text';
 import CodeBlock from '@tiptap/extension-code-block';
+import Bold from '@tiptap/extension-bold';
 import {
-  transactionContainedNodeTypes,
+  transactionOnlyChangesText,
   transactionTouchedNodeTypes,
   transactionTouchesNodeType,
 } from './transaction-range';
@@ -17,7 +18,7 @@ describe('transactionTouchesNodeType', () => {
   const createEditor = (content: string) => {
     const editor = new Editor({
       content,
-      extensions: [Document, Paragraph, Heading, Text, CodeBlock],
+      extensions: [Document, Paragraph, Heading, Text, CodeBlock, Bold],
     });
     editors.push(editor);
     return editor;
@@ -82,35 +83,63 @@ describe('transactionTouchesNodeType', () => {
     expect(transactionTouchesNodeType(transaction, 'heading')).toBe(true);
   });
 
-  it('lists no whole node for typing, even inside a code block', () => {
+  it('calls plain typing and deleting a text-only change', () => {
     const editor = createEditor('<p>Paragraph</p><pre><code>code</code></pre>');
+    expect(transactionOnlyChangesText(editor.state.tr.insertText('x', 2))).toBe(
+      true,
+    );
+    expect(transactionOnlyChangesText(editor.state.tr.delete(2, 4))).toBe(true);
+    // typing inside a code block is still just characters
     expect(
-      transactionContainedNodeTypes(editor.state.tr.insertText('x', 2)).size,
-    ).toBe(0);
+      transactionOnlyChangesText(editor.state.tr.insertText('x', 13)),
+    ).toBe(true);
     expect(
-      transactionContainedNodeTypes(editor.state.tr.insertText('x', 13)).size,
-    ).toBe(0);
+      transactionOnlyChangesText(editor.state.tr.setMeta('pointer', true)),
+    ).toBe(true);
   });
 
-  it('lists whole nodes that were inserted or deleted', () => {
+  it('is false for an attribute change such as line height or spacing', () => {
+    const editor = createEditor('<p>Paragraph</p>');
+    const node = editor.state.doc.child(0);
+    const transaction = editor.state.tr.setNodeMarkup(0, undefined, {
+      ...node.attrs,
+      lineHeight: '200%',
+    });
+    expect(transaction.docChanged).toBe(true);
+    expect(transactionOnlyChangesText(transaction)).toBe(false);
+  });
+
+  it('is false for a mark change such as bold or font size', () => {
+    const editor = createEditor('<p>Paragraph</p>');
+    const bold = editor.state.schema.marks.bold;
+    const transaction = editor.state.tr.addMark(1, 5, bold.create());
+    expect(transactionOnlyChangesText(transaction)).toBe(false);
+  });
+
+  it('is false for splitting a block', () => {
+    const editor = createEditor('<p>Paragraph</p>');
+    expect(transactionOnlyChangesText(editor.state.tr.split(5))).toBe(false);
+  });
+
+  it('is false when a whole node is inserted or deleted', () => {
     const editor = createEditor(
       '<p>One</p><pre><code>code</code></pre><p>Two</p>',
     );
-    const deleted = transactionContainedNodeTypes(
-      editor.state.tr.delete(2, editor.state.doc.content.size - 2),
-    );
-    expect(deleted.has('codeBlock')).toBe(true);
-    expect(deleted.has('paragraph')).toBe(false);
+    expect(
+      transactionOnlyChangesText(
+        editor.state.tr.delete(2, editor.state.doc.content.size - 2),
+      ),
+    ).toBe(false);
 
     const node = editor.state.schema.nodes.heading.create(
       { level: 2 },
       editor.state.schema.text('new'),
     );
-    const inserted = transactionContainedNodeTypes(
-      editor.state.tr.insert(editor.state.doc.content.size, node),
-    );
-    expect(inserted.has('heading')).toBe(true);
-    expect(inserted.has('text')).toBe(true);
+    expect(
+      transactionOnlyChangesText(
+        editor.state.tr.insert(editor.state.doc.content.size, node),
+      ),
+    ).toBe(false);
   });
 
   it('walks each transaction once however many gates ask', () => {

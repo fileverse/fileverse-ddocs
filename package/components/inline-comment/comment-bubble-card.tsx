@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { cn } from '@fileverse/ui';
+import {
+  clearActiveComment,
+  setActiveComment,
+} from '../../extensions/comment/comment';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { Editor } from '@tiptap/core';
 import { useCommentStore } from '../../stores/comment-store';
@@ -85,10 +89,10 @@ export const CommentBubbleCard = ({
 
         if (shouldShow) {
           const commentId = editor.getAttributes('comment')?.commentId;
-          editor.commands.setCommentActive(commentId);
+          setActiveComment(editor, commentId);
         } else {
           // Unset active state when bubble menu should hide
-          editor.commands.unsetCommentActive();
+          clearActiveComment(editor);
         }
 
         return shouldShow;
@@ -117,7 +121,7 @@ export const CommentBubbleCard = ({
         },
         onHide: () => {
           // Additional safety to ensure active state is removed when menu hides
-          editor.commands.unsetCommentActive();
+          clearActiveComment(editor);
         },
       }}
       editor={editor}

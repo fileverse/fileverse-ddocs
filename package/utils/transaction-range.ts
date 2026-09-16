@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
+import { ReplaceStep } from '@tiptap/pm/transform';
 
 type TouchedNodeTypes = {
   // Every node a changed range starts or ends inside, or overlaps: the
@@ -83,14 +84,47 @@ export const transactionTouchedNodeTypes = (
   transaction: Transaction,
 ): ReadonlySet<string> => collectTransactionNodeTypes(transaction).touched;
 
-/**
- * Node type names that a transaction inserted, deleted or replaced as whole
- * nodes. Typing inside a node lists nothing; pasting a table lists the
- * table and everything in it.
- */
-export const transactionContainedNodeTypes = (
+const transactionContainedNodeTypes = (
   transaction: Transaction,
 ): ReadonlySet<string> => collectTransactionNodeTypes(transaction).contained;
+
+const stepOnlyChangesText = (step: unknown) => {
+  // Anything that is not a plain replacement changes shape or presentation
+  // rather than characters: setNodeMarkup (line height, paragraph spacing,
+  // heading level) is a ReplaceAroundStep, bold and font size are mark steps.
+  if (!(step instanceof ReplaceStep)) return false;
+  // An open slice is a split or a join, which adds or removes a block.
+  if (step.slice.openStart !== 0 || step.slice.openEnd !== 0) return false;
+
+  let inlineOnly = true;
+  step.slice.content.forEach((node) => {
+    if (!node.isInline) inlineOnly = false;
+  });
+  return inlineOnly;
+};
+
+/**
+ * True when a transaction only adds or removes characters inside blocks that
+ * already exist: ordinary typing and deleting. False for splits and joins,
+ * attribute changes (line height, paragraph spacing, heading level), marks
+ * (bold, font size), inserted or deleted whole nodes, and the whole-document
+ * replacement a remote collaboration update arrives as.
+ *
+ * Used to decide whether a page measurement of the document can be scaled by
+ * its character count instead of being taken again.
+ */
+export const transactionOnlyChangesText = (transaction: Transaction) => {
+  if (!transaction.docChanged) return true;
+  if (!transaction.steps.every(stepOnlyChangesText)) return false;
+
+  // A deletion is a plain replacement whatever it removed, so check what the
+  // changed ranges covered whole: deleting an image or a table is not a text
+  // edit even though the step shape says replacement.
+  for (const typeName of transactionContainedNodeTypes(transaction)) {
+    if (typeName !== 'text') return false;
+  }
+  return true;
+};
 
 /**
  * True when a transaction can reach a node of `typeName`. Meant for gating

@@ -78,7 +78,8 @@ import {
   transactionCouldTouchHeading,
 } from '../extensions/table-of-contents';
 import { useTabEditorCache } from './use-tab-editor-cache';
-import { transactionContainedNodeTypes } from '../utils/transaction-range';
+import { transactionOnlyChangesText } from '../utils/transaction-range';
+import { clearActiveComment } from '../extensions/comment/comment';
 
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
@@ -112,34 +113,16 @@ const usercolors = [
 // count, or a minute passes. Smaller documents stay exact.
 const PAGE_COUNT_EXACT_MAX_CHARACTERS = 40_000;
 const PAGE_COUNT_REMEASURE_DRIFT = 0.02;
-// Catches what neither guard can see: attribute-only changes such as line
-// height, spacing or heading level, and image loads that change a block's
-// height after the fact.
+// Backstop for height changes no transaction reports at all, such as an
+// image finishing loading at its natural size.
 const PAGE_COUNT_REMEASURE_INTERVAL_MS = 60_000;
 
-// Node types whose height tracks their character count closely enough for
-// the scaled estimate when inserted or removed whole. Inserting or deleting
-// anything else as a whole node (page break, image, table, code block,
-// heading, columns, embed, and any type added later) forces a real
-// measurement. Typing inside any block, including those, lists no whole
-// node and is covered by the character drift.
-const PAGE_COUNT_TEXT_LIKE_NODE_TYPES = new Set([
-  'text',
-  'paragraph',
-  'dBlock',
-  'listItem',
-  'bulletList',
-  'orderedList',
-  'taskList',
-  'taskItem',
-]);
-
-const transactionChangesPageStructure = (transaction: Transaction) => {
-  for (const typeName of transactionContainedNodeTypes(transaction)) {
-    if (!PAGE_COUNT_TEXT_LIKE_NODE_TYPES.has(typeName)) return true;
-  }
-  return false;
-};
+// Only plain typing keeps the page count proportional to the character
+// count. Everything else an edit can do to the page box — splitting a
+// block, changing line height or paragraph spacing, a heading level, a font
+// size, inserting an image or a table — forces a real measurement.
+const transactionChangesPageStructure = (transaction: Transaction) =>
+  !transactionOnlyChangesText(transaction);
 
 type PageCountMeasurement = {
   characters: number;
@@ -498,7 +481,8 @@ export const useTabEditor = ({
                     return;
                   }
 
-                  activeEditorRef.current?.commands.unsetCommentActive();
+                  const activeEditor = activeEditorRef.current;
+                  if (activeEditor) clearActiveComment(activeEditor);
                 });
               });
               return false;

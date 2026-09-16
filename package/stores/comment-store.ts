@@ -34,7 +34,12 @@ import {
 } from '../components/inline-comment/context/types';
 import { EnsStatus } from '../components/inline-comment/types';
 import { DEFAULT_TAB_ID } from '../components/tabs/utils/tab-utils';
-import { getDraftCommentRange, IComment } from '../extensions/comment';
+import {
+  clearActiveComment,
+  getDraftCommentRange,
+  IComment,
+  setActiveComment,
+} from '../extensions/comment';
 import { CommentMutationMeta, CommentMutationType } from '../types';
 import { getAddressName } from '@fileverse/ens';
 import {
@@ -1827,7 +1832,7 @@ export const createCommentStore = () =>
         floatingCards: nextFloatingCards,
       });
       setActiveCommentId(commentId);
-      editor.commands.setCommentActive(commentId);
+      setActiveComment(editor, commentId);
     },
     focusSubmittedSuggestionFromEditor: (commentId) => {
       const { editor, setActiveCommentId } = getExtDeps(get);
@@ -1853,7 +1858,7 @@ export const createCommentStore = () =>
 
       state.setActiveCommentId(commentId);
       setActiveCommentId(commentId);
-      editor.commands.setCommentActive(commentId);
+      setActiveComment(editor, commentId);
       set({
         openReplyId: commentId,
       });
@@ -1879,7 +1884,7 @@ export const createCommentStore = () =>
         activeCommentId === floatingCardToClose.commentId
       ) {
         setActiveCommentId(null);
-        editor.commands.unsetCommentActive();
+        clearActiveComment(editor);
       }
 
       set((state) => ({
@@ -1917,7 +1922,7 @@ export const createCommentStore = () =>
         // back via useEffect, overwriting whatever updateEditorState sets
         // when the user clicks on a different comment.
         get().setActiveCommentId(null);
-        editor.commands.unsetCommentActive();
+        clearActiveComment(editor);
       }
 
       set((state) => ({
@@ -1949,13 +1954,13 @@ export const createCommentStore = () =>
         // with the active state on the same click, then mirror externally.
         get().setActiveCommentId(focusedFloatingCard.commentId);
         setActiveCommentId(focusedFloatingCard.commentId);
-        editor.commands.setCommentActive(focusedFloatingCard.commentId);
+        setActiveComment(editor, focusedFloatingCard.commentId);
         return;
       }
 
       get().setActiveCommentId(null);
       setActiveCommentId(null);
-      editor.commands.unsetCommentActive();
+      clearActiveComment(editor);
     },
     removeInvalidFloatingDrafts: () => {
       const { editor } = getExtDeps(get);
@@ -2223,7 +2228,7 @@ export const createCommentStore = () =>
         // reconciled-away thread cannot leave stale active-comment state behind.
         get().setActiveCommentId(null);
         setActiveCommentId(null);
-        editor?.commands.unsetCommentActive();
+        if (editor) clearActiveComment(editor);
       }
 
       set({
@@ -3251,7 +3256,7 @@ export const createCommentStore = () =>
 
           editor.view.dispatch(tr);
           set({ isBubbleMenuSuppressed: true });
-          editor.commands.setCommentActive(commentId);
+          setActiveComment(editor, commentId);
 
           // Keep the nested requestAnimationFrame so the editor selection and
           // active comment styling settle before measuring scroll coordinates.
@@ -3310,7 +3315,7 @@ export const createCommentStore = () =>
       set({ isBubbleMenuSuppressed: true });
       get().setActiveCommentId(null);
       setActiveCommentId(null);
-      editor.commands.unsetCommentActive();
+      clearActiveComment(editor);
       set((state) => ({
         floatingCards: setFocusedFloatingCard(
           state.floatingCards,
