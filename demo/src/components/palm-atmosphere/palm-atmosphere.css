@@ -1,12 +1,13 @@
-/* Palm theme atmosphere (TEC-3020). Ported from the sunlit-editor prototype.
-   Tuning history: Alex's slider screenshot (shadow 0.11 / blur 14px) was
-   invisible in the app; 0.34 / 5px read as heavy and sharp and the sun
-   wash lightened body text. Current values sit between the two. */
+/* Palm theme atmosphere (TEC-3020). Ported from Andreas's sunlit-editor
+   prototype. Values signed off by Alex on the demo tuning panel:
+   shadow 0.17, sun 0.27, soften 9.5px, contrast 1. */
 .palm-atmosphere {
-  --palm-shadow-opacity: 0.22;
-  --palm-sun-opacity: 0.42;
-  --palm-softness: 9px;
-  --palm-contrast: 1.15;
+  --palm-shadow-opacity: 0.17;
+  --palm-sun-opacity: 0.27;
+  --palm-softness: 9.5px;
+  --palm-contrast: 1;
+  /* Blur tracks how large the frond is drawn; see the phone query below. */
+  --palm-blur-scale: 1;
 
   position: fixed;
   inset: 0;
@@ -53,10 +54,24 @@
   background: url("/palm-shadow.gif") center / cover no-repeat;
   opacity: var(--palm-shadow-opacity);
   mix-blend-mode: multiply;
-  filter: blur(var(--palm-softness)) contrast(var(--palm-contrast))
-    brightness(1.06);
+  filter: blur(calc(var(--palm-softness) * var(--palm-blur-scale)))
+    contrast(var(--palm-contrast)) brightness(1.06);
   will-change: transform;
   animation: palm-drift 52s ease-in-out infinite;
+}
+
+/* Phone. `cover` fits the landscape frond to a portrait viewport by height,
+   which magnifies it ~6x and leaves a narrow vertical crop that no longer
+   reads as a palm. Size it by width instead and anchor it top-left, where
+   the frond mass sits, opposite the sun. Uncovered area stays transparent,
+   and transparent multiplies to nothing, so the edge is invisible. */
+@media (max-width: 640px) {
+  .palm-atmosphere__shadow {
+    inset: 0;
+    background-size: 200% auto;
+    background-position: top left;
+    --palm-blur-scale: 0.55;
+  }
 }
 
 @keyframes palm-breathe {

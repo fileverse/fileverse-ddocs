@@ -31,10 +31,10 @@ export interface PalmTuning {
 
 /** Keep in sync with the defaults in palm-atmosphere.css. */
 export const PALM_DEFAULTS: PalmTuning = {
-  shadow: 0.22,
-  sun: 0.42,
-  blur: 9,
-  contrast: 1.15,
+  shadow: 0.17,
+  sun: 0.27,
+  blur: 9.5,
+  contrast: 1,
 };
 
 const FLAG = 'palmTuning';
