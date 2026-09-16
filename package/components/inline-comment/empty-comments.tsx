@@ -13,21 +13,15 @@ const EmptyComments = ({
       {/* Two artworks rather than one recoloured asset: the dark version is
           a different drawing, not the same paths in other colours. CSS picks
           between them, so there is no theme state in JS; the hidden one is
-          display:none and leaves the accessibility tree with it.
-          `[.dark_&]` rather than `dark:` because that variant follows the
-          CONSUMER's tailwind darkMode setting (the demo leaves it at the
-          `media` default, so `dark:` there would follow the OS instead of
-          the editor theme); this compiles to a plain `.dark` descendant
-          selector either way. */}
-      <img
-        src={emptyComments}
-        alt="empty comments"
-        className="[.dark_&]:hidden"
-      />
+          display:none and leaves the accessibility tree with it. `dark:`
+          resolves to the `.dark` class rather than the OS setting because
+          the tailwind preset this package ships composes the ui preset,
+          which sets darkMode: 'class'. */}
+      <img src={emptyComments} alt="empty comments" className="dark:hidden" />
       <img
         src={darkEmptyComments}
         alt="empty comments"
-        className="hidden [.dark_&]:block"
+        className="hidden dark:block"
       />
       <div className="text-heading-xsm mt-4">No comments yet</div>
       {commentType === 'all' ? (
