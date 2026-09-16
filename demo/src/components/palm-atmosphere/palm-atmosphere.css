@@ -6,6 +6,7 @@
   --palm-shadow-opacity: 0.22;
   --palm-sun-opacity: 0.42;
   --palm-softness: 9px;
+  --palm-contrast: 1.15;
 
   position: fixed;
   inset: 0;
@@ -52,7 +53,8 @@
   background: url("/palm-shadow.gif") center / cover no-repeat;
   opacity: var(--palm-shadow-opacity);
   mix-blend-mode: multiply;
-  filter: blur(var(--palm-softness)) contrast(1.15) brightness(1.06);
+  filter: blur(var(--palm-softness)) contrast(var(--palm-contrast))
+    brightness(1.06);
   will-change: transform;
   animation: palm-drift 52s ease-in-out infinite;
 }
@@ -82,4 +84,11 @@
   .palm-atmosphere__shadow {
     animation: none;
   }
+}
+
+/* Designer tuning panel (demo only, ?palmTuning=1). */
+.palm-tuning__range {
+  width: 76px;
+  height: 16px;
+  accent-color: hsl(var(--color-bg-brand));
 }
