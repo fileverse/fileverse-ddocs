@@ -100,10 +100,3 @@
     animation: none;
   }
 }
-
-/* Designer tuning panel (demo only, ?palmTuning=1). */
-.palm-tuning__range {
-  width: 76px;
-  height: 16px;
-  accent-color: hsl(var(--color-bg-brand));
-}
