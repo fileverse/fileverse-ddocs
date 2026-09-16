@@ -1,0 +1,83 @@
+/* Palm theme atmosphere (TEC-3020). Ported from the sunlit-editor prototype.
+   The three tuning values are Alex's picks from the prototype's sliders
+   (shadow 11%, sun 67%, soften 14px). */
+.palm-atmosphere {
+  --palm-shadow-opacity: 0.11;
+  --palm-sun-opacity: 0.67;
+  --palm-softness: 14px;
+
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Warm light from the top-right corner, breathing slowly. */
+.palm-atmosphere__sun {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      120% 90% at 82% -8%,
+      rgba(255, 196, 110, 0.55) 0%,
+      rgba(255, 176, 84, 0.22) 38%,
+      rgba(255, 160, 60, 0) 68%
+    ),
+    linear-gradient(
+      215deg,
+      rgba(255, 184, 92, 0.16) 0%,
+      rgba(255, 184, 92, 0) 55%
+    );
+  mix-blend-mode: soft-light;
+  opacity: var(--palm-sun-opacity);
+  animation: palm-breathe 26s ease-in-out infinite;
+}
+
+.palm-atmosphere__sun--hard {
+  mix-blend-mode: normal;
+  background: radial-gradient(
+    110% 80% at 85% -10%,
+    rgba(255, 171, 64, 0.2) 0%,
+    rgba(255, 171, 64, 0) 62%
+  );
+}
+
+/* The palm frond. The GIF is a 260x146 loop stretched to cover the viewport;
+   the blur hides the upscale and softens the shadow edge. */
+.palm-atmosphere__shadow {
+  position: absolute;
+  inset: -8%;
+  background: url('/palm-shadow.gif') center / cover no-repeat;
+  opacity: var(--palm-shadow-opacity);
+  mix-blend-mode: multiply;
+  filter: blur(var(--palm-softness)) contrast(1.15) brightness(1.06);
+  will-change: transform;
+  animation: palm-drift 52s ease-in-out infinite;
+}
+
+@keyframes palm-breathe {
+  0%,
+  100% {
+    opacity: calc(var(--palm-sun-opacity) * 0.85);
+  }
+  50% {
+    opacity: var(--palm-sun-opacity);
+  }
+}
+
+@keyframes palm-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-1.2%, 0.8%, 0) scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palm-atmosphere__sun,
+  .palm-atmosphere__shadow {
+    animation: none;
+  }
+}
