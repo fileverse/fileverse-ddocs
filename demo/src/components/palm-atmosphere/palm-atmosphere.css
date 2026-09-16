@@ -1,10 +1,11 @@
 /* Palm theme atmosphere (TEC-3020). Ported from the sunlit-editor prototype.
-   The three tuning values are Alex's picks from the prototype's sliders
-   (shadow 11%, sun 67%, soften 14px). */
+   Tuning: Alex's screenshot values (shadow 0.11 / blur 14px) left the frond
+   nearly invisible in the app, so the shadow is darker and crisper here.
+   The prototype's own defaults were shadow 0.42 / blur 1px. */
 .palm-atmosphere {
-  --palm-shadow-opacity: 0.11;
-  --palm-sun-opacity: 0.67;
-  --palm-softness: 14px;
+  --palm-shadow-opacity: 0.34;
+  --palm-sun-opacity: 0.6;
+  --palm-softness: 5px;
 
   position: fixed;
   inset: 0;
@@ -50,7 +51,7 @@
   background: url('/palm-shadow.gif') center / cover no-repeat;
   opacity: var(--palm-shadow-opacity);
   mix-blend-mode: multiply;
-  filter: blur(var(--palm-softness)) contrast(1.15) brightness(1.06);
+  filter: blur(var(--palm-softness)) contrast(1.2) brightness(1.06);
   will-change: transform;
   animation: palm-drift 52s ease-in-out infinite;
 }
