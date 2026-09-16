@@ -765,10 +765,7 @@ function App() {
         username,
         isEns: collabExtras.isEns,
       },
-      services: {
-        commitToStorage: undefined,
-        fetchFromStorage: undefined,
-      },
+      services: {},
       on: {
         onStateChange: (state: CollabState) => {
           console.log('onStateChange', state);

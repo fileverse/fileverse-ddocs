@@ -27,17 +27,23 @@ This repository contains:
 
 ## Usage
 
-### Prequisites
+### Prerequisites
 
-To use dDocs, ensure your project is set up with Tailwind CSS and have a Tailwind configuration file.
+Your app runs Tailwind CSS 3.4 and owns the `@tailwind base/components/utilities` entry. The package ships only editor CSS; preflight, utilities, the `@fileverse/ui` styles, and the KaTeX stylesheet come from your build.
 
 ### Install & import
 
-Add the following imports :
-
 ```javascript
 import { DdocEditor } from '@fileverse-dev/ddoc';
-import '@fileverse-dev/ddoc/styles'; // in App.jsx/App.tsx
+```
+
+Load stylesheets in this order (Vite emits CSS in import order; in Next put the first two in the root layout and the last two in the editor route):
+
+```javascript
+import './globals.css';                 // your tailwind entry
+import '@fileverse/ui/styles/base';     // tokens and base rules
+import 'katex/dist/katex.min.css';      // math; fonts are served as files
+import '@fileverse-dev/ddoc/styles';    // editor CSS
 ```
 
 ### Peer Dependencies
@@ -53,19 +59,62 @@ npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities @fileverse/ui @fi
 | `@dnd-kit/core`      | `>=6.3.1`   |
 | `@dnd-kit/sortable`  | `>=10.0.0`  |
 | `@dnd-kit/utilities` | `>=3.2.2`   |
-| `@fileverse/ui`      | `>=5.0.0`   |
+| `@fileverse/ui`      | `^5.4.0`    |
 | `@fileverse/crypto`  | `>=0.0.21`  |
 | `viem`               | `>=2.13.8`  |
 | `framer-motion`      | `>=11.2.10` |
 | `frimousse`          | `>=0.3.0`   |
 
+The peer range is `@fileverse/ui@^5.4.0`. If you ever test a prerelease pairing, pin both packages exactly: a prerelease never satisfies a caret range.
+
 These are externalized from the bundle to avoid duplication when your app already uses them. If you don't have them installed, npm (v7+) will auto-install them for you.
 
 ### Update Tailwind Config
 
-In your tailwind config, add this line to content array :
+```javascript
+module.exports = {
+  presets: [require('@fileverse-dev/ddoc/tailwind')],
+  content: [
+    './src/**/*.{js,ts,jsx,tsx}',
+    './node_modules/@fileverse-dev/ddoc/dist/**/*.{js,mjs}',
+    './node_modules/@fileverse/ui/dist/**/*.{js,mjs}',
+  ],
+};
+```
 
-`@fileverse-dev/ddoc/dist/index.es.js`
+Both dist globs are required, not the single `index.es.js` entry: the dist is chunked (`index.es.js`
+statically imports `use-headless-editor-<hash>.mjs`), so a single-file entry leaves that chunk's
+classes ungenerated.
+
+The preset composes `@fileverse/ui/tailwind` (class-based dark mode, animate plugin, design-system classes) and adds the `mobile: 960px` screen the editor uses.
+
+### Migrating from 4.x
+
+5.0 stops shipping preflight, Tailwind utilities, the ui stylesheet, the KaTeX stylesheet, and the `html`, `body`, and `*` resets. To upgrade:
+
+1. Add the preset and the two `content` entries above.
+2. Import `@fileverse/ui/styles/base` and `katex/dist/katex.min.css` yourself, in the order above.
+3. The package no longer ships these global declarations:
+   - `* { margin: 0; padding: 0 }`
+   - `html, body { height: 100%; width: 100% }`
+   - `html, body { overflow: hidden }`
+   - `body { position: static; user-select: none; -moz-osx-font-smoothing: grayscale }`
+   - `*, ::before, ::after { border-color: hsl(var(--color-border-default)) }`
+
+   If your shell relied on `overflow: hidden` or `user-select: none`, add them to your own
+   global stylesheet. The rest are covered by Tailwind preflight or the `@fileverse/ui/styles/base`
+   sheet.
+4. Remove any workaround that re-declared `mobile:` classes; the preset generates them.
+5. Add `katex` to your own dependencies (`npm install katex@^0.16.11`); the package no longer guarantees it is hoisted.
+6. If you styled anything from the old bundle by class name: `.custom-scrollbar` is now `.ddoc-scrollbar`, and `.highlight-comment-bg`, `.is-active`, `.custom-border-bg`, `.animate-fade-in-out`, `.placeholder-disabled`, `.tooltip:before` were removed as unused.
+7. The composed `@fileverse/ui` preset defines `rounded-sm` as `calc(var(--radius) - 4px)` (4px)
+   instead of Tailwind's default 2px, so any surface using ddoc's `rounded-sm` utilities now
+   renders 4px corners.
+8. Third-party CSS ddoc imports (the highlight.js theme, tippy) still ships global `.hljs*` and
+   `.tippy-box` selectors — this is outside the package's own selector-ownership guarantee.
+9. List rules (`ul`, `ol`, and the nested-list counters) are now scoped to
+   `:where(.ProseMirror, .presentation-mode)` and no longer style `ol`/`ul` outside the editor or
+   presentation surfaces. If your app relied on ddoc's global list rules elsewhere, own them yourself.
 
 You should now be set to use dDocs!
 
