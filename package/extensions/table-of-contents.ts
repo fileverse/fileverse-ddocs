@@ -5,6 +5,7 @@ import {
 } from '@tiptap/extension-table-of-contents';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, type Transaction } from '@tiptap/pm/state';
+import { transactionTouchesNodeType } from '../utils/transaction-range';
 
 type EditorWithTableOfContentsStorage = {
   storage?: {
@@ -70,76 +71,10 @@ export const getHeadingSignature = (doc: ProseMirrorNode) => {
 
 // Check both sides of a changed range so inserting, deleting, converting, or
 // moving a heading is detected even when it exists in only one document.
-const rangeTouchesHeading = (
-  doc: ProseMirrorNode,
-  from: number,
-  to: number,
-) => {
-  const start = Math.max(0, Math.min(from, doc.content.size));
-  const end = Math.max(start, Math.min(to, doc.content.size));
-  let touchesHeading = false;
-
-  const endpointTouchesHeading = (pos: number) => {
-    const $pos = doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth -= 1) {
-      if ($pos.node(depth).type.name === 'heading') {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  if (endpointTouchesHeading(start) || endpointTouchesHeading(end)) {
-    return true;
-  }
-
-  doc.nodesBetween(start, end, (node) => {
-    if (node.type.name === 'heading') {
-      touchesHeading = true;
-      return false;
-    }
-
-    return !touchesHeading;
-  });
-
-  return touchesHeading;
-};
-
-// The same completed transaction is checked by multiple TOC listeners. Cache
-// that single answer without introducing plugin state or manual cleanup.
-const headingTransactionCache = new WeakMap<Transaction, boolean>();
-
-export const transactionCouldTouchHeading = (transaction: Transaction) => {
-  const cachedResult = headingTransactionCache.get(transaction);
-  if (cachedResult !== undefined) {
-    return cachedResult;
-  }
-
-  if (!transaction.docChanged) {
-    headingTransactionCache.set(transaction, false);
-    return false;
-  }
-
-  let touchesHeading = false;
-
-  transaction.mapping.maps.forEach((map, index) => {
-    if (touchesHeading) {
-      return;
-    }
-    const beforeDoc = transaction.docs[index] ?? transaction.before;
-    const afterDoc = transaction.docs[index + 1] ?? transaction.doc;
-
-    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      touchesHeading ||=
-        rangeTouchesHeading(beforeDoc, oldStart, oldEnd) ||
-        rangeTouchesHeading(afterDoc, newStart, newEnd);
-    });
-  });
-
-  headingTransactionCache.set(transaction, touchesHeading);
-  return touchesHeading;
-};
+// Cached per transaction inside transactionTouchesNodeType, so the several
+// TOC listeners that check the same completed transaction pay for one walk.
+export const transactionCouldTouchHeading = (transaction: Transaction) =>
+  transactionTouchesNodeType(transaction, 'heading');
 
 export const DdocTableOfContents = TableOfContents.extend({
   addProseMirrorPlugins() {

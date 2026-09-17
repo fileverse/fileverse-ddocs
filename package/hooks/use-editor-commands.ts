@@ -189,6 +189,7 @@ export const useEditorCommands = (
       // rather than at dispatch time so the menu LABEL flips as soon as the
       // spacing changes — writing a margin moves nothing else in this snapshot.
       const spacing = readEffectiveSpacing(e);
+      const inTable = e.isActive('table');
       return {
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
@@ -211,14 +212,19 @@ export const useEditorCommands = (
         bulletList: e.isActive('bulletList'),
         orderedList: e.isActive('orderedList'),
         taskList: e.isActive('taskList'),
-        inTable: e.isActive('table'),
-        canMergeCells: e.can().mergeCells(),
+        inTable,
+        // can() builds a dry-run command set; only pay for it inside a table.
+        canMergeCells: inTable ? e.can().mergeCells() : false,
         heading: currentHeading(e),
         align: currentAlign(e),
         lineHeight: getCurrentLineHeight(e, readLineHeight(e)),
         spaceBefore: spacingToggleAction(spacing.spaceBefore),
         spaceAfter: spacingToggleAction(spacing.spaceAfter),
         fontFamily: (e.getAttributes('textStyle').fontFamily as string) ?? null,
+        // Stable while typing: hasTextTargetAtSelection only changes when the
+        // cursor moves between blocks with and without a word (see
+        // findWordRangeAtCursor), so this no longer re-renders every consumer
+        // of the snapshot on each space typed.
         canInsertComment:
           inlineCommentAvailable &&
           Boolean(handleInlineComment) &&

@@ -4,6 +4,8 @@ import CodeBlockLowlight, {
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import CodeBlockNodeView from './components/code-block-node-view';
 import { TextSelection } from 'prosemirror-state';
+import { Plugin } from '@tiptap/pm/state';
+import { transactionTouchesNodeType } from '../../utils/transaction-range';
 
 export interface MermaidLimits {
   maxSourceBytes?: number;
@@ -26,6 +28,43 @@ export const CustomCodeBlockLowlight =
     },
     addNodeView() {
       return ReactNodeViewRenderer(CodeBlockNodeView);
+    },
+    addProseMirrorPlugins() {
+      const plugins = this.parent?.() ?? [];
+      const name = this.name;
+
+      // The upstream lowlight plugin's apply() runs findChildren over the
+      // WHOLE document twice on every transaction before it decides whether
+      // anything needs re-highlighting. On a large document that is a full
+      // tree walk per keystroke for text typed nowhere near a code block.
+      // Keep its behaviour, but only enter it when the transaction's changed
+      // ranges can reach a code block; otherwise map the existing
+      // decorations forward, which is exactly what it does when it declines.
+      //
+      // Only the lowlight plugin carries `state` (the parent CodeBlock's
+      // paste handler plugin has none). Spreading its spec keeps the same
+      // PluginKey, which is what lets the upstream `props.decorations`
+      // closure (`lowlightPlugin.getState(state)`) resolve to this wrapper's
+      // state. Typing INSIDE a code block still pays the upstream scan; an
+      // incremental re-highlight is a separate change.
+      return plugins.map((plugin) => {
+        const state = plugin.spec.state;
+        if (!state?.apply) return plugin;
+        const apply = state.apply;
+
+        return new Plugin({
+          ...plugin.spec,
+          state: {
+            ...state,
+            apply(transaction, value, oldState, newState) {
+              if (!transactionTouchesNodeType(transaction, name)) {
+                return value.map(transaction.mapping, transaction.doc);
+              }
+              return apply.call(this, transaction, value, oldState, newState);
+            },
+          },
+        });
+      });
     },
     addAttributes() {
       return {

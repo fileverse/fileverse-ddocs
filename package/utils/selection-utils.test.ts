@@ -52,11 +52,31 @@ describe('findWordRangeAtCursor', () => {
     expect(editor.state.doc.textBetween(range!.from, range!.to)).toBe('hello');
   });
 
-  it('returns null with the cursor inside a whitespace run', () => {
+  it('falls back to the word before the cursor inside a whitespace run', () => {
     editor = makeEditor();
     editor.commands.insertContent('hello  world'); // two spaces, insertContent preserves them
     const base = editor.state.selection.$from.start();
     editor.commands.setTextSelection(base + 6); // between the two spaces
+    const range = findWordRangeAtCursor(editor);
+    expect(range).not.toBeNull();
+    expect(editor.state.doc.textBetween(range!.from, range!.to)).toBe('hello');
+  });
+
+  it('falls back to the word after the cursor when nothing precedes it', () => {
+    editor = makeEditor();
+    editor.commands.insertContent('  world');
+    const base = editor.state.selection.$from.start();
+    editor.commands.setTextSelection(base + 1); // inside the leading spaces
+    const range = findWordRangeAtCursor(editor);
+    expect(range).not.toBeNull();
+    expect(editor.state.doc.textBetween(range!.from, range!.to)).toBe('world');
+  });
+
+  it('returns null in a block of only whitespace', () => {
+    editor = makeEditor();
+    editor.commands.insertContent('   ');
+    const base = editor.state.selection.$from.start();
+    editor.commands.setTextSelection(base + 1);
     expect(findWordRangeAtCursor(editor)).toBeNull();
   });
 
@@ -91,12 +111,14 @@ describe('selectWordAtCursor', () => {
     expect(editor.state.doc.textBetween(from, to)).toBe('hello');
   });
 
-  it('returns false in a whitespace run (parity with findWordRangeAtCursor)', () => {
+  it('selects the previous word from a whitespace run (parity with findWordRangeAtCursor)', () => {
     editor = makeEditor();
     editor.commands.insertContent('hello  world');
     const base = editor.state.selection.$from.start();
     editor.commands.setTextSelection(base + 6);
-    expect(selectWordAtCursor(editor)).toBe(false);
+    expect(selectWordAtCursor(editor)).toBe(true);
+    const { from, to } = editor.state.selection;
+    expect(editor.state.doc.textBetween(from, to)).toBe('hello');
   });
 
   it('returns false for a NodeSelection not adjacent to a word (horizontal rule)', () => {
@@ -129,11 +151,16 @@ describe('hasTextTargetAtSelection', () => {
     expect(hasTextTargetAtSelection(editor)).toBe(true);
   });
 
-  it('is false for a collapsed cursor in a whitespace run', () => {
+  it('is true for a collapsed cursor in a whitespace run of a block with words', () => {
     editor = makeEditor();
     editor.commands.insertContent('hello  world');
     const base = editor.state.selection.$from.start();
     editor.commands.setTextSelection(base + 6);
+    expect(hasTextTargetAtSelection(editor)).toBe(true);
+  });
+
+  it('is false for a collapsed cursor in an empty block', () => {
+    editor = makeEditor();
     expect(hasTextTargetAtSelection(editor)).toBe(false);
   });
 

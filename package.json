@@ -2,7 +2,7 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "5.0.1",
+  "version": "5.0.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fileverse/fileverse-ddocs.git"
@@ -143,7 +143,7 @@
     "@dnd-kit/utilities": ">=3.2.2",
     "@fileverse/crypto": ">=0.0.21",
     "@fileverse/ens": "0.0.4",
-    "@fileverse/ui": "^5.4.0",
+    "@fileverse/ui": "^5.4.1",
     "framer-motion": ">=11.2.10",
     "frimousse": ">=0.3.0",
     "mermaid": "11.14.0",
