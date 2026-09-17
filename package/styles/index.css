@@ -1,11 +1,6 @@
 @import './fonts.css';
-@import '@fileverse/ui/styles';
-@import 'katex/dist/katex.min.css';
 @import 'highlight.js/styles/atom-one-light.css';
 @import 'highlight.js/styles/atom-one-dark.css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 :root {
   /* Light Theme Variables */
@@ -223,15 +218,9 @@
   --color-editor-neutral-13: #878787;
   --color-editor-neutral-14: #808080;
 }
-ul,
-ol {
+:where(.ProseMirror, .presentation-mode) ul,
+:where(.ProseMirror, .presentation-mode) ol {
   list-style: revert;
-}
-
-*,
-::before,
-::after {
-  border-color: hsl(var(--color-border-default));
 }
 
 .ProseMirror:focus {
@@ -256,40 +245,6 @@ ol {
 .ProseMirror .presentation-mode .table-wrapper::-webkit-scrollbar,
 .is-table div::-webkit-scrollbar {
   display: none !important;
-}
-
-.custom-ens-button {
-  background-color: hsl(var(--color-bg-default-hover));
-  width: 100%;
-  color: hsl(var(--color-text-link));
-  height: 2.5rem;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  display: flex;
-  align-items: center;
-
-  &:hover {
-    background-color: hsl(var(--color-bg-secondary-hover));
-  }
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-html,
-body {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-body {
-  position: static;
-  user-select: none;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -327,7 +282,7 @@ input[type='number'].buttonless::-webkit-inner-spin-button {
   margin: 0;
 }
 
-li > ol {
+:where(.ProseMirror, .presentation-mode) li > ol {
   /* `list-item` must stay in this reset: the UA stylesheet sets
      `counter-reset: list-item` on every ol/ul, and Firefox derives ordered-list
      numbering from that counter (Chromium/WebKit compute it in layout instead).
@@ -338,12 +293,12 @@ li > ol {
   margin: 0;
 }
 
-li > ol > li {
+:where(.ProseMirror, .presentation-mode) li > ol > li {
   list-style: none;
   position: relative;
 }
 
-li > ol > li:before {
+:where(.ProseMirror, .presentation-mode) li > ol > li:before {
   counter-increment: list;
   content: counter(list, lower-alpha) '. ';
   position: absolute;
@@ -351,25 +306,21 @@ li > ol > li:before {
 }
 
 /* Level 3 nested items to use Roman numerals */
-li > ol > li > ol {
+:where(.ProseMirror, .presentation-mode) li > ol > li > ol {
   /* see the note on `li > ol` above */
   counter-reset: sublist list-item;
 }
 
-li > ol > li > ol > li {
+:where(.ProseMirror, .presentation-mode) li > ol > li > ol > li {
   list-style: none;
   position: relative;
 }
 
-li > ol > li > ol > li:before {
+:where(.ProseMirror, .presentation-mode) li > ol > li > ol > li:before {
   counter-increment: sublist;
   content: counter(sublist, lower-roman) '. ';
   position: absolute;
   inset-inline-start: -1.4em;
-}
-
-.tooltip:before {
-  z-index: 999;
 }
 
 /* On the editor root, so it inherits into every block in both schemas: the
@@ -446,10 +397,6 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   border-color: hsl(var(--color-border-default));
 }
 
-.custom-border-bg {
-  background-color: hsl(var(--color-border-default));
-}
-
 .vertical-divider {
   background-color: hsl(var(--color-border-default));
 }
@@ -512,10 +459,6 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   animation: aiwriter-scale-out 150ms ease-out;
 }
 
-.animate-fade-in-out {
-  animation: fade-in-out 2s ease-in-out infinite;
-}
-
 .animate-border {
   background: linear-gradient(
     90deg,
@@ -543,11 +486,6 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   &.search-result-current {
     background-color: hsl(var(--color-inline-comment-active));
   }
-}
-
-.is-active {
-  transition: transform 0.2s ease-in;
-  animation: shift-toward-subtle 200ms forwards;
 }
 
 [data-ddoc-editor-root='true'] {

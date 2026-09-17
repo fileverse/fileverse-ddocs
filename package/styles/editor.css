@@ -1696,14 +1696,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   }
 }
 
-.highlight-comment-bg {
-  background-color: #e5fbe7;
-
-  .dark & {
-    background-color: #15521d;
-  }
-}
-
 /* // Suggestion mode decorations
 // Suggestion styling: light tinted background + decoration. Text color
 // stays default so the doc text reads naturally; the colored decoration
@@ -1819,7 +1811,7 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   pointer-events: none !important;
 }
 
-.custom-scrollbar {
+.ddoc-scrollbar {
   overflow-y: scroll;
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent; /* Firefox */
@@ -1836,10 +1828,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     background-color: rgba(155, 155, 155, 0.5); /* color of the scroll thumb */
     border-radius: 20px; /* roundness of the scroll thumb */
   }
-}
-
-.placeholder-disabled::placeholder {
-  color: rgba(var(--color-text-disabled));
 }
 
 .autocomplete-suggestion {

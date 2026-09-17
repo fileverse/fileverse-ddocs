@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { CommandProps, Mark, mergeAttributes, Range } from '@tiptap/core';
+import {
+  CommandProps,
+  Editor,
+  Mark,
+  mergeAttributes,
+  Range,
+} from '@tiptap/core';
 import { Mark as PMMark } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -68,6 +74,12 @@ export interface CommentOptions {
 
 export interface CommentStorage {
   activeCommentId: string | null;
+}
+
+declare module '@tiptap/core' {
+  interface Storage {
+    comment: CommentStorage;
+  }
 }
 
 export interface DraftCommentRange {
@@ -323,6 +335,49 @@ const syncActiveCommentClassInDOM = (
       setCommentNodeVisualState(node, true);
     });
   }
+};
+
+/**
+ * Which comment is "active" is UI state: extension storage plus a DOM class
+ * on the already-rendered spans. It never touches the document.
+ *
+ * These are plain functions, not commands, because a command dispatches the
+ * transaction TipTap hands it whatever the command does with it, and these
+ * are called on every transaction (the bubble menu's shouldShow, the store's
+ * focus and blur handlers). That second, empty transaction ran every plugin,
+ * decoration pass and listener again for nothing. The commands below stay as
+ * the public API and are unchanged, so a caller that chains them with real
+ * edits still gets one dispatch for the chain.
+ */
+export const setActiveComment = (editor: Editor, commentId: string) => {
+  const storage = editor.storage.comment;
+  if (!storage || !commentId) return false;
+
+  const previousActiveCommentId = storage.activeCommentId;
+  storage.activeCommentId = commentId;
+  // Re-applied even when the id is unchanged: ProseMirror can redraw a
+  // comment span without a selection change (bolding part of it), and this
+  // is what puts the active class back on the new nodes.
+  syncActiveCommentClassInDOM(
+    getEditorDomSafely(editor),
+    previousActiveCommentId,
+    commentId,
+  );
+  return true;
+};
+
+export const clearActiveComment = (editor: Editor) => {
+  const storage = editor.storage.comment;
+  if (!storage) return false;
+
+  const previousActiveCommentId = storage.activeCommentId;
+  storage.activeCommentId = null;
+  syncActiveCommentClassInDOM(
+    getEditorDomSafely(editor),
+    previousActiveCommentId,
+    null,
+  );
+  return true;
 };
 
 export interface IComment {
@@ -637,29 +692,12 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
           dispatch?.(tr);
           return true;
         },
-      setCommentActive: (commentId: string) => () => {
-        const previousActiveCommentId = this.storage.activeCommentId;
-        if (!commentId) return false;
-        this.storage.activeCommentId = commentId;
-        // Update UI classes in-place so "active comment" does not create doc updates.
-        syncActiveCommentClassInDOM(
-          getEditorDomSafely(this.editor),
-          previousActiveCommentId,
-          commentId,
-        );
-        return true;
-      },
-      unsetCommentActive: () => () => {
-        const previousActiveCommentId = this.storage.activeCommentId;
-        this.storage.activeCommentId = null;
-        // Reset active styling without touching persisted mark attributes.
-        syncActiveCommentClassInDOM(
-          getEditorDomSafely(this.editor),
-          previousActiveCommentId,
-          null,
-        );
-        return true;
-      },
+      // Public API. In-package callers use setActiveComment /
+      // clearActiveComment directly so they do not pay for a dispatch; these
+      // keep working for anyone who calls or chains the commands.
+      setCommentActive: (commentId: string) => () =>
+        setActiveComment(this.editor, commentId),
+      unsetCommentActive: () => () => clearActiveComment(this.editor),
       setDraftComment:
         (draftId: string) =>
         ({ state, tr, dispatch }) => {

@@ -18,7 +18,7 @@ export class TableRowNodeView implements NodeView {
     this.node = node;
     this.cellMinWidth = cellMinWidth;
     this.dom = document.createElement('div');
-    this.dom.className = 'tableWrapper custom-scrollbar';
+    this.dom.className = 'tableWrapper ddoc-scrollbar';
     this.table = this.dom.appendChild(document.createElement('table'));
     this.colgroup = this.table.appendChild(document.createElement('colgroup'));
     this.contentDOM = this.table.appendChild(document.createElement('tbody'));

@@ -675,7 +675,7 @@ export const AIWriterNodeView = memo(
                     </div>
                   </SelectTrigger>
                   <SelectContent ref={selectContentRef}>
-                    <SelectGroup className="custom-scrollbar">
+                    <SelectGroup className="ddoc-scrollbar">
                       {availableModels.map((modelOption: ModelOption) => (
                         <SelectItem
                           key={modelOption.value}
