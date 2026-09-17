@@ -1,7 +1,5 @@
 import emptyComments from '../../assets/empty-comment.svg';
 import darkEmptyComments from '../../assets/dark-empty-comment.svg';
-import { useEffect, useState } from 'react';
-import { ThemeKey } from '../../types';
 
 const EmptyComments = ({
   commentType,
@@ -10,66 +8,20 @@ const EmptyComments = ({
   commentType: string;
   handleReset?: () => void;
 }) => {
-  const [theme, setTheme] = useState('light');
-
-  // Function to get theme from localStorage
-  const getThemeFromLS = (): ThemeKey => {
-    const storedTheme = localStorage.getItem('theme');
-    return storedTheme ? (storedTheme as ThemeKey) : 'light';
-  };
-
-  useEffect(() => {
-    // Initial theme setup from localStorage
-    setTheme(getThemeFromLS());
-
-    // Listen for storage events to update theme when it changes in other tabs/components
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'theme' && event.newValue) {
-        setTheme(event.newValue as ThemeKey);
-      }
-    };
-
-    // Create a MutationObserver to detect changes to the document's data-theme attribute
-    // This helps catch theme changes made by ThemeToggle in the same tab
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (
-          mutation.type === 'attributes' &&
-          mutation.attributeName === 'data-theme' &&
-          mutation.target === document.documentElement
-        ) {
-          // When document theme attribute changes, check localStorage again
-          setTheme(getThemeFromLS());
-        }
-      });
-    });
-
-    // Start observing the document element for data-theme attribute changes
-    observer.observe(document.documentElement, { attributes: true });
-
-    // Set up an interval to periodically check localStorage
-    // This is a fallback method to ensure we catch all theme changes
-    const intervalId = setInterval(() => {
-      const currentTheme = getThemeFromLS();
-      if (currentTheme !== theme) {
-        setTheme(currentTheme);
-      }
-    }, 0);
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      observer.disconnect();
-      clearInterval(intervalId);
-    };
-  }, [theme]);
-
   return (
     <div className="flex flex-col items-center justify-center h-full color-text-default">
+      {/* Two artworks rather than one recoloured asset: the dark version is
+          a different drawing, not the same paths in other colours. CSS picks
+          between them, so there is no theme state in JS; the hidden one is
+          display:none and leaves the accessibility tree with it. `dark:`
+          resolves to the `.dark` class rather than the OS setting because
+          the tailwind preset this package ships composes the ui preset,
+          which sets darkMode: 'class'. */}
+      <img src={emptyComments} alt="empty comments" className="dark:hidden" />
       <img
-        src={theme === 'dark' ? darkEmptyComments : emptyComments}
+        src={darkEmptyComments}
         alt="empty comments"
+        className="hidden dark:block"
       />
       <div className="text-heading-xsm mt-4">No comments yet</div>
       {commentType === 'all' ? (

@@ -298,7 +298,7 @@ describe('useEditorCommands insert.comment', () => {
     expect(result.current['insert.comment'].isEnabled).toBe(false);
   });
 
-  it('isEnabled is false when the cursor sits in a whitespace run', () => {
+  it('stays enabled in a whitespace run and comments on the previous word', () => {
     const store = createCommentStore();
     const spy = vi.fn();
     store.setState({
@@ -309,6 +309,25 @@ describe('useEditorCommands insert.comment', () => {
     editor.commands.insertContent('hello  world'); // two spaces
     const base = editor.state.selection.$from.start();
     editor.commands.setTextSelection(base + 6); // between the two spaces
+
+    const { result } = renderHook(() => useEditorCommands(editor), {
+      wrapper: wrapperFor(store),
+    });
+
+    expect(result.current['insert.comment'].isEnabled).toBe(true);
+    act(() => result.current['insert.comment'].run());
+    const { from, to } = editor.state.selection;
+    expect(editor.state.doc.textBetween(from, to)).toBe('hello');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('isEnabled is false when the cursor sits in an empty paragraph', () => {
+    const store = createCommentStore();
+    store.setState({
+      isInlineCommentAvailable: true,
+      handleInlineComment: vi.fn(),
+    });
+    editor.commands.setContent('<p></p>');
 
     const { result } = renderHook(() => useEditorCommands(editor), {
       wrapper: wrapperFor(store),

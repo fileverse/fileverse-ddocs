@@ -10,10 +10,11 @@ import {
 } from '@fileverse/ui';
 import { useShallow } from 'zustand/shallow';
 import { useSearchReplaceStore } from '../../../../package/stores/search-replace-store';
-import { useState, useEffect, useMemo, useReducer, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { debounce } from '../../../utils/debounce';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Editor } from '@tiptap/core';
+import { useEditorState } from '@tiptap/react';
 import { scrollIntoView } from '../../../utils/get-editor-scroll-container';
 import { setShowReplacePopoverWithData } from '../utils';
 import { useEventListener } from 'usehooks-ts';
@@ -25,14 +26,6 @@ const SearchReplace = ({
   editor: Editor | null;
   viewerMode?: 'suggest' | 'view-only';
 }) => {
-  const [, force] = useReducer((x) => x + 1, 0);
-  useEffect(() => {
-    if (!editor) return;
-    editor.on('transaction', force);
-    return () => {
-      editor.off('transaction', force);
-    };
-  }, [editor]);
   const [showReplace, setShowReplace] = useState(false);
   const isNonOwner = typeof viewerMode !== 'undefined';
   const { searchTerm, replaceTerm, showSearchReplacePopover } =
@@ -43,6 +36,19 @@ const SearchReplace = ({
         showSearchReplacePopover: s.showSearchReplacePopover,
       })),
     );
+  // Result count and current match live in editor.storage. Select them
+  // through useEditorState so the popover re-renders only when they change,
+  // not on every transaction (this used to force a render per keystroke,
+  // open or closed).
+  const searchState = useEditorState({
+    editor,
+    selector: ({ editor: e }: { editor: Editor | null }) => ({
+      resultCount: e ? e.storage.searchAndReplace.results.length : undefined,
+      resultIndex: e ? e.storage.searchAndReplace.resultIndex : undefined,
+    }),
+  });
+  const resultCount = searchState?.resultCount;
+  const resultIndex = searchState?.resultIndex;
 
   const { setShowReplacePopover, setSearchTerm, setReplaceTerm } =
     useSearchReplaceStore((s) => s.actions);
@@ -101,9 +107,6 @@ const SearchReplace = ({
 
   //opens popover on cmd+f across the editor
   useEventListener<'keydown'>('keydown', handleSearchReplaceOnKeydown);
-
-  const results = editor?.storage.searchAndReplace.results;
-  const resultIndex = editor?.storage.searchAndReplace.resultIndex;
 
   function toggleReplace() {
     if (isNonOwner) {
@@ -186,11 +189,11 @@ const SearchReplace = ({
               onChange={handleSearchTerm}
               onKeyDown={handleSearchInputKeydown}
             />
-            {results && (
+            {resultCount !== undefined && (
               <>
-                {results.length > 0 ? (
+                {resultCount > 0 ? (
                   <span className="color-text-secondary text-sm">
-                    {`${typeof resultIndex === 'number' ? resultIndex + 1 : '?'}/${results.length}`}
+                    {`${typeof resultIndex === 'number' ? resultIndex + 1 : '?'}/${resultCount}`}
                   </span>
                 ) : searchTerm !== '' ? (
                   <span className="color-text-secondary text-xs shrink-0">
@@ -199,7 +202,7 @@ const SearchReplace = ({
                 ) : null}
               </>
             )}
-            {results && results.length > 0 && (
+            {resultCount !== undefined && resultCount > 0 && (
               <div className="flex items-center">
                 <div className="flex items-center">
                   <Tooltip text="Previous">
