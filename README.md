@@ -59,13 +59,13 @@ npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities @fileverse/ui @fi
 | `@dnd-kit/core`      | `>=6.3.1`   |
 | `@dnd-kit/sortable`  | `>=10.0.0`  |
 | `@dnd-kit/utilities` | `>=3.2.2`   |
-| `@fileverse/ui`      | `^5.4.0`    |
+| `@fileverse/ui`      | `^5.4.2`    |
 | `@fileverse/crypto`  | `>=0.0.21`  |
 | `viem`               | `>=2.13.8`  |
 | `framer-motion`      | `>=11.2.10` |
 | `frimousse`          | `>=0.3.0`   |
 
-The peer range is `@fileverse/ui@^5.4.0`. If you ever test a prerelease pairing, pin both packages exactly: a prerelease never satisfies a caret range.
+The peer range is `@fileverse/ui@^5.4.2`. If you ever test a prerelease pairing, pin both packages exactly: a prerelease never satisfies a caret range.
 
 These are externalized from the bundle to avoid duplication when your app already uses them. If you don't have them installed, npm (v7+) will auto-install them for you.
 
@@ -87,6 +87,8 @@ statically imports `use-headless-editor-<hash>.mjs`), so a single-file entry lea
 classes ungenerated.
 
 The preset composes `@fileverse/ui/tailwind` (class-based dark mode, animate plugin, design-system classes) and adds the `mobile: 960px` screen the editor uses.
+
+`tailwindcss@^3.4.0` is an optional peer: the preset runs inside your own Tailwind build, which also supplies the `postcss` and `postcss-js` the ui preset loads. Tailwind 4 is not supported.
 
 ### Migrating from 4.x
 
