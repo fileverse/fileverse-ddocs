@@ -9,40 +9,8 @@ import {
   type TableOfContentDataItem,
 } from '@tiptap/extension-table-of-contents';
 import Highlight from '@tiptap/extension-highlight';
-import { TextStyle } from '@tiptap/extension-text-style';
 import { v4 as uuidv4 } from 'uuid';
-
-const ExtendedTextStyle = TextStyle.extend({
-  addAttributes() {
-    return {
-      // ...this.parent?.(),
-      // color: {
-      //   default: null,
-      //   parseHTML: (element) => element.style.color,
-      //   renderHTML: (attributes) => {
-      //     if (!attributes.color) {
-      //       return {};
-      //     }
-      //     return {
-      //       style: `color: ${attributes.color}`,
-      //     };
-      //   },
-      // },
-      'data-original-color': {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-original-color'),
-        renderHTML: (attributes) => {
-          if (!attributes['data-original-color']) {
-            return {};
-          }
-          return {
-            'data-original-color': attributes['data-original-color'],
-          };
-        },
-      },
-    };
-  },
-});
+import { ExtendedTextStyle } from './text-style';
 import { CommonMarkBold, CommonMarkItalic } from './commonmark-emphasis';
 import HorizontalRule from './horizontal-rule';
 import ColumnExtension from './multi-column';
