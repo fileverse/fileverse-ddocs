@@ -1270,6 +1270,8 @@ const DdocEditor = forwardRef(
                                             data-ddoc-editor-tab-id={
                                               entry.tabId
                                             }
+                                            // editor.css scopes heading-chevron reveals on
+                                            // [data-ddoc-editor-panel][aria-hidden='true'].
                                             aria-hidden={!entry.isActive}
                                             style={{
                                               position: entry.isActive
