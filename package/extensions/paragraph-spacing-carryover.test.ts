@@ -2,6 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import { getHeadlessExtensions } from '../hooks/use-headless-editor';
+import {
+  pressEnter,
+  ySyncPlugin,
+  undoManager,
+} from './caret-marks/test-helpers';
 
 // Carry-over spans the v1 dBlock Enter handler and v2's stock split, so these
 // run against a real Collaboration-backed editor rather than the schema-only
@@ -36,18 +41,6 @@ const endOf = (editor: Editor, text: string) => {
 const pressEnterAtEndOf = (editor: Editor, text: string) => {
   editor.commands.setTextSelection(endOf(editor, text));
   editor.commands.keyboardShortcut('Enter');
-};
-
-/** The real keydown path: the keymap, not just the handler's steps. */
-const keydownEnter = (editor: Editor) => {
-  const event = new KeyboardEvent('keydown', {
-    key: 'Enter',
-    bubbles: true,
-    cancelable: true,
-  });
-  return (
-    editor.view.someProp('handleKeyDown', (f) => f(editor.view, event)) ?? false
-  );
 };
 
 /**
@@ -150,9 +143,9 @@ describe('blockquote exit (schema v1)', () => {
       ),
     );
     editor.commands.setTextSelection(endOf(editor, 'quote'));
-    keydownEnter(editor); // new empty paragraph inside the quote
+    pressEnter(editor); // new empty paragraph inside the quote
     const before = textblocks(editor).length;
-    expect(keydownEnter(editor)).toBe(true); // exit
+    expect(pressEnter(editor)).toBe(true); // exit
     expect(textblocks(editor).length).toBe(before);
     const exited = textblocks(editor)[1];
     expect(exited.name).toBe('paragraph');
@@ -168,7 +161,7 @@ describe.each([1, 2])('text alignment carry-over (schema v%i)', (version) => {
       makeEditor(version, '<p style="text-align: center">one</p>'),
     );
     editor.commands.setTextSelection(endOf(editor, 'one'));
-    keydownEnter(editor);
+    pressEnter(editor);
     expect(createdBlock(editor)?.attrs.textAlign).toBe('center');
   });
 });
@@ -182,8 +175,8 @@ describe('list exit spacing owner (schema v1)', () => {
       ),
     );
     editor.commands.setTextSelection(endOf(editor, 'item'));
-    keydownEnter(editor);
-    keydownEnter(editor);
+    pressEnter(editor);
+    pressEnter(editor);
     const exited = textblocks(editor).find(
       (b) => b.name === 'paragraph' && b.attrs.spaceBefore !== null,
     );
@@ -203,11 +196,97 @@ describe('list exit spacing owner (schema v1)', () => {
       ),
     );
     editor.commands.setTextSelection(endOf(editor, 'todo'));
-    keydownEnter(editor);
-    keydownEnter(editor);
+    pressEnter(editor);
+    pressEnter(editor);
     // Not the last paragraph: the trailing node sits after the exited block.
     const exited = createdBlock(editor);
     expect(exited.attrs.spaceBefore).toBe(0);
     expect(exited.attrs.spaceAfter).toBe(0);
+  });
+});
+
+describe.each([1, 2])(
+  'list exit spacing in production plugin order (schema v%i)',
+  (version) => {
+    it.each([
+      [
+        'bullet',
+        '<ul><li style="margin-top: 12pt; margin-bottom: 8pt"><p>item</p></li></ul>',
+      ],
+      [
+        'ordered',
+        '<ol><li style="margin-top: 12pt; margin-bottom: 8pt"><p>item</p></li></ol>',
+      ],
+      [
+        'task',
+        '<ul data-type="taskList"><li data-type="taskItem"><p style="margin-top: 12pt; margin-bottom: 8pt">item</p></li></ul>',
+      ],
+    ])(
+      "Enter-Enter out of a %s list keeps the item's spacing",
+      (_kind, content) => {
+        const editor = track(makeEditor(version, content));
+        editor.commands.setTextSelection(endOf(editor, 'item'));
+        pressEnter(editor);
+        pressEnter(editor);
+        const paragraph = editor.state.selection.$from.parent;
+        expect(editor.state.selection.$from.depth).toBe(version === 1 ? 2 : 1);
+        expect(paragraph.attrs.spaceBefore).toBe(12);
+        expect(paragraph.attrs.spaceAfter).toBe(8);
+      },
+    );
+  },
+);
+
+describe('list exit (schema v2)', () => {
+  it('gives a paragraph lacking a block id its spacing, an id, and the pending caret style', () => {
+    const editor = track(
+      makeEditor(
+        2,
+        '<ul><li style="margin-top: 12pt; margin-bottom: 8pt"><p><strong>item</strong></p></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'item'));
+    pressEnter(editor);
+    // A nested list item's paragraph never gets a block id (BlockId only
+    // assigns ids to top-level blocks) — the repair after the lift is real.
+    const emptyItemParagraph = editor.state.selection.$from.parent;
+    expect(emptyItemParagraph.attrs.blockId).toBeNull();
+    pressEnter(editor);
+    const paragraph = editor.state.selection.$from.parent;
+    expect(editor.state.selection.$from.depth).toBe(1);
+    expect(paragraph.attrs.blockId).toBeTruthy();
+    expect(paragraph.attrs.spaceBefore).toBe(12);
+    expect(paragraph.attrs.spaceAfter).toBe(8);
+    expect(paragraph.attrs.caretMarks).toBe('[{"type":"bold"}]');
+  });
+
+  it('never restyles when a selected list before a paragraph is deleted, locally or remotely', () => {
+    const editor = track(
+      makeEditor(
+        2,
+        '<ul><li style="margin-top: 12pt"><p>item</p></li></ul><p>after</p>',
+      ),
+    );
+    const listSize = editor.state.doc.firstChild!.nodeSize;
+    editor.commands.setTextSelection(endOf(editor, 'item'));
+    editor.view.dispatch(editor.state.tr.delete(0, listSize));
+    expect(editor.state.doc.firstChild?.attrs.spaceBefore).toBeNull();
+
+    const remote = track(
+      makeEditor(
+        2,
+        '<ul><li style="margin-top: 12pt"><p>item</p></li></ul><p>after</p>',
+      ),
+    );
+    remote.commands.setTextSelection(endOf(remote, 'item'));
+    const ySync = ySyncPlugin(remote);
+    const undoStackBefore = undoManager(remote).undoStack.length;
+    remote.view.dispatch(
+      remote.state.tr.delete(0, listSize).setMeta(ySync, {
+        isChangeOrigin: true,
+      }),
+    );
+    expect(remote.state.doc.firstChild?.attrs.spaceBefore).toBeNull();
+    expect(undoManager(remote).undoStack.length).toBe(undoStackBefore);
   });
 });
