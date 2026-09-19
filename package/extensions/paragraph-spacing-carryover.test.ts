@@ -38,6 +38,18 @@ const pressEnterAtEndOf = (editor: Editor, text: string) => {
   editor.commands.keyboardShortcut('Enter');
 };
 
+/** The real keydown path: the keymap, not just the handler's steps. */
+const keydownEnter = (editor: Editor) => {
+  const event = new KeyboardEvent('keydown', {
+    key: 'Enter',
+    bubbles: true,
+    cancelable: true,
+  });
+  return (
+    editor.view.someProp('handleKeyDown', (f) => f(editor.view, event)) ?? false
+  );
+};
+
 /**
  * Every textblock in the document, in order.
  *
@@ -126,5 +138,76 @@ describe.each([1, 2])('line height carry-over (schema v%i)', (version) => {
     pressEnterAtEndOf(editor, 'one');
 
     expect(createdBlock(editor)?.attrs.lineHeight).toBe('240%');
+  });
+});
+
+describe('blockquote exit (schema v1)', () => {
+  it('creates exactly one block and keeps the spacing', () => {
+    const editor = track(
+      makeEditor(
+        1,
+        '<blockquote><p style="margin-top: 0pt; margin-bottom: 0pt">quote</p></blockquote>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'quote'));
+    keydownEnter(editor); // new empty paragraph inside the quote
+    const before = textblocks(editor).length;
+    expect(keydownEnter(editor)).toBe(true); // exit
+    expect(textblocks(editor).length).toBe(before);
+    const exited = textblocks(editor)[1];
+    expect(exited.name).toBe('paragraph');
+    expect(exited.attrs.spaceBefore).toBe(0);
+    expect(exited.attrs.spaceAfter).toBe(0);
+    expect(editor.state.selection.$from.parent.attrs.spaceAfter).toBe(0);
+  });
+});
+
+describe.each([1, 2])('text alignment carry-over (schema v%i)', (version) => {
+  it('carries onto the next paragraph', () => {
+    const editor = track(
+      makeEditor(version, '<p style="text-align: center">one</p>'),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'one'));
+    keydownEnter(editor);
+    expect(createdBlock(editor)?.attrs.textAlign).toBe('center');
+  });
+});
+
+describe('list exit spacing owner (schema v1)', () => {
+  it("reads a bullet's spacing from the listItem", () => {
+    const editor = track(
+      makeEditor(
+        1,
+        '<ul><li style="margin-top: 12pt; margin-bottom: 8pt"><p>item</p></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'item'));
+    keydownEnter(editor);
+    keydownEnter(editor);
+    const exited = textblocks(editor).find(
+      (b) => b.name === 'paragraph' && b.attrs.spaceBefore !== null,
+    );
+    expect(exited?.attrs).toMatchObject({ spaceBefore: 12, spaceAfter: 8 });
+    // The caret lands in that block from insertContentAt's own selection, with
+    // no focus(pos) for TextSelection.near to rescue.
+    const caret = editor.state.selection.$from.parent;
+    expect(caret.type.name).toBe('paragraph');
+    expect(caret.attrs).toMatchObject({ spaceBefore: 12, spaceAfter: 8 });
+  });
+
+  it("reads a checklist's spacing from its paragraph, explicit zeros included", () => {
+    const editor = track(
+      makeEditor(
+        1,
+        '<ul data-type="taskList"><li data-type="taskItem"><p style="margin-top: 0pt; margin-bottom: 0pt">todo</p></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'todo'));
+    keydownEnter(editor);
+    keydownEnter(editor);
+    // Not the last paragraph: the trailing node sits after the exited block.
+    const exited = createdBlock(editor);
+    expect(exited.attrs.spaceBefore).toBe(0);
+    expect(exited.attrs.spaceAfter).toBe(0);
   });
 });

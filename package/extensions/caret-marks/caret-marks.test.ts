@@ -577,3 +577,160 @@ describe.each([1, 2])('callout insert (schema v%i)', (version) => {
     expect(typedTextStyle(editor)?.color).toBe('#ff0000');
   });
 });
+
+describe.each([1, 2])('Enter through the keymap (schema v%i)', (version) => {
+  it('carries every inline format at the end of a line, across a second Enter, and after leaving and returning', () => {
+    const editor = track(makeEditor(version, '<p>abc</p>'));
+    selectText(editor, 'abc');
+    editor.commands.setFontFamily('Georgia');
+    editor.commands.setFontSize('24px');
+    editor.commands.setColor('#ff0000');
+    editor.commands.setHighlight({ color: '#ffff00' });
+    editor.commands.toggleBold();
+    editor.commands.toggleItalic();
+    editor.commands.toggleUnderline();
+    editor.commands.toggleStrike();
+    caretTo(editor, endOf(editor, 'abc'));
+    expect(pressEnter(editor)).toBe(true);
+    expect(textblocks(editor).length).toBe(2);
+    const expected = [
+      'bold',
+      'highlight',
+      'italic',
+      'strike',
+      'textStyle',
+      'underline',
+    ];
+    expect(storedMarkNames(editor)).toEqual(expected);
+    expect(pressEnter(editor)).toBe(true);
+    expect(textblocks(editor).length).toBe(3);
+    const third = textblocks(editor)[2];
+    caretTo(editor, endOf(editor, 'abc'));
+    caretTo(editor, third.pos + 1);
+    expect(typedMarks(editor)).toEqual(expected);
+    expect(typedTextStyle(editor)).toMatchObject({
+      fontFamily: 'Georgia',
+      fontSize: '24px',
+      color: '#ff0000',
+    });
+  });
+
+  it('keeps bold pending in front of plain text on a mid-text Enter', () => {
+    const editor = track(makeEditor(version, '<p><strong>A</strong>B</p>'));
+    caretTo(editor, endOf(editor, 'A'));
+    pressEnter(editor);
+    expect(typedMarks(editor)).toEqual(['bold']);
+    expect(createdBlock(editor).node.textContent).toBe('xB');
+    expect(editor.state.doc.nodeAt(endOf(editor, 'B') - 1)?.marks).toEqual([]);
+  });
+
+  it('an empty style declared at Enter stays plain, also after the neighbour is made bold', () => {
+    const editor = track(makeEditor(version, '<p><strong>abc</strong></p>'));
+    caretTo(editor, endOf(editor, 'abc'));
+    editor.commands.toggleBold();
+    pressEnter(editor);
+    expect(stampOf(createdBlock(editor).node)).toBe('[]');
+    const created = createdBlock(editor).pos;
+    selectText(editor, 'abc');
+    editor.commands.unsetAllMarks();
+    editor.commands.toggleBold();
+    caretTo(editor, created + 1);
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it.each([
+    [
+      'stale non-null stamp on plain text',
+      '<p>abc</p>',
+      '[{"type":"bold"}]',
+      false,
+      '[]',
+      [],
+    ],
+    [
+      'unstamped bold text',
+      '<p><strong>abc</strong></p>',
+      null,
+      false,
+      '[{"type":"bold"}]',
+      ['bold'],
+    ],
+    [
+      'plain text stamped "[]" with bold pending',
+      '<p>abc</p>',
+      '[]',
+      true,
+      '[{"type":"bold"}]',
+      ['bold'],
+    ],
+  ])(
+    'Enter at offset 0 — %s',
+    (_label, content, stamp, pendingBold, expectedStamp, expectedMarks) => {
+      const editor = track(makeEditor(version, content as string));
+      if (stamp) stampBlock(editor, textblocks(editor)[0].pos, stamp as string);
+      caretTo(editor, startOf(editor, 'abc'));
+      if (pendingBold) editor.commands.toggleBold();
+      pressEnter(editor);
+      const [left, right] = textblocks(editor);
+      expect(left.node.content.size).toBe(0);
+      expect(stampOf(left.node)).toBe(expectedStamp);
+      expect(right.node.textContent).toBe('abc');
+      expect(editor.state.selection.from).toBe(right.pos + 1);
+      expect(typedMarks(editor)).toEqual(expectedMarks);
+      caretTo(editor, textblocks(editor)[0].pos + 1);
+      expect(typedMarks(editor)).toEqual(expectedMarks);
+    },
+  );
+
+  it('Enter at offset 0 of a heading with bold pending: the emptied left half is stamped and the text moves on', () => {
+    const editor = track(makeEditor(version, '<h2>abc</h2>'));
+    caretTo(editor, startOf(editor, 'abc'));
+    editor.commands.toggleBold();
+    pressEnter(editor);
+    const [left, right] = textblocks(editor);
+    expect(left.node.content.size).toBe(0);
+    expect(stampOf(left.node)).toBe('[{"type":"bold"}]');
+    expect(right.node.textContent).toBe('abc');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('Enter from an empty line stamped with a link: original keeps the link, new line is unlinked', () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    editor.commands.setLink({ href: 'https://x.y' });
+    pressEnter(editor);
+    expect(stampOf(createdBlock(editor).node)).toBe('[]');
+    expect(stampOf(textblocks(editor)[0].node)).toContain('"type":"link"');
+    expect(typedMarks(editor)).toEqual([]);
+    caretTo(editor, textblocks(editor)[0].pos + 1);
+    expect(typedMarks(editor)).toEqual(['link']);
+  });
+
+  it('Enter at the end of a heading gives a paragraph that carries the marks', () => {
+    const editor = track(makeEditor(version, '<h2><em>t</em></h2>'));
+    caretTo(editor, endOf(editor, 't'));
+    pressEnter(editor);
+    expect(createdBlock(editor).node.type.name).toBe('paragraph');
+    expect(typedMarks(editor)).toEqual(['italic']);
+  });
+
+  it('Enter in a bullet carries marks into the next item', () => {
+    const editor = track(
+      makeEditor(version, '<ul><li><p><strong>abc</strong></p></li></ul>'),
+    );
+    caretTo(editor, endOf(editor, 'abc'));
+    pressEnter(editor);
+    expect(createdBlock(editor).node.type.name).toBe('paragraph');
+    expect(editor.state.selection.$from.node(-1).type.name).toBe('listItem');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('Enter at the end of an old-doc paragraph whose 32px is only an attr yields marks and no attr', () => {
+    const editor = track(
+      makeEditor(version, '<p style="font-size: 32px">abc</p>'),
+    );
+    caretTo(editor, endOf(editor, 'abc'));
+    pressEnter(editor);
+    expect(createdBlock(editor).node.attrs.fontSize).toBeNull();
+    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+  });
+});

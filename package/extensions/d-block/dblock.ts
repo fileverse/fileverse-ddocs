@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Dispatch, Node, mergeAttributes } from '@tiptap/core';
 import { DBlockNodeView } from './dblock-node-view';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection, Transaction } from '@tiptap/pm/state';
+import {
+  CARET_MARKS_ATTR,
+  caretStyle,
+  filterSplittable,
+  stampAttrs,
+} from '../caret-marks/caret-style';
 import { IpfsImageUploadResponse } from '../../types';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import type { DBlockRuntimeState } from './dblock-runtime';
@@ -42,6 +49,26 @@ interface NestedList {
   type: string;
   content: any[];
 }
+
+/**
+ * Block attrs a hand-built v1 block carries from the block being left.
+ * spaceBefore is dropped when leaving a heading: a heading's section gap
+ * landing on the body text below it would repeat on every Enter (TEC-2701).
+ */
+const carriedBlockAttrs = (
+  node: ProseMirrorNode,
+  spacingOwner: ProseMirrorNode = node,
+) => {
+  const isLeavingHeading = node.type.name === 'heading';
+  const spaceBefore = spacingOwner.attrs.spaceBefore ?? null;
+  const spaceAfter = spacingOwner.attrs.spaceAfter ?? null;
+  return {
+    ...(node.attrs.lineHeight ? { lineHeight: node.attrs.lineHeight } : {}),
+    ...(spaceBefore !== null && !isLeavingHeading ? { spaceBefore } : {}),
+    ...(spaceAfter !== null ? { spaceAfter } : {}),
+    ...(node.attrs.textAlign ? { textAlign: node.attrs.textAlign } : {}),
+  };
+};
 
 export const DBlock = Node.create<DBlockOptions>({
   name: 'dBlock',
@@ -118,63 +145,42 @@ export const DBlock = Node.create<DBlockOptions>({
     return {
       'Mod-Alt-0': () => this.editor.commands.setDBlock(),
       Enter: ({ editor }) => {
+        const { state } = editor;
         const {
           selection: { $head, from, to },
           doc,
-        } = editor.state;
-        const headMarks = $head.marks();
-        const textStyleMark = headMarks.find(
-          (m) => m.type.name === 'textStyle',
-        );
-        const attrs = textStyleMark?.attrs ?? {};
+        } = state;
 
-        // Get the current node and its parent
         const currentNode = $head.node($head.depth);
         const parent = $head.node($head.depth - 1);
-        // lineHeight is a node attr (not a textStyle mark), so it is only read
-        // from the current block and carried onto the block created below it
-        const lineHeight = currentNode?.attrs?.lineHeight || null;
-        const lineHeightAttr = lineHeight ? { lineHeight } : {};
-        // Paragraph spacing is a node attr too. v2 gets this free from
-        // ProseMirror's split copying attrs; v1 builds the new block's attrs by
-        // hand here, so it has to be carried explicitly.
-        //
-        // spaceBefore is dropped when leaving a heading: Enter at the end of a
-        // heading produces a paragraph, and a heading's section gap landing on
-        // the body text below it would repeat on every Enter. (v2 does the same
-        // via the appendTransaction in paragraph-spacing.ts, which cannot see
-        // this case because v1's new block sits in its own dBlock row.)
-        const isLeavingHeading = currentNode?.type.name === 'heading';
-        const spaceBefore = currentNode?.attrs?.spaceBefore ?? null;
-        const spaceAfter = currentNode?.attrs?.spaceAfter ?? null;
-        const spacingAttrs = {
-          ...(spaceBefore !== null && !isLeavingHeading ? { spaceBefore } : {}),
-          ...(spaceAfter !== null ? { spaceAfter } : {}),
+        if (!currentNode.isTextblock) return false;
+
+        // The style the new line inherits (docs/FORMATTING_INHERITANCE.md 3.4):
+        // captured before anything is built, declared last in every chain.
+        const style = filterSplittable(caretStyle(state, currentNode), editor);
+        const sourceWasEmpty = currentNode.content.size === 0;
+        const declare = ({ tr }: { tr: Transaction }) => {
+          tr.setStoredMarks(style);
+          return true;
         };
+
         const headString = $head.toString();
         const nodePaths = headString.split('/');
         const isAtEndOfTheNode = $head.end() === from;
         const isAtStartOfTheNode = $head.start() === from;
-
-        // Check if inside table
         const isInsideTable = nodePaths.some((path) => path.includes('table'));
 
-        // Handle lists press enter action
         if (
           parent?.type.name === 'listItem' ||
           parent?.type.name === 'taskItem'
         ) {
-          // 🛡️ Check if inside table - if so, don't handle lists specially
-          if (isInsideTable) {
-            return false;
-          }
+          if (isInsideTable) return false;
 
           const isCurrentItemEmpty = currentNode.textContent === '';
           const grandParent = $head.node($head.depth - 2);
           const currentIndex = $head.index($head.depth - 2);
           const isLastItem = currentIndex === grandParent.childCount - 1;
 
-          // 🛡️ Check nesting depth: only allow this on top-level lists
           let listDepth = 0;
           for (let d = $head.depth - 1; d >= 0; d--) {
             const node = $head.node(d);
@@ -185,17 +191,14 @@ export const DBlock = Node.create<DBlockOptions>({
               listDepth++;
             }
           }
-
           const isTopLevelList = listDepth === 1;
 
-          // Handle empty items at top level (both last and non-last)
           if (isCurrentItemEmpty && isTopLevelList) {
             const listNode = $head.node($head.depth - 2);
             const currentItem = listNode.child(currentIndex);
             const currentItemStart = $head.before($head.depth - 1);
             const currentItemEnd = currentItemStart + currentItem.nodeSize;
 
-            // Check if the current item has nested content (bulletList or orderedList)
             let hasNestedContent = false;
             currentItem.forEach((node) => {
               if (
@@ -205,20 +208,15 @@ export const DBlock = Node.create<DBlockOptions>({
                 hasNestedContent = true;
               }
             });
+            if (hasNestedContent) return false;
 
-            // If the current item has nested content, don't delete it!
-            // This prevents deleting parent items with nested children
-            if (hasNestedContent) {
-              return false; // Let default behavior handle it
-            }
-
-            // If it's the last item, exit the list and create a text block
             if (isLastItem) {
-              const fontFamily =
-                attrs?.fontFamily || currentNode?.attrs?.fontFamily || null;
-              const fontSize =
-                attrs?.fontSize || currentNode?.attrs?.fontSize || null;
-              return editor
+              // setParagraphSpacing writes a bullet's spacing on the listItem
+              // and skips its paragraph; a task item has no spacing attrs, so
+              // its paragraph owns them.
+              const spacingOwner =
+                parent.type.name === 'listItem' ? parent : currentNode;
+              editor
                 .chain()
                 .deleteRange({ from: currentItemStart, to: currentItemEnd })
                 .insertContentAt(currentItemStart, {
@@ -226,83 +224,56 @@ export const DBlock = Node.create<DBlockOptions>({
                   content: [
                     {
                       type: 'paragraph',
-                      attrs: {
-                        fontFamily,
-                        fontSize,
-                        ...lineHeightAttr,
-                        ...spacingAttrs,
-                      },
+                      attrs: carriedBlockAttrs(currentNode, spacingOwner),
                     },
                   ],
                 })
-                .focus(currentItemStart + 2)
+                .focus()
+                .command(declare)
                 .run();
+              return true;
             }
 
-            // If it's not the last item, just delete it and move cursor to next item
-            return editor
+            editor
               .chain()
               .deleteRange({ from: currentItemStart, to: currentItemEnd })
               .run();
+            return true;
           }
-          // Handle empty items in nested lists: lift and preserve font attrs
           if (isCurrentItemEmpty && !isTopLevelList) {
+            // The block is moved, not created: it keeps its own stamp.
             const itemType = parent.type.name as 'listItem' | 'taskItem';
-            const fontFamily =
-              attrs?.fontFamily || currentNode?.attrs?.fontFamily || null;
-            const fontSize =
-              attrs?.fontSize || currentNode?.attrs?.fontSize || null;
-            const result = editor.commands.liftListItem(itemType);
-            if (result && (fontFamily || fontSize)) {
-              editor.commands.setMark('textStyle', {
-                ...(fontFamily ? { fontFamily } : {}),
-                ...(fontSize ? { fontSize } : {}),
-              });
-            }
-            return result;
+            if (!editor.can().liftListItem(itemType)) return false;
+            editor.chain().liftListItem(itemType).run();
+            return true;
           }
         }
 
-        // Handle blockquote
         if (
           parent?.type.name === 'blockquote' &&
-          currentNode.type.name === 'paragraph'
+          currentNode.type.name === 'paragraph' &&
+          currentNode.textContent === ''
         ) {
-          if (currentNode.textContent === '') {
-            const fontFamily =
-              attrs?.fontFamily || currentNode?.attrs?.fontFamily || null;
-            const fontSize =
-              attrs?.fontSize || currentNode?.attrs?.fontSize || null;
-            return editor
-              .chain()
-              .insertContentAt(from, {
-                type: 'dBlock',
-                content: [
-                  {
-                    type: 'paragraph',
-                    attrs: {
-                      fontFamily,
-                      fontSize,
-                      ...lineHeightAttr,
-                      ...spacingAttrs,
-                    },
-                  },
-                ],
-              })
-              .focus(from + 2)
-              .setMark('textStyle', { ...attrs, fontFamily, fontSize })
-              .run();
-          }
+          // insertContentAt replaces the empty line and leaves the caret in the
+          // new paragraph. A focus(from + 2) here aimed past it, the chain
+          // failed, and the keymap fell through to core Enter (root cause 5).
+          editor
+            .chain()
+            .insertContentAt(from, {
+              type: 'dBlock',
+              content: [
+                { type: 'paragraph', attrs: carriedBlockAttrs(currentNode) },
+              ],
+            })
+            .command(declare)
+            .run();
+          return true;
         }
 
         if (parent?.type.name !== 'dBlock') {
-          // If inside table, do nothing
-          if (isInsideTable) {
-            return false;
-          }
+          if (isInsideTable) return false;
         }
 
-        // Handle dBlock content
         if (parent?.type.name === 'dBlock') {
           let currentActiveNodeTo = -1;
           let currentActiveNodeType = '';
@@ -335,34 +306,26 @@ export const DBlock = Node.create<DBlockOptions>({
               ['columns', 'heading'].includes(currentActiveNodeType) &&
               isAtEndOfTheNode
             ) {
-              const fontFamily =
-                attrs?.fontFamily || currentNode?.attrs?.fontFamily || null;
-              const fontSize =
-                attrs?.fontSize || currentNode?.attrs?.fontSize || null;
-              return editor
+              editor
                 .chain()
                 .insertContent({
                   type: 'dBlock',
                   content: [
                     {
                       type: 'paragraph',
-                      attrs: {
-                        fontFamily,
-                        fontSize,
-                        ...lineHeightAttr,
-                        ...spacingAttrs,
-                      },
+                      attrs: carriedBlockAttrs(currentNode),
                     },
                   ],
                 })
                 .focus(from + 4)
-                .setMark('textStyle', attrs)
+                .command(declare)
                 .run();
+              return true;
             } else if (
               currentActiveNodeType === 'columns' ||
               (currentActiveNodeType === 'heading' && !isAtStartOfTheNode)
             ) {
-              return editor
+              editor
                 .chain()
                 .command(
                   ({
@@ -379,17 +342,9 @@ export const DBlock = Node.create<DBlockOptions>({
                   },
                 )
                 .focus(from)
-                .setMark('textStyle', attrs)
                 .run();
+              return true;
             }
-
-            // Read font attrs from textStyle marks first, then fall back to
-            // paragraph node attrs (reliable when cursor is at start of text
-            // and storedMarks are absent)
-            const fontFamily =
-              attrs?.fontFamily || currentNode?.attrs?.fontFamily || null;
-            const fontSize =
-              attrs?.fontSize || currentNode?.attrs?.fontSize || null;
 
             const finalContent =
               content && content.length > 0 && !isAtEndOfTheNode
@@ -397,16 +352,12 @@ export const DBlock = Node.create<DBlockOptions>({
                 : [
                     {
                       type: 'paragraph',
-                      attrs: {
-                        fontFamily,
-                        fontSize,
-                        ...lineHeightAttr,
-                        ...spacingAttrs,
-                      },
+                      attrs: carriedBlockAttrs(currentNode),
                     },
                   ];
+            const originalPos = $head.before();
 
-            return editor
+            editor
               .chain()
               .insertContentAt(
                 { from, to: currentActiveNodeTo },
@@ -415,27 +366,29 @@ export const DBlock = Node.create<DBlockOptions>({
                   content: finalContent,
                 },
               )
-              .command(({ tr, dispatch }) => {
-                // After insertContentAt, set font attrs on the original (now empty) paragraph
-                // The paragraph position is from - 1 (from was the cursor pos inside the paragraph)
-                if (dispatch && (fontFamily || fontSize || lineHeight)) {
-                  const paragraphPos = from - 1;
-                  const node = tr.doc.nodeAt(paragraphPos);
-                  if (node && node.type.name === 'paragraph') {
-                    tr.setNodeMarkup(paragraphPos, undefined, {
-                      ...node.attrs,
-                      fontFamily,
-                      fontSize,
-                      ...lineHeightAttr,
-                      ...spacingAttrs,
-                    });
+              .command(({ tr }) => {
+                // Enter at offset 0 moves the text on and leaves this line
+                // empty behind the caret, where no rule reaches it (spec 3.2).
+                if (isAtStartOfTheNode && !sourceWasEmpty) {
+                  const left = tr.doc.nodeAt(originalPos);
+                  if (
+                    left?.isTextblock &&
+                    left.content.size === 0 &&
+                    CARET_MARKS_ATTR in left.attrs
+                  ) {
+                    tr.setNodeMarkup(
+                      originalPos,
+                      undefined,
+                      stampAttrs(left.attrs, style),
+                    );
                   }
                 }
                 return true;
               })
               .focus(from + 4)
-              .setMark('textStyle', attrs)
+              .command(declare)
               .run();
+            return true;
           } catch (error) {
             console.error(`Error inserting content into dBlock node: ${error}`);
             return false;
