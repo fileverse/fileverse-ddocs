@@ -83,6 +83,25 @@ describe('dispatch context: provenance', () => {
       ).pending,
     ).toBeNull();
   });
+
+  it('reads a step-free re-set of the marks the state already holds as a re-affirmation', () => {
+    const editor = track(makeEditor(2, '<p>abc</p>'));
+    const bold = editor.schema.marks.bold.create();
+    editor.view.dispatch(editor.state.tr.setStoredMarks([bold]));
+    expect(editor.state.storedMarks).not.toBeNull();
+
+    // What Tiptap's bare focus() dispatches on an unfocused view.
+    expect(
+      context(editor, editor.state.tr.setStoredMarks(editor.state.storedMarks))
+        .pending,
+    ).toEqual({ marks: editor.state.storedMarks, explicit: false });
+    expect(
+      context(
+        editor,
+        editor.state.tr.setStoredMarks([editor.schema.marks.italic.create()]),
+      ).pending?.explicit,
+    ).toBe(true);
+  });
 });
 
 describe('dispatch context: old caret block survival', () => {

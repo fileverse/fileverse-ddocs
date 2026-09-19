@@ -47,6 +47,28 @@ describe('serializeMarks / parseMarks', () => {
     expect(parseMarks(schema, '[]')).toEqual([]);
   });
 
+  it('omits null attrs and parses them back as defaults', () => {
+    editor = makeEditor('<p></p>');
+    const { schema } = editor;
+    const only = schema.marks.textStyle.create({ fontSize: '24px' });
+    expect(serializeMarks([only])).toBe(
+      '[{"type":"textStyle","attrs":{"fontSize":"24px"}}]',
+    );
+    const [back] = parseMarks(schema, serializeMarks([only]));
+    expect(back.attrs).toEqual(only.attrs);
+    expect(back.attrs.fontFamily).toBeNull();
+    expect(back.attrs.color).toBeNull();
+
+    // link.target defaults to a string, so a null there has to survive.
+    const link = schema.marks.link.create({
+      href: 'https://x.y',
+      target: null,
+    });
+    expect(parseMarks(schema, serializeMarks([link]))[0].attrs).toEqual(
+      link.attrs,
+    );
+  });
+
   it('skips unknown mark types and tolerates malformed input', () => {
     editor = makeEditor('<p></p>');
     const { schema } = editor;

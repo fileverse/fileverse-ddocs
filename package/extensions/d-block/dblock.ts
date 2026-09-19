@@ -50,11 +50,9 @@ interface NestedList {
   content: any[];
 }
 
-/**
- * Block attrs a hand-built v1 block carries from the block being left.
- * spaceBefore is dropped when leaving a heading: a heading's section gap
- * landing on the body text below it would repeat on every Enter (TEC-2701).
- */
+// Block attrs a hand-built v1 block carries from the block being left;
+// spaceBefore is dropped when leaving a heading, whose section gap would
+// otherwise repeat on the body text below on every Enter (TEC-2701).
 const carriedBlockAttrs = (
   node: ProseMirrorNode,
   spacingOwner: ProseMirrorNode = node,

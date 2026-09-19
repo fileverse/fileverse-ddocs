@@ -13,7 +13,7 @@ npm i                         # root deps (CI uses Node 22)
 npm run build                 # tsc type-check + vite lib build -> dist/
 npx tsc                       # type-check only (noEmit; covers package + entries, not tests or demo)
 npm run lint                  # eslint --fix, zero warnings allowed; prettier runs through eslint
-npm test                      # vitest run (jsdom); 84 files / ~736 tests in ~20s
+npm test                      # vitest run (jsdom); 95 files / ~1033 tests in ~24s
 npx vitest run package/extensions/paragraph-spacing.test.ts   # one file
 npx vitest run -t "treats 0 as an explicit value"             # one test by name
 npx vitest package/extensions/docx                            # watch a directory

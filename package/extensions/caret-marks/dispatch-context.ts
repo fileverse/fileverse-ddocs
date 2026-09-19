@@ -1,5 +1,5 @@
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
-import type { Mark } from '@tiptap/pm/model';
+import { Mark } from '@tiptap/pm/model';
 import type { EditorState, PluginKey, Transaction } from '@tiptap/pm/state';
 import { ReplaceAroundStep, type Step } from '@tiptap/pm/transform';
 
@@ -66,25 +66,27 @@ const trackOldCaret = (
   if (!block.isTextblock) return null;
 
   let pos: number | null = $from.before();
-  const contentFrom = pos + 1;
-  const contentTo = contentFrom + block.content.size;
+  // The block's content range, carried forward step by step so it is always
+  // in the current step's own coordinates (mapping a slice per step is
+  // quadratic, and a select-all reflow runs thousands of steps).
+  let from = pos + 1;
+  let to = from + block.content.size;
   let deletedMarks: readonly Mark[] | null = null;
 
   tr.steps.forEach((step, i) => {
     if (pos === null) return;
+    const map = step.getMap();
     if (block.content.size > 0) {
-      // The block's content range in step i's own coordinates, and the marks
-      // from the doc that step saw — never pre-root positions.
-      const before = tr.mapping.slice(0, i);
-      const from = before.map(contentFrom, -1);
-      const to = before.map(contentTo, 1);
+      // The marks from the doc that step saw — never pre-root positions.
       const doc = tr.docs[i];
-      step.getMap().forEach((oldStart, oldEnd) => {
+      map.forEach((oldStart, oldEnd) => {
         const a = Math.max(oldStart, from);
         const b = Math.min(oldEnd, to);
         if (a >= b) return;
         deletedMarks = doc.resolve(a).marksAcross(doc.resolve(b)) ?? [];
       });
+      from = map.map(from, -1);
+      to = map.map(to, 1);
     }
     pos = mapBlockPos(step, pos);
   });
@@ -92,13 +94,26 @@ const trackOldCaret = (
   return { wasEmpty: block.content.size === 0, pos, deletedMarks };
 };
 
+// Tiptap's bare `focus()` ends in `setStoredMarks(tr.storedMarks)` when the
+// selection is unchanged: a step-free re-set of the marks the state already
+// holds re-affirms them, it declares nothing, so A1 must not stamp for it.
+const reaffirmsMarks = (tr: Transaction, oldState: EditorState) =>
+  !tr.docChanged &&
+  oldState.storedMarks !== null &&
+  tr.storedMarks !== null &&
+  Mark.sameSet(tr.storedMarks, oldState.storedMarks);
+
 const nextPending = (
   tr: Transaction,
   prev: Pending | null,
   key: PluginKey,
+  oldState: EditorState,
 ): Pending | null => {
   if (tr.storedMarksSet) {
-    return { marks: tr.storedMarks, explicit: tr.getMeta(key) === undefined };
+    return {
+      marks: tr.storedMarks,
+      explicit: tr.getMeta(key) === undefined && !reaffirmsMarks(tr, oldState),
+    };
   }
   // `insertText` etc. reposition the selection as a side effect of their own
   // step, which also flips `selectionSet`; only a step-free selectionSet is
@@ -118,7 +133,7 @@ export const applyDispatchContext = (
       local: isLocalRoot(tr),
       docChanged: tr.docChanged,
       oldCaret: trackOldCaret(tr, oldState),
-      pending: nextPending(tr, null, key),
+      pending: nextPending(tr, null, key, oldState),
     };
   }
   const oldCaret =
@@ -131,5 +146,9 @@ export const applyDispatchContext = (
           ),
         }
       : prev.oldCaret;
-  return { ...prev, oldCaret, pending: nextPending(tr, prev.pending, key) };
+  return {
+    ...prev,
+    oldCaret,
+    pending: nextPending(tr, prev.pending, key, oldState),
+  };
 };

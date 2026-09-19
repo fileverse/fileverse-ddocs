@@ -316,12 +316,9 @@ export const ParagraphSpacing = Extension.create({
         },
       }),
 
-      // Enter-Enter out of a bullet or numbered list lifts the paragraph
-      // (`liftEmptyBlock`; outdent and the list toggles go through
-      // `liftListItem`); the item that owned the spacing is gone. The node
-      // object survives the lift at the root, but BlockId's appended
-      // setNodeMarkup replaces it before this plugin's appendTransaction runs
-      // — so capture by identity at the root and apply by position later.
+      // Lifting out of a list (`liftEmptyBlock` / `liftListItem`) loses the
+      // item that owned the spacing; BlockId's appended setNodeMarkup then
+      // replaces the node object — so capture by identity, apply by position.
       new Plugin<ListExitCapture | null>({
         key: listExitKey,
         state: {

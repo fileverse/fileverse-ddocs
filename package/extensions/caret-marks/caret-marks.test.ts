@@ -666,10 +666,14 @@ describe.each([1, 2])('legacy fonts (schema v%i)', (version) => {
 
 describe('trailing node (schema v1)', () => {
   it('copies no font attrs off the legacy paragraph it follows', () => {
-    // The last block is the legacy paragraph itself, which is what the removed
-    // font-attr writer copied from.
+    // Nested in a blockquote: the removed writer walked the last dBlock's
+    // descendants, so it would have copied this paragraph's font onto the
+    // trailing node (a trailing <hr> block gave it nothing to find).
     const editor = track(
-      makeEditor(1, '<p style="font-family: Georgia">abc</p><hr>'),
+      makeEditor(
+        1,
+        '<blockquote><p style="font-family: Georgia">abc</p></blockquote>',
+      ),
     );
     const trailing = textblocks(editor).at(-1)!;
     expect(trailing.node.attrs.class).toBe('trailing-node');
@@ -1048,10 +1052,49 @@ describe.each([1, 2])('navigation and survival (schema v%i)', (version) => {
     expect(editor.state.doc.eq(before)).toBe(true);
   });
 
+  it('a bare focus() on a restored blank line re-affirms instead of declaring', () => {
+    const editor = track(
+      makeEditor(version, '<p><strong>abc</strong></p><p></p>'),
+    );
+    caretTo(editor, textblocks(editor)[1].pos + 1);
+    expect(storedMarkNames(editor)).toEqual(['bold']);
+    const before = editor.state.doc;
+    editor.commands.focus();
+    expect(editor.state.doc.eq(before)).toBe(true);
+    expect(storedMarkNames(editor)).toEqual(['bold']);
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('a bare focus() on an empty legacy line leaves the attr alone', () => {
+    const editor = track(
+      makeEditor(version, '<p>abc</p><p style="font-size: 32px"></p>'),
+    );
+    caretTo(editor, textblocks(editor)[1].pos + 1);
+    const before = editor.state.doc;
+    editor.commands.focus();
+    expect(editor.state.doc.eq(before)).toBe(true);
+    const { node } = caretBlock(editor);
+    expect(node.attrs.fontSize).toBe('32px');
+    expect(stampOf(node)).toBeNull();
+  });
+
+  it('focus() chained with toggleItalic still declares on that blank line', () => {
+    const editor = track(
+      makeEditor(version, '<p><strong>abc</strong></p><p></p>'),
+    );
+    caretTo(editor, textblocks(editor)[1].pos + 1);
+    editor.chain().focus().toggleItalic().run();
+    const stamped = JSON.parse(stampOf(textblocks(editor)[1].node)!) as {
+      type: string;
+    }[];
+    expect(stamped.map((mark) => mark.type).sort()).toEqual(['bold', 'italic']);
+  });
+
   it('maintenance elsewhere while the caret rests on a blank line writes nothing to that line', () => {
     const editor = track(makeEditor(version, '<h2>t</h2><p></p>'));
     caretTo(editor, textblocks(editor)[1].pos + 1);
     editor.commands.toggleBold();
+    const blank = textblocks(editor)[1].node;
     const heading = textblocks(editor)[0];
     editor.view.dispatch(
       editor.state.tr
@@ -1061,6 +1104,8 @@ describe.each([1, 2])('navigation and survival (schema v%i)', (version) => {
         })
         .setMeta('addToHistory', false),
     );
+    expect(textblocks(editor)[0].node.attrs.id).toBe('x');
+    expect(textblocks(editor)[1].node.eq(blank)).toBe(true);
     expect(stampOf(textblocks(editor)[1].node)).toBe('[{"type":"bold"}]');
     expect(typedMarks(editor)).toEqual(['bold']);
   });
@@ -1117,9 +1162,10 @@ describe.each([1, 2])('navigation and survival (schema v%i)', (version) => {
         ),
     );
     const before = editor.state.doc;
+    const emptyPos = textblocks(editor)[1].pos;
     expect(typedTextStyle(editor)?.fontSize).toBe('32px');
-    expect(before.nodeAt(textblocks(editor)[1].pos)?.attrs.fontSize).toBe(
-      '32px',
-    );
+    const line = before.nodeAt(emptyPos)!;
+    expect(line.attrs.fontSize).toBe('32px');
+    expect(stampOf(line)).toBeNull();
   });
 });

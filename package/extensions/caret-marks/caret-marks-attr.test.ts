@@ -99,7 +99,9 @@ describe('keepOnSplit (schema v2)', () => {
     const created = createdBlock(editor).node;
     expect(created.attrs.fontFamily).toBeNull();
     expect(created.attrs.fontSize).toBeNull();
-    // The split's own declaration (Task 5) stamps it later; at this point it is null or the declared value.
-    expect(stampOf(created)).not.toBe('[{"type":"bold"}]');
+    // The split declares the caret style instead: the legacy font as marks.
+    expect(stampOf(created)).toBe(
+      '[{"type":"textStyle","attrs":{"fontFamily":"Georgia","fontSize":"24px"}}]',
+    );
   });
 });

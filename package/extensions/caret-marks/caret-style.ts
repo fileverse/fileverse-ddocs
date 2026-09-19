@@ -11,8 +11,22 @@ export type CaretSource = {
   doc: ProseMirrorNode;
 };
 
+// A null attr is dropped only when null is also its default, so `parseMarks`
+// refills it identically; that takes a textStyle stamp from ~110 to ~45 bytes.
+// (link's target / rel / class default to strings and must survive as null.)
+const markJSON = (mark: Mark) => {
+  const attrs = Object.fromEntries(
+    Object.entries(mark.attrs).filter(([name, value]) => {
+      const spec = mark.type.spec.attrs?.[name];
+      return value !== null || !spec || spec.default !== null;
+    }),
+  );
+  const type = mark.type.name;
+  return Object.keys(attrs).length ? { type, attrs } : { type };
+};
+
 export const serializeMarks = (marks: readonly Mark[]): string =>
-  JSON.stringify(marks.map((mark) => mark.toJSON()));
+  JSON.stringify(marks.map(markJSON));
 
 export const parseMarks = (schema: Schema, value: unknown): Mark[] => {
   if (typeof value !== 'string') return [];
