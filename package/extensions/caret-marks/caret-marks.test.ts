@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
+import { insertCommands } from '../../utils/insert-commands';
 import { CaretMarks } from './caret-marks';
 import {
   makeEditor,
@@ -19,6 +20,9 @@ import {
   storedMarkNames,
   typedMarks,
   typedTextStyle,
+  selectText,
+  pressEnter,
+  type,
 } from './test-helpers';
 
 afterEach(destroyTracked);
@@ -458,3 +462,118 @@ describe.each([1, 2])(
     });
   },
 );
+
+describe.each([1, 2])('legacy fonts (schema v%i)', (version) => {
+  it('setFontSize on an empty line writes a stamp, not a paragraph attr', () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    editor.commands.setFontSize('24px');
+    const { node } = caretBlock(editor);
+    expect(node.attrs.fontSize).toBeNull();
+    expect(JSON.parse(stampOf(node)!)).toEqual([
+      {
+        type: 'textStyle',
+        attrs: expect.objectContaining({ fontSize: '24px' }),
+      },
+    ]);
+    expect(typedTextStyle(editor)?.fontSize).toBe('24px');
+  });
+
+  it('the stale-mirror case: X on empty, type, select, change to Y, Enter, type → Y', () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    editor.commands.setFontSize('24px');
+    type(editor, 'abc');
+    selectText(editor, 'abc');
+    editor.commands.setFontSize('32px');
+    caretTo(editor, endOf(editor, 'abc'));
+    pressEnter(editor);
+    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+  });
+
+  it('resets family and size independently on an empty legacy line', () => {
+    const family = track(
+      makeEditor(
+        version,
+        '<p style="font-family: Georgia; font-size: 32px"></p>',
+      ),
+    );
+    family.commands.unsetFontFamily();
+    expect(caretBlock(family).node.attrs.fontFamily).toBeNull();
+    const familyStyle = typedTextStyle(family);
+    expect(familyStyle?.fontFamily ?? null).toBeNull();
+    expect(familyStyle?.fontSize).toBe('32px');
+
+    const size = track(
+      makeEditor(
+        version,
+        '<p style="font-family: Georgia; font-size: 32px"></p>',
+      ),
+    );
+    size.commands.toggleBold();
+    size.commands.unsetFontSize();
+    const sizeStyle = typedTextStyle(size);
+    expect(sizeStyle?.fontSize ?? null).toBeNull();
+    expect(sizeStyle?.fontFamily).toBe('Georgia');
+    expect(typedMarks(size)).toEqual(['bold', 'textStyle']);
+  });
+
+  it('keeps a pending mark across unsetFontFamily on an empty legacy line', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<p style="font-family: Georgia; font-size: 32px"></p>',
+      ),
+    );
+    editor.commands.toggleBold();
+    editor.commands.unsetFontFamily();
+    const style = typedTextStyle(editor);
+    expect(style?.fontFamily ?? null).toBeNull();
+    expect(style?.fontSize).toBe('32px');
+    expect(typedMarks(editor)).toEqual(['bold', 'textStyle']);
+  });
+
+  it('bold on an empty legacy 32px line types bold 32px', () => {
+    const editor = track(
+      makeEditor(version, '<p style="font-size: 32px"></p>'),
+    );
+    editor.commands.toggleBold();
+    expect(typedMarks(editor)).toEqual(['bold', 'textStyle']);
+    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+  });
+});
+
+describe('trailing node (schema v1)', () => {
+  it('carries no font attrs; entering it restores nothing from an unformatted heading', () => {
+    const editor = track(
+      makeEditor(1, '<p style="font-family: Georgia">abc</p><h2>t</h2>'),
+    );
+    const trailing = textblocks(editor).at(-1)!.node;
+    expect(trailing.attrs.class).toBe('trailing-node');
+    expect(trailing.attrs.fontFamily).toBeNull();
+    expect(trailing.attrs.fontSize).toBeNull();
+    caretTo(editor, textblocks(editor).at(-1)!.pos + 1);
+    expect(storedMarkNames(editor)).toBeNull();
+  });
+});
+
+describe.each([1, 2])('callout insert (schema v%i)', (version) => {
+  it("declares the caret style on the callout's paragraph, replacing a fresh doc's only line", () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    editor.commands.toggleBold();
+    insertCommands.callout(editor);
+    const { node } = caretBlock(editor);
+    expect(editor.state.selection.$from.node(-1).type.name).toBe('callout');
+    expect(stampOf(node)).toBe('[{"type":"bold"}]');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('declares it with a second paragraph present, and after leaving and re-entering', () => {
+    const editor = track(makeEditor(version, '<p></p><p>zzz</p>'));
+    caretTo(editor, 1 + (version === 1 ? 1 : 0));
+    editor.commands.setColor('#ff0000');
+    insertCommands.callout(editor);
+    const inside = caretBlock(editor).pos + 1;
+    caretTo(editor, endOf(editor, 'zzz'));
+    caretTo(editor, inside);
+    expect(typedTextStyle(editor)?.color).toBe('#ff0000');
+  });
+});

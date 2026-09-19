@@ -89,18 +89,9 @@ export const FontSize = Extension.create({
     return {
       setFontSize:
         (fontSize: string) =>
-        ({ chain, state, tr }) => {
+        ({ chain, state }) => {
           const existing = getExistingTextStyleAttrs(this.editor);
-          // Sync to paragraph node attr directly for empty paragraphs
           const { selection } = state;
-          const $pos = selection.$from;
-          const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
-            tr.setNodeMarkup($pos.before($pos.depth), undefined, {
-              ...node.attrs,
-              fontSize,
-            });
-          }
           return chain()
             .setMark(
               'textStyle',
@@ -112,15 +103,22 @@ export const FontSize = Extension.create({
         () =>
         ({ chain, state, tr }) => {
           const existing = getExistingTextStyleAttrs(this.editor);
-          // Clear the paragraph node attr directly so Plugin 3 doesn't need to
           const { selection } = state;
           const $pos = selection.$from;
           const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
+          if (
+            node?.type.name === 'paragraph' &&
+            node.textContent === '' &&
+            node.attrs.fontSize !== null
+          ) {
+            // setNodeMarkup is a step, and a step nulls tr.storedMarks; put
+            // the pending marks back so the chain's setMark merges into them.
+            const pending = state.storedMarks;
             tr.setNodeMarkup($pos.before($pos.depth), undefined, {
               ...node.attrs,
               fontSize: null,
             });
+            if (pending) tr.setStoredMarks(pending);
           }
           return chain()
             .setMark(
@@ -134,7 +132,7 @@ export const FontSize = Extension.create({
         },
       increaseFontSize:
         () =>
-        ({ chain, state, tr }) => {
+        ({ chain, state }) => {
           const attrs = getExistingTextStyleAttrs(this.editor);
           let currentSizeNum = parseInt(attrs.fontSize || '16');
           if (isNaN(currentSizeNum)) currentSizeNum = 16;
@@ -144,14 +142,6 @@ export const FontSize = Extension.create({
 
           const fontSize = `${nextSize}px`;
           const { selection } = state;
-          const $pos = selection.$from;
-          const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
-            tr.setNodeMarkup($pos.before($pos.depth), undefined, {
-              ...node.attrs,
-              fontSize,
-            });
-          }
           return chain()
             .setMark(
               'textStyle',
@@ -161,7 +151,7 @@ export const FontSize = Extension.create({
         },
       decreaseFontSize:
         () =>
-        ({ chain, state, tr }) => {
+        ({ chain, state }) => {
           const attrs = getExistingTextStyleAttrs(this.editor);
           let currentSizeNum = parseInt(attrs.fontSize || '16');
           if (isNaN(currentSizeNum)) currentSizeNum = 16;
@@ -173,14 +163,6 @@ export const FontSize = Extension.create({
 
           const fontSize = `${nextSize}px`;
           const { selection } = state;
-          const $pos = selection.$from;
-          const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
-            tr.setNodeMarkup($pos.before($pos.depth), undefined, {
-              ...node.attrs,
-              fontSize,
-            });
-          }
           return chain()
             .setMark(
               'textStyle',
