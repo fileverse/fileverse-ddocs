@@ -146,8 +146,22 @@ const stampRule = (
   let style: Mark[] | null = null;
   if (ctx.pending?.explicit) {
     style = fillLegacyFont(state.schema, ctx.pending.marks ?? [], caret.block);
+  } else if (
+    ctx.pending === null &&
+    ctx.docChanged &&
+    ctx.oldCaret &&
+    !ctx.oldCaret.wasEmpty &&
+    ctx.oldCaret.pos === caret.pos &&
+    ctx.oldCaret.deletedMarks !== null
+  ) {
+    // The deleted text's own marks, an empty set included — the case
+    // ensureMarks cannot signal (spec 3.2, Rule A3).
+    style = fillLegacyFont(
+      state.schema,
+      ctx.oldCaret.deletedMarks,
+      caret.block,
+    );
   }
-  // (Rule A3 is added in Task 6.)
   if (!style) return null;
 
   if (caret.block.attrs[CARET_MARKS_ATTR] === serializeMarks(style))
@@ -236,19 +250,22 @@ export const CaretMarks = Extension.create({
 
   addCommands() {
     return {
+      // A `can()` probe has no dispatch and never declares, so it needs no capture.
       splitBlock: (options) => (props) => {
         const capture =
-          options?.keepMarks === false
-            ? null
-            : captureSplit(props.tr, props.editor);
+          props.dispatch && options?.keepMarks !== false
+            ? captureSplit(props.tr, props.editor)
+            : null;
         const ok = coreCommands.splitBlock(options)(props);
-        if (ok && props.dispatch && capture) declareSplit(props.tr, capture);
+        if (ok && capture) declareSplit(props.tr, capture);
         return ok;
       },
       splitListItem: (typeOrName, overrideAttrs) => (props) => {
-        const capture = captureSplit(props.tr, props.editor);
+        const capture = props.dispatch
+          ? captureSplit(props.tr, props.editor)
+          : null;
         const ok = coreCommands.splitListItem(typeOrName, overrideAttrs)(props);
-        if (ok && props.dispatch && capture) declareSplit(props.tr, capture);
+        if (ok && capture) declareSplit(props.tr, capture);
         return ok;
       },
     };

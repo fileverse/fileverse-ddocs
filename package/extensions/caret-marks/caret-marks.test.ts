@@ -9,6 +9,7 @@ import {
   destroyTracked,
   endOf,
   startOf,
+  backspace,
   caretTo,
   caretBlock,
   createdBlock,
@@ -184,7 +185,12 @@ describe('declared inheritance — splitBlock override (schema v2)', () => {
     const editor = track(makeEditor(2, '<p><strong>abc</strong></p>'));
     caretTo(editor, endOf(editor, 'abc'));
     editor.commands.toggleBold();
+    let root: { storedMarksSet: boolean } | null = null;
+    editor.on('transaction', ({ transaction }) => {
+      root = root ?? transaction;
+    });
     editor.commands.splitBlock();
+    expect(root!.storedMarksSet).toBe(true);
     expect(stampOf(createdBlock(editor).node)).toBe('[]');
     expect(typedMarks(editor)).toEqual([]);
   });
@@ -310,6 +316,92 @@ describe.each([
     });
   },
 );
+
+describe.each([1, 2])('Rule A3 — emptied in place (schema v%i)', (version) => {
+  const boldStampedPlainChar = (editor: ReturnType<typeof makeEditor>) => {
+    // A line stamped bold whose only character is plain.
+    stampBlock(editor, textblocks(editor)[0].pos, '[{"type":"bold"}]');
+    caretTo(editor, endOf(editor, 'a'));
+  };
+
+  it('backspacing the last plain character of a bold-stamped line leaves it plain, persistently', () => {
+    const editor = track(makeEditor(version, '<p>a</p><p>zzz</p>'));
+    boldStampedPlainChar(editor);
+    backspace(editor);
+    expect(stampOf(caretBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+    backspace(editor);
+    caretTo(editor, endOf(editor, 'zzz'));
+    caretTo(editor, textblocks(editor)[0].pos + 1);
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it("uses the deleted text's marks, not the pending style of the moment", () => {
+    const editor = track(makeEditor(version, '<p>a</p>'));
+    boldStampedPlainChar(editor);
+    editor.commands.toggleBold();
+    editor.commands.setColor('#ff0000');
+    editor.commands.setFontSize('24px');
+    backspace(editor);
+    expect(stampOf(caretBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it('backspacing the last bold character stamps bold (the native path sets stored marks)', () => {
+    const editor = track(makeEditor(version, '<p><strong>a</strong></p>'));
+    caretTo(editor, endOf(editor, 'a'));
+    backspace(editor);
+    expect(stampOf(caretBlock(editor).node)).toBe('[{"type":"bold"}]');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('detects the deletion when an earlier step in the same root edited another paragraph', () => {
+    const editor = track(makeEditor(version, '<p>one</p><p>a</p>'));
+    stampBlock(editor, textblocks(editor)[1].pos, '[{"type":"bold"}]');
+    caretTo(editor, endOf(editor, 'a'));
+    const end = endOf(editor, 'a');
+    const tr = editor.state.tr.insertText('ZZ', endOf(editor, 'one'));
+    tr.delete(tr.mapping.map(end - 1), tr.mapping.map(end));
+    editor.view.dispatch(tr);
+    expect(stampOf(caretBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it("survives a block inserted at the old caret block's opening in the same root", () => {
+    const editor = track(makeEditor(version, '<p>one</p><p>a</p>'));
+    const { pos } = textblocks(editor)[1];
+    stampBlock(editor, pos, '[{"type":"bold"}]');
+    caretTo(editor, endOf(editor, 'a'));
+    const end = endOf(editor, 'a');
+    const inserted =
+      version === 1
+        ? editor.schema.nodes.dBlock.create(
+            null,
+            editor.schema.nodes.paragraph.create(),
+          )
+        : editor.schema.nodes.paragraph.create();
+    const at = version === 1 ? editor.state.selection.$from.before(1) : pos;
+    const tr = editor.state.tr.insert(at, inserted);
+    tr.delete(tr.mapping.map(end - 1), tr.mapping.map(end));
+    editor.view.dispatch(tr);
+    expect(caretBlock(editor).node.content.size).toBe(0);
+    expect(stampOf(caretBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it('writes nothing when the caret lands in a different, pre-existing block', () => {
+    const editor = track(
+      makeEditor(version, '<p><strong>abc</strong></p><p></p>'),
+    );
+    caretTo(editor, endOf(editor, 'abc'));
+    const { pos, node } = caretBlock(editor);
+    const from = version === 1 ? editor.state.selection.$from.before(1) : pos;
+    const to = from + (version === 1 ? node.nodeSize + 2 : node.nodeSize);
+    editor.view.dispatch(editor.state.tr.delete(from, to));
+    expect(caretBlock(editor).node.content.size).toBe(0);
+    expect(stampOf(caretBlock(editor).node)).toBeNull();
+  });
+});
 
 describe.each([1, 2])(
   'declared inheritance — splitListItem override (schema v%i)',
