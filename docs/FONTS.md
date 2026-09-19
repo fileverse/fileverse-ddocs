@@ -1191,12 +1191,12 @@ import { FontAutoload } from './font-autoload';
 
 - [ ] **Step 2: Append `FontAutoload` to the extensions array**
 
-Inside the `defaultExtensions` factory (declared around line 253), the returned array begins at line 275 with `FontFamily, FontFamilyPersistence, TypographyPersistence, ...`. Insert `FontAutoload,` right after `FontFamilyPersistence,` so that line 277–278 reads:
+Inside the `defaultExtensions` factory, the returned array contains `FontFamily, FontFamilyPersistence, CaretMarks, ...` (`TypographyPersistence` was removed in TEC-3030; an empty line's font now lives in the `caretMarks` stamp). Insert `FontAutoload,` right after `FontFamilyPersistence,` so it reads:
 
 ```ts
   FontFamilyPersistence,
   FontAutoload,
-  TypographyPersistence,
+  CaretMarks,
 ```
 
 Order is not load-bearing (the plugin has no dependencies on other extensions), but adjacency to `FontFamilyPersistence` matches the conceptual grouping.
