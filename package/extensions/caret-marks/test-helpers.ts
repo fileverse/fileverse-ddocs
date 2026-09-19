@@ -97,17 +97,21 @@ export const type = (editor: Editor, text = 'x') =>
 export const markNames = (marks: readonly Mark[] | null | undefined) =>
   (marks ?? []).map((mark) => mark.type.name).sort();
 
-/** Types `x` and reports the marks it got — what the user sees. */
-export const typedMarks = (editor: Editor) => {
+/**
+ * Types `x` and reports what the character got — what the user sees. One
+ * character, so a test can read names and textStyle off the same caret.
+ */
+export const typedRun = (editor: Editor) => {
   type(editor, 'x');
   const node = editor.state.doc.nodeAt(editor.state.selection.from - 1);
-  return markNames(node?.marks);
+  return {
+    names: markNames(node?.marks),
+    textStyle:
+      node?.marks.find((m) => m.type.name === 'textStyle')?.attrs ?? null,
+  };
 };
-export const typedTextStyle = (editor: Editor) => {
-  type(editor, 'x');
-  const node = editor.state.doc.nodeAt(editor.state.selection.from - 1);
-  return node?.marks.find((m) => m.type.name === 'textStyle')?.attrs ?? null;
-};
+export const typedMarks = (editor: Editor) => typedRun(editor).names;
+export const typedTextStyle = (editor: Editor) => typedRun(editor).textStyle;
 
 /**
  * jsdom has no DOM-change path; this is what prosemirror-view dispatches

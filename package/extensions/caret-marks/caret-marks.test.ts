@@ -1,13 +1,18 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
-import type { AnyExtension } from '@tiptap/core';
+import { Extension, type AnyExtension } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Transform } from '@tiptap/pm/transform';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import { insertCommands } from '../../utils/insert-commands';
-import { CaretMarks } from './caret-marks';
+import { SuggestionTrackingExtension } from '../suggestion/suggestion-tracking-extension';
+import { CaretMarks, caretMarksPluginKey } from './caret-marks';
 import {
   makeEditor,
   track,
   destroyTracked,
+  applyRemote,
   endOf,
   startOf,
   backspace,
@@ -19,6 +24,7 @@ import {
   stampOf,
   storedMarkNames,
   typedMarks,
+  typedRun,
   typedTextStyle,
   selectText,
   pressEnter,
@@ -62,8 +68,9 @@ describe.each([1, 2])('Rule A1 — explicit stamp (schema v%i)', (version) => {
         },
       ]),
     );
-    expect(typedMarks(editor)).toEqual(['bold', 'textStyle']);
-    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+    const typed = typedRun(editor);
+    expect(typed.names).toEqual(['bold', 'textStyle']);
+    expect(typed.textStyle?.fontSize).toBe('32px');
   });
 
   it('never stamps a non-empty block', () => {
@@ -72,6 +79,22 @@ describe.each([1, 2])('Rule A1 — explicit stamp (schema v%i)', (version) => {
     editor.commands.toggleBold();
     expect(stampOf(caretBlock(editor).node)).toBeNull();
     expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('leaves an empty block that has no caretMarks attr alone (code block)', () => {
+    const editor = track(makeEditor(version, '<pre><code></code></pre>'));
+    caretTo(editor, textblocks(editor)[0].pos + 1);
+    editor.commands.toggleBold();
+    // A raw declaration too: toggleBold cannot set a mark a code block
+    // forbids, and without the `caretMarks in attrs` guard the stamp could
+    // never match the attr it wrote — an append loop that never settles.
+    editor.view.dispatch(
+      editor.state.tr.setStoredMarks([editor.schema.marks.bold.create()]),
+    );
+    const { node } = caretBlock(editor);
+    expect(node.type.name).toBe('codeBlock');
+    expect('caretMarks' in node.attrs).toBe(false);
+    expect(typedMarks(editor)).toEqual([]);
   });
 });
 
@@ -118,17 +141,95 @@ describe.each([1, 2])('Rule B — restore on entry (schema v%i)', (version) => {
     expect(storedMarkNames(editor)).toEqual(['bold']);
     expect(stampOf(caretBlock(editor).node)).toBeNull();
   });
+});
 
-  it('is tagged: a restore never counts as the user formatting the line', () => {
-    const editor = track(
-      makeEditor(version, '<p><strong>abc</strong></p><p></p>'),
-    );
-    const before = editor.state.doc;
-    caretTo(editor, textblocks(editor)[1].pos + 1);
-    caretTo(editor, endOf(editor, 'abc'));
-    caretTo(editor, textblocks(editor)[1].pos + 1);
-    expect(editor.state.doc.eq(before)).toBe(true);
+const REPAIRED = 'repaired';
+
+const headingPos = (doc: ProseMirrorNode) => {
+  let found = -1;
+  doc.descendants((node, pos) => {
+    if (found === -1 && node.type.name === 'heading') found = pos;
+    return found === -1;
   });
+  return found;
+};
+
+const pluginIndex = (editor: Editor, keyPrefix: string) =>
+  editor.state.plugins.findIndex((plugin) =>
+    String((plugin as unknown as { key: string }).key).startsWith(keyPrefix),
+  );
+
+/**
+ * A second plugin that appends an attribute repair once, as soon as it sees a
+ * transaction CaretMarks has tagged — in the same dispatch, right after B.
+ */
+const headingRepair = (priority: number) =>
+  Extension.create({
+    name: 'caretMarksTestRepair',
+    priority,
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: new PluginKey('caretMarksTestRepair'),
+          appendTransaction: (transactions, _oldState, newState) => {
+            if (!transactions.some((tr) => tr.getMeta(caretMarksPluginKey))) {
+              return null;
+            }
+            const pos = headingPos(newState.doc);
+            const heading = pos === -1 ? null : newState.doc.nodeAt(pos);
+            if (!heading || heading.attrs.id === REPAIRED) return null;
+            return newState.tr.setNodeMarkup(pos, undefined, {
+              ...heading.attrs,
+              id: REPAIRED,
+            });
+          },
+        }),
+      ];
+    },
+  });
+
+describe.each([1, 2])('restore provenance (schema v%i)', (version) => {
+  it.each([
+    ['the repair registered before CaretMarks', 1001],
+    ['the repair registered after CaretMarks', 1],
+  ])(
+    'a repair appended after Rule B is never read back as an A1 stamp — %s',
+    (_label, priority) => {
+      // The empty line carries a legacy font the stamp does not: a restore
+      // read back as explicit would stamp [bold, textStyle] over [bold] and
+      // write to the document, which the doc comparison below catches.
+      const editor = track(
+        makeEditor(
+          version,
+          '<h2>t</h2><p style="font-size: 32px"></p><p>z</p>',
+          { extensions: [headingRepair(priority)] },
+        ),
+      );
+      expect(
+        pluginIndex(editor, 'caretMarksTestRepair') <
+          pluginIndex(editor, 'caretMarks$'),
+      ).toBe(priority > 100);
+      // Off the empty line first: entering it is the dispatch under test, and
+      // a restore anywhere before it would fire the repair early.
+      caretTo(editor, endOf(editor, 'z'));
+      stampBlock(editor, textblocks(editor)[1].pos, '[{"type":"bold"}]');
+      const before = editor.state.doc;
+      const at = headingPos(before);
+      expect(before.nodeAt(at)!.attrs.id).not.toBe(REPAIRED);
+
+      caretTo(editor, textblocks(editor)[1].pos + 1);
+
+      const repaired = new Transform(before).setNodeMarkup(at, undefined, {
+        ...before.nodeAt(at)!.attrs,
+        id: REPAIRED,
+      }).doc;
+      // Exactly the repair's change: CaretMarks added no document write.
+      expect(editor.state.doc.eq(repaired)).toBe(true);
+      expect(stampOf(caretBlock(editor).node)).toBe('[{"type":"bold"}]');
+      expect(storedMarkNames(editor)).toEqual(['bold']);
+      expect(typedMarks(editor)).toEqual(['bold']);
+    },
+  );
 });
 
 describe('Rule C — pending marks survive appended steps (schema v2)', () => {
@@ -168,6 +269,27 @@ describe('Rule C — pending marks survive appended steps (schema v2)', () => {
       expect(createdBlock(custom).node.textContent).toBe('xB');
     },
   );
+});
+
+describe('Rule C — a spacing repair wipes the marks (schema v1)', () => {
+  it('keeps bold pending across paragraphSpacingHeadingBoundary', () => {
+    // The heading sits in a blockquote so core Enter runs: v1's own handler
+    // builds its paragraph without spaceBefore, which that plugin never sees.
+    const editor = track(
+      makeEditor(
+        1,
+        '<blockquote><h2 style="margin-top: 24pt">t</h2></blockquote>',
+      ),
+    );
+    caretTo(editor, endOf(editor, 't'));
+    editor.commands.toggleBold();
+    expect(pressEnter(editor)).toBe(true);
+    const created = createdBlock(editor);
+    expect(created.node.type.name).toBe('paragraph');
+    expect(created.node.attrs.spaceBefore).toBeNull();
+    expect(storedMarkNames(editor)).toEqual(['bold']);
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
 });
 
 describe('declared inheritance — splitBlock override (schema v2)', () => {
@@ -510,10 +632,10 @@ describe.each([1, 2])('legacy fonts (schema v%i)', (version) => {
     );
     size.commands.toggleBold();
     size.commands.unsetFontSize();
-    const sizeStyle = typedTextStyle(size);
-    expect(sizeStyle?.fontSize ?? null).toBeNull();
-    expect(sizeStyle?.fontFamily).toBe('Georgia');
-    expect(typedMarks(size)).toEqual(['bold', 'textStyle']);
+    const typed = typedRun(size);
+    expect(typed.textStyle?.fontSize ?? null).toBeNull();
+    expect(typed.textStyle?.fontFamily).toBe('Georgia');
+    expect(typed.names).toEqual(['bold', 'textStyle']);
   });
 
   it('keeps a pending mark across unsetFontFamily on an empty legacy line', () => {
@@ -525,10 +647,10 @@ describe.each([1, 2])('legacy fonts (schema v%i)', (version) => {
     );
     editor.commands.toggleBold();
     editor.commands.unsetFontFamily();
-    const style = typedTextStyle(editor);
-    expect(style?.fontFamily ?? null).toBeNull();
-    expect(style?.fontSize).toBe('32px');
-    expect(typedMarks(editor)).toEqual(['bold', 'textStyle']);
+    const typed = typedRun(editor);
+    expect(typed.textStyle?.fontFamily ?? null).toBeNull();
+    expect(typed.textStyle?.fontSize).toBe('32px');
+    expect(typed.names).toEqual(['bold', 'textStyle']);
   });
 
   it('bold on an empty legacy 32px line types bold 32px', () => {
@@ -536,21 +658,24 @@ describe.each([1, 2])('legacy fonts (schema v%i)', (version) => {
       makeEditor(version, '<p style="font-size: 32px"></p>'),
     );
     editor.commands.toggleBold();
-    expect(typedMarks(editor)).toEqual(['bold', 'textStyle']);
-    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+    const typed = typedRun(editor);
+    expect(typed.names).toEqual(['bold', 'textStyle']);
+    expect(typed.textStyle?.fontSize).toBe('32px');
   });
 });
 
 describe('trailing node (schema v1)', () => {
-  it('carries no font attrs; entering it restores nothing from an unformatted heading', () => {
+  it('copies no font attrs off the legacy paragraph it follows', () => {
+    // The last block is the legacy paragraph itself, which is what the removed
+    // font-attr writer copied from.
     const editor = track(
-      makeEditor(1, '<p style="font-family: Georgia">abc</p><h2>t</h2>'),
+      makeEditor(1, '<p style="font-family: Georgia">abc</p><hr>'),
     );
-    const trailing = textblocks(editor).at(-1)!.node;
-    expect(trailing.attrs.class).toBe('trailing-node');
-    expect(trailing.attrs.fontFamily).toBeNull();
-    expect(trailing.attrs.fontSize).toBeNull();
-    caretTo(editor, textblocks(editor).at(-1)!.pos + 1);
+    const trailing = textblocks(editor).at(-1)!;
+    expect(trailing.node.attrs.class).toBe('trailing-node');
+    expect(trailing.node.attrs.fontFamily).toBeNull();
+    expect(trailing.node.attrs.fontSize).toBeNull();
+    caretTo(editor, trailing.pos + 1);
     expect(storedMarkNames(editor)).toBeNull();
   });
 });
@@ -564,6 +689,14 @@ describe.each([1, 2])('callout insert (schema v%i)', (version) => {
     expect(editor.state.selection.$from.node(-1).type.name).toBe('callout');
     expect(stampOf(node)).toBe('[{"type":"bold"}]');
     expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('declares an empty style too, stamping the callout paragraph "[]"', () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    insertCommands.callout(editor);
+    expect(editor.state.selection.$from.node(-1).type.name).toBe('callout');
+    expect(stampOf(caretBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
   });
 
   it('declares it with a second paragraph present, and after leaving and re-entering', () => {
@@ -607,8 +740,9 @@ describe.each([1, 2])('Enter through the keymap (schema v%i)', (version) => {
     const third = textblocks(editor)[2];
     caretTo(editor, endOf(editor, 'abc'));
     caretTo(editor, third.pos + 1);
-    expect(typedMarks(editor)).toEqual(expected);
-    expect(typedTextStyle(editor)).toMatchObject({
+    const typed = typedRun(editor);
+    expect(typed.names).toEqual(expected);
+    expect(typed.textStyle).toMatchObject({
       fontFamily: 'Georgia',
       fontSize: '24px',
       color: '#ff0000',
@@ -732,5 +866,260 @@ describe.each([1, 2])('Enter through the keymap (schema v%i)', (version) => {
     pressEnter(editor);
     expect(createdBlock(editor).node.attrs.fontSize).toBeNull();
     expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+  });
+
+  // Both schemas re-type the left half of a heading split at offset 0 to the
+  // default paragraph (Tiptap's `setNodeMarkup(pos, deflt)`, which takes the
+  // default attrs); only v1, which rebuilds the block, restores the line's own.
+  const offsetZeroAttrs: [
+    string,
+    string,
+    Record<string, unknown>,
+    Record<string, unknown>,
+  ][] = [
+    [
+      'a paragraph',
+      '<p style="line-height: 240%; margin-top: 12pt; margin-bottom: 8pt">abc</p>',
+      { lineHeight: '240%', spaceBefore: 12, spaceAfter: 8 },
+      { lineHeight: '240%', spaceBefore: 12, spaceAfter: 8 },
+    ],
+    [
+      'a heading',
+      '<h2 style="line-height: 240%; margin-top: 24pt; margin-bottom: 6pt">abc</h2>',
+      { lineHeight: '240%', spaceBefore: 24, spaceAfter: 6 },
+      version === 1
+        ? { lineHeight: '240%', spaceBefore: 24, spaceAfter: 6 }
+        : { spaceBefore: null, spaceAfter: null },
+    ],
+  ];
+
+  it.each(offsetZeroAttrs)(
+    'Enter at offset 0 of %s keeps the block attrs',
+    (_kind, content, rightAttrs, leftAttrs) => {
+      const editor = track(makeEditor(version, content));
+      caretTo(editor, startOf(editor, 'abc'));
+      pressEnter(editor);
+      const [left, right] = textblocks(editor);
+      expect(left.node.content.size).toBe(0);
+      expect(right.node.textContent).toBe('abc');
+      expect(right.node.attrs).toMatchObject(rightAttrs);
+      expect(left.node.attrs).toMatchObject(leftAttrs);
+    },
+  );
+
+  it('Enter on an empty last nested item carries its style one level out', () => {
+    // v2 takes splitListItem's nested-empty-last-item branch, which builds a
+    // NEW paragraph the declaration stamps; v1 lifts the block it already has.
+    const editor = track(
+      makeEditor(
+        version,
+        '<ul><li><p>outer</p><ul><li><p><strong>inner</strong></p></li></ul></li></ul>',
+      ),
+    );
+    caretTo(editor, endOf(editor, 'inner'));
+    expect(pressEnter(editor)).toBe(true);
+    expect(stampOf(caretBlock(editor).node)).toBe('[{"type":"bold"}]');
+    expect(pressEnter(editor)).toBe(true);
+    const { $from } = editor.state.selection;
+    expect($from.node(-1).type.name).toBe('listItem');
+    expect($from.depth).toBe(version === 1 ? 4 : 3);
+    expect(stampOf(caretBlock(editor).node)).toBe('[{"type":"bold"}]');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+});
+
+describe('Enter on an empty list item (schema v1)', () => {
+  it('lifts a nested item one level, moving its block and stamp rather than creating one', () => {
+    const editor = track(
+      makeEditor(
+        1,
+        '<ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul>',
+      ),
+    );
+    caretTo(editor, endOf(editor, 'inner'));
+    pressEnter(editor);
+    const stamp = stampOf(caretBlock(editor).node);
+    const blocks = textblocks(editor).length;
+
+    expect(pressEnter(editor)).toBe(true);
+    expect(textblocks(editor).length).toBe(blocks);
+    const { $from } = editor.state.selection;
+    expect($from.node(-1).type.name).toBe('listItem');
+    expect($from.node(-2).type.name).toBe('bulletList');
+    expect($from.node(-3).type.name).toBe('dBlock');
+    expect(stampOf(caretBlock(editor).node)).toBe(stamp);
+  });
+
+  it('deletes an empty non-last top-level item and moves the caret to the next one', () => {
+    const editor = track(
+      makeEditor(1, '<ul><li><p>one</p></li><li><p>two</p></li></ul>'),
+    );
+    caretTo(editor, endOf(editor, 'one'));
+    expect(pressEnter(editor)).toBe(true);
+    expect(textblocks(editor)[1].node.content.size).toBe(0);
+
+    expect(pressEnter(editor)).toBe(true);
+    expect(textblocks(editor).map(({ node }) => node.textContent)).toEqual([
+      'one',
+      'two',
+      '',
+    ]);
+    expect(caretBlock(editor).node.textContent).toBe('two');
+    expect(editor.state.selection.$from.node(-1).type.name).toBe('listItem');
+  });
+});
+
+describe.each([1, 2])(
+  'loads and replacement never stamp (schema v%i)',
+  (version) => {
+    it('keeps a loaded "[]" stamp although a style was pending, and restores nothing stale', () => {
+      const editor = track(makeEditor(version, '<p></p>'));
+      editor.commands.toggleBold();
+      const stamped = track(makeEditor(version, '<p></p>'));
+      stampBlock(stamped, caretBlock(stamped).pos, '[]');
+      const json = stamped.getJSON();
+      editor.commands.setContent(json);
+      expect(editor.getJSON()).toEqual(json);
+      caretTo(editor, textblocks(editor)[0].pos + 1);
+      expect(typedMarks(editor)).toEqual([]);
+    });
+
+    it('keeps a loaded non-empty stamp untouched, through the headless path too', () => {
+      const editor = track(makeEditor(version, '<p></p>'));
+      editor.commands.setColor('#ff0000');
+      const stamped = track(makeEditor(version, '<p></p>'));
+      stampBlock(stamped, caretBlock(stamped).pos, '[{"type":"bold"}]');
+      const json = stamped.getJSON();
+      editor.commands.setContent(json);
+      expect(editor.getJSON()).toEqual(json);
+      expect(typedMarks(editor)).toEqual(['bold']);
+    });
+
+    it('y-sync and addToHistory:false roots never stamp, even with a style pending', () => {
+      const editor = track(makeEditor(version, '<p>abc</p><p></p>'));
+      const empty = textblocks(editor)[1];
+      caretTo(editor, empty.pos + 1);
+      editor.commands.toggleBold();
+      stampBlock(editor, empty.pos, '[]');
+      applyRemote(editor, (tr) =>
+        tr
+          .insertText('Z', endOf(editor, 'abc'))
+          .setStoredMarks([editor.schema.marks.italic.create()]),
+      );
+      expect(stampOf(textblocks(editor)[1].node)).toBe('[]');
+      editor.view.dispatch(
+        editor.state.tr
+          .insertText('Y', endOf(editor, 'abc'))
+          .setStoredMarks([editor.schema.marks.italic.create()])
+          .setMeta('addToHistory', false),
+      );
+      expect(stampOf(textblocks(editor)[1].node)).toBe('[]');
+    });
+
+    it('suggest mode drops the stamp but marks still carry within the session', () => {
+      const editor = track(
+        makeEditor(version, '<p></p>', {
+          extensions: [
+            SuggestionTrackingExtension.configure({
+              getIsSuggestionMode: () => true,
+            }),
+          ],
+        }),
+      );
+      editor.commands.toggleBold();
+      expect(stampOf(caretBlock(editor).node)).toBeNull();
+      expect(storedMarkNames(editor)).toEqual(['bold']);
+    });
+  },
+);
+
+describe.each([1, 2])('navigation and survival (schema v%i)', (version) => {
+  it('clicking or arrowing into an unstamped blank line writes nothing', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<p><strong>abc</strong></p><p></p><p style="font-size: 24px"></p>',
+      ),
+    );
+    const before = editor.state.doc;
+    caretTo(editor, textblocks(editor)[1].pos + 1);
+    caretTo(editor, textblocks(editor)[2].pos + 1);
+    caretTo(editor, endOf(editor, 'abc'));
+    expect(editor.state.doc.eq(before)).toBe(true);
+  });
+
+  it('maintenance elsewhere while the caret rests on a blank line writes nothing to that line', () => {
+    const editor = track(makeEditor(version, '<h2>t</h2><p></p>'));
+    caretTo(editor, textblocks(editor)[1].pos + 1);
+    editor.commands.toggleBold();
+    const heading = textblocks(editor)[0];
+    editor.view.dispatch(
+      editor.state.tr
+        .setNodeMarkup(heading.pos, undefined, {
+          ...heading.node.attrs,
+          id: 'x',
+        })
+        .setMeta('addToHistory', false),
+    );
+    expect(stampOf(textblocks(editor)[1].node)).toBe('[{"type":"bold"}]');
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('deleting a formatted paragraph, or a list, before an unstamped blank line does not stamp it', () => {
+    for (const first of [
+      '<p><strong>abc</strong></p>',
+      '<ul><li><p><strong>abc</strong></p></li></ul>',
+    ]) {
+      const editor = track(makeEditor(version, `${first}<p></p>`));
+      caretTo(editor, endOf(editor, 'abc'));
+      const size = editor.state.doc.firstChild!.nodeSize;
+      editor.view.dispatch(editor.state.tr.delete(0, size));
+      expect(stampOf(caretBlock(editor).node)).toBeNull();
+      expect(typedMarks(editor)).toEqual([]);
+    }
+  });
+
+  it('inserting a paragraph before, after, or between formatted ones stamps no survivor', () => {
+    const editor = track(
+      makeEditor(version, '<p><strong>a</strong></p><p><em>b</em></p>'),
+    );
+    caretTo(editor, endOf(editor, 'a'));
+    const paragraph =
+      version === 1
+        ? editor.schema.nodes.dBlock.create(
+            null,
+            editor.schema.nodes.paragraph.create(),
+          )
+        : editor.schema.nodes.paragraph.create();
+    const second = textblocks(editor)[1];
+    const at = version === 1 ? second.pos - 1 : second.pos;
+    editor.view.dispatch(editor.state.tr.insert(at, paragraph));
+    editor.state.doc.descendants((node) => {
+      if (node.isTextblock && node.content.size > 0)
+        expect(stampOf(node)).toBeNull();
+    });
+    const inserted = textblocks(editor)[1];
+    expect(inserted.node.content.size).toBe(0);
+    expect(stampOf(inserted.node)).toBeNull();
+  });
+
+  it('a remote root landing the caret on an empty legacy line: typing gets the font, no doc write', () => {
+    const editor = track(
+      makeEditor(version, '<p>abc</p><p style="font-size: 32px"></p>'),
+    );
+    caretTo(editor, endOf(editor, 'abc'));
+    const empty = textblocks(editor)[1];
+    applyRemote(editor, (tr) =>
+      tr
+        .insertText('Z', 1 + (version === 1 ? 1 : 0))
+        .setSelection(
+          TextSelection.near(tr.doc.resolve(tr.mapping.map(empty.pos + 1))),
+        ),
+    );
+    const before = editor.state.doc;
+    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+    expect(before.nodeAt(textblocks(editor)[1].pos)?.attrs.fontSize).toBe(
+      '32px',
+    );
   });
 });

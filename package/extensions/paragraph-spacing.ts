@@ -2,6 +2,7 @@ import { Extension, type CommandProps } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
+import { isLocalRoot, isRootTransaction } from './caret-marks/dispatch-context';
 
 export type ParagraphSpacingAttrs = {
   /** Space above the block, in pt. `null` unsets it; omit to leave as-is. */
@@ -316,7 +317,8 @@ export const ParagraphSpacing = Extension.create({
       }),
 
       // Enter-Enter out of a bullet or numbered list lifts the paragraph
-      // (liftEmptyBlock); the item that owned the spacing is gone. The node
+      // (`liftEmptyBlock`; outdent and the list toggles go through
+      // `liftListItem`); the item that owned the spacing is gone. The node
       // object survives the lift at the root, but BlockId's appended
       // setNodeMarkup replaces it before this plugin's appendTransaction runs
       // — so capture by identity at the root and apply by position later.
@@ -325,17 +327,13 @@ export const ParagraphSpacing = Extension.create({
         state: {
           init: () => null,
           apply: (tr, prev, oldState, newState) => {
+            // The 'applied' check stays first: the transaction that applies
+            // the capture is itself an appended one.
             if (tr.getMeta(listExitKey) === 'applied') return null;
-            if (tr.getMeta('appendedTransaction')) {
+            if (!isRootTransaction(tr)) {
               return prev && { ...prev, pos: tr.mapping.map(prev.pos) };
             }
-            if (
-              !tr.docChanged ||
-              isChangeOrigin(tr) ||
-              tr.getMeta('addToHistory') === false
-            ) {
-              return null;
-            }
+            if (!tr.docChanged || !isLocalRoot(tr)) return null;
             const $old = oldState.selection.$from;
             const $new = newState.selection.$from;
             const block = $old.parent;

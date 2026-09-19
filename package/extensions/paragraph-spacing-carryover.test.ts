@@ -3,8 +3,8 @@ import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 import {
+  applyRemote,
   pressEnter,
-  ySyncPlugin,
   undoManager,
 } from './caret-marks/test-helpers';
 
@@ -40,7 +40,7 @@ const endOf = (editor: Editor, text: string) => {
 
 const pressEnterAtEndOf = (editor: Editor, text: string) => {
   editor.commands.setTextSelection(endOf(editor, text));
-  editor.commands.keyboardShortcut('Enter');
+  pressEnter(editor);
 };
 
 /**
@@ -279,14 +279,39 @@ describe('list exit (schema v2)', () => {
       ),
     );
     remote.commands.setTextSelection(endOf(remote, 'item'));
-    const ySync = ySyncPlugin(remote);
     const undoStackBefore = undoManager(remote).undoStack.length;
-    remote.view.dispatch(
-      remote.state.tr.delete(0, listSize).setMeta(ySync, {
-        isChangeOrigin: true,
-      }),
-    );
+    applyRemote(remote, (tr) => tr.delete(0, listSize));
     expect(remote.state.doc.firstChild?.attrs.spaceBefore).toBeNull();
     expect(undoManager(remote).undoStack.length).toBe(undoStackBefore);
+  });
+
+  it('never applies the inner item spacing when an empty nested item is lifted', () => {
+    const editor = track(
+      makeEditor(
+        2,
+        '<ul><li><p>outer</p><ul><li style="margin-top: 12pt; margin-bottom: 8pt"><p>inner</p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'inner'));
+    pressEnter(editor);
+    pressEnter(editor);
+    const { $from } = editor.state.selection;
+    // Still inside a list item, so the exit rule must not have fired.
+    expect($from.node(-1).type.name).toBe('listItem');
+    expect($from.parent.attrs.spaceBefore).toBeNull();
+    expect($from.parent.attrs.spaceAfter).toBeNull();
+  });
+
+  it('writes nothing when the caret only moves from an item into a paragraph', () => {
+    const editor = track(
+      makeEditor(
+        2,
+        '<ul><li style="margin-top: 12pt"><p>item</p></li></ul><p>after</p>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'item'));
+    const before = editor.state.doc;
+    editor.commands.setTextSelection(endOf(editor, 'after'));
+    expect(editor.state.doc.eq(before)).toBe(true);
   });
 });

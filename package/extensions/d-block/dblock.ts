@@ -70,6 +70,16 @@ const carriedBlockAttrs = (
   };
 };
 
+// The emptied left line is what is left of the block that was split: it keeps
+// that block's own attrs (no heading carve-out — that is for the new block),
+// which insertContentAt's fitter would otherwise reset to defaults.
+const ownBlockAttrs = (node: ProseMirrorNode) => ({
+  lineHeight: node.attrs.lineHeight,
+  spaceBefore: node.attrs.spaceBefore,
+  spaceAfter: node.attrs.spaceAfter,
+  textAlign: node.attrs.textAlign,
+});
+
 export const DBlock = Node.create<DBlockOptions>({
   name: 'dBlock',
 
@@ -265,6 +275,7 @@ export const DBlock = Node.create<DBlockOptions>({
                 { type: 'paragraph', attrs: carriedBlockAttrs(currentNode) },
               ],
             })
+            .focus()
             .command(declare)
             .run();
           return true;
@@ -379,7 +390,10 @@ export const DBlock = Node.create<DBlockOptions>({
                     tr.setNodeMarkup(
                       originalPos,
                       undefined,
-                      stampAttrs(left.attrs, style),
+                      stampAttrs(
+                        { ...left.attrs, ...ownBlockAttrs(currentNode) },
+                        style,
+                      ),
                     );
                   }
                 }
