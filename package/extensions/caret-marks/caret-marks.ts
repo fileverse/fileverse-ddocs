@@ -1,9 +1,24 @@
 import { Extension } from '@tiptap/core';
-import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { Mark, Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import {
+  Plugin,
+  PluginKey,
+  type EditorState,
+  type Transaction,
+} from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { CARET_MARKS_ATTR, parseMarks } from './caret-style';
-import type { DispatchContext } from './dispatch-context';
+import {
+  CARET_MARKS_ATTR,
+  fillLegacyFont,
+  parseMarks,
+  serializeMarks,
+  stampAttrs,
+} from './caret-style';
+import {
+  EMPTY_CONTEXT,
+  applyDispatchContext,
+  type DispatchContext,
+} from './dispatch-context';
 
 export const caretMarksPluginKey = new PluginKey<DispatchContext>('caretMarks');
 export const caretMarksDecorationKey = new PluginKey<DecorationSet>(
@@ -83,6 +98,103 @@ const decorationPlugin = () =>
     },
   });
 
+const caretInEmptyBlock = (state: EditorState) => {
+  const { selection } = state;
+  const block = selection.$from.parent;
+  if (
+    !selection.empty ||
+    !block.isTextblock ||
+    block.content.size !== 0 ||
+    !(CARET_MARKS_ATTR in block.attrs)
+  ) {
+    return null;
+  }
+  return { block, pos: selection.$from.before() };
+};
+
+/** Marks at the end of the nearest text block before `pos` (Rule B's last fallback). */
+const previousBlockEndMarks = (
+  doc: ProseMirrorNode,
+  pos: number,
+): readonly Mark[] => {
+  let end = -1;
+  doc.nodesBetween(0, pos, (node, nodePos) => {
+    if (nodePos + node.nodeSize > pos) return true;
+    if (node.isTextblock) {
+      end = nodePos + node.nodeSize - 1;
+      return false;
+    }
+    return true;
+  });
+  return end < 0 ? [] : doc.resolve(end).marks();
+};
+
+/** Rules A1 and A3 — the only document writes; both need `local`. */
+const stampRule = (
+  ctx: DispatchContext,
+  state: EditorState,
+  key: PluginKey<DispatchContext>,
+): Transaction | null => {
+  if (!ctx.local) return null;
+  const caret = caretInEmptyBlock(state);
+  if (!caret) return null;
+
+  let style: Mark[] | null = null;
+  if (ctx.pending?.explicit) {
+    style = fillLegacyFont(state.schema, ctx.pending.marks ?? [], caret.block);
+  }
+  // (Rule A3 is added in Task 6.)
+  if (!style) return null;
+
+  if (caret.block.attrs[CARET_MARKS_ATTR] === serializeMarks(style))
+    return null;
+  return state.tr
+    .setNodeMarkup(caret.pos, undefined, stampAttrs(caret.block.attrs, style))
+    .setStoredMarks(style)
+    .setMeta(key, true);
+};
+
+/** Rules C and B — stored-marks only, tagged so a restore is never read as explicit. */
+const restoreRule = (
+  ctx: DispatchContext,
+  state: EditorState,
+  key: PluginKey<DispatchContext>,
+): Transaction | null => {
+  if (state.storedMarks !== null || !state.selection.empty) return null;
+  if (ctx.pending && ctx.pending.marks !== null) {
+    return state.tr.setStoredMarks(ctx.pending.marks).setMeta(key, true);
+  }
+  const caret = caretInEmptyBlock(state);
+  if (!caret) return null;
+  const attr = caret.block.attrs[CARET_MARKS_ATTR];
+  let marks: readonly Mark[];
+  if (typeof attr === 'string') {
+    marks = parseMarks(state.schema, attr);
+  } else {
+    marks = fillLegacyFont(state.schema, [], caret.block);
+    if (!marks.length) marks = previousBlockEndMarks(state.doc, caret.pos);
+  }
+  if (!marks.length) return null;
+  return state.tr.setStoredMarks(marks).setMeta(key, true);
+};
+
+const rulesPlugin = () =>
+  new Plugin<DispatchContext>({
+    key: caretMarksPluginKey,
+    state: {
+      init: () => EMPTY_CONTEXT,
+      apply: (tr, prev, oldState) =>
+        applyDispatchContext(tr, prev, oldState, caretMarksPluginKey),
+    },
+    appendTransaction: (_transactions, _oldState, newState) => {
+      const ctx = caretMarksPluginKey.getState(newState) ?? EMPTY_CONTEXT;
+      return (
+        stampRule(ctx, newState, caretMarksPluginKey) ??
+        restoreRule(ctx, newState, caretMarksPluginKey)
+      );
+    },
+  });
+
 /**
  * Google-Docs paragraph mark: an empty block remembers its caret style in
  * `caretMarks` (JSON marks; '[]' = explicitly cleared, null = never stamped).
@@ -100,6 +212,9 @@ export const CaretMarks = Extension.create({
             default: null,
             keepOnSplit: false,
             rendered: false,
+            // Tiptap's fallback parse would read a `caretmarks="…"` attribute
+            // off pasted HTML; the stamp has no HTML form in either direction.
+            parseHTML: () => null,
           },
         },
       },
@@ -107,6 +222,6 @@ export const CaretMarks = Extension.create({
   },
 
   addProseMirrorPlugins() {
-    return [decorationPlugin()];
+    return [rulesPlugin(), decorationPlugin()];
   },
 });

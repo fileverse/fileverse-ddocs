@@ -26,6 +26,14 @@ describe.each([1, 2])('caretMarks attribute (schema v%i)', (version) => {
     expect(editor.getHTML()).not.toContain('bold');
   });
 
+  it('is never parsed back out of HTML', () => {
+    const editor = track(makeEditor(version, null));
+    editor.commands.setContent('<p caretmarks=\'[{"type":"bold"}]\'></p>');
+    expect(stampOf(textblocks(editor)[0].node)).toBeNull();
+    editor.commands.setContent('<p caretMarks=\'[{"type":"bold"}]\'></p>');
+    expect(stampOf(textblocks(editor)[0].node)).toBeNull();
+  });
+
   it('survives a JSON round-trip through setContent', () => {
     const editor = track(makeEditor(version, '<p></p>'));
     stampBlock(editor, caretBlock(editor).pos, '[{"type":"bold"}]');
@@ -56,6 +64,27 @@ describe.each([1, 2])('caretMarks attribute (schema v%i)', (version) => {
       ),
     );
     expect(p().style.fontSize).toBe('24px');
+  });
+
+  it('leaves a neighbouring stamped line decorated while the line above is edited', () => {
+    const editor = track(makeEditor(version, '<p></p><p></p>'));
+    const font = '[{"type":"textStyle","attrs":{"fontSize":"24px"}}]';
+    stampBlock(editor, textblocks(editor)[0].pos, font);
+    stampBlock(editor, textblocks(editor)[1].pos, font);
+    const neighbour = () =>
+      editor.view.dom.querySelectorAll('p')[1] as HTMLParagraphElement;
+    expect(neighbour().style.fontSize).toBe('24px');
+
+    caretTo(editor, textblocks(editor)[0].pos + 1);
+    type(editor, 'x');
+    expect(neighbour().style.fontSize).toBe('24px');
+    editor.view.dispatch(
+      editor.state.tr.delete(
+        editor.state.selection.from - 1,
+        editor.state.selection.from,
+      ),
+    );
+    expect(neighbour().style.fontSize).toBe('24px');
   });
 });
 

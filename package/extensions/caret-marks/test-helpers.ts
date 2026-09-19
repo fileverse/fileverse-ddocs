@@ -34,13 +34,20 @@ export const makeEditor = (
   return editor;
 };
 
-const tracked: Editor[] = [];
+const tracked: { editor: Editor; element: Element | null }[] = [];
 export const track = (editor: Editor) => {
-  tracked.push(editor);
+  const { element } = editor.options;
+  tracked.push({
+    editor,
+    element: element instanceof Element ? element : null,
+  });
   return editor;
 };
 export const destroyTracked = () => {
-  tracked.splice(0).forEach((editor) => editor.destroy());
+  tracked.splice(0).forEach(({ editor, element }) => {
+    editor.destroy();
+    element?.remove();
+  });
 };
 
 /** Position just after the first occurrence of `text`. */

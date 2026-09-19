@@ -7,7 +7,10 @@ export type OldCaret = {
   wasEmpty: boolean;
   /** Opening position of the pre-root caret block, tracked per step; null once its opening token went. */
   pos: number | null;
-  /** marksAcross of the last deletion inside that block; null when nothing was deleted there. */
+  /**
+   * marksAcross of the last deletion inside that block; null when nothing was
+   * deleted there. Meaningful only while `pos !== null` (the block survived).
+   */
   deletedMarks: readonly Mark[] | null;
 };
 export type Pending = { marks: readonly Mark[] | null; explicit: boolean };
@@ -71,7 +74,7 @@ const trackOldCaret = (
     if (pos === null) return;
     if (block.content.size > 0) {
       // The block's content range in step i's own coordinates, and the marks
-      // from the doc that step saw — never pre-root positions (review R4-3).
+      // from the doc that step saw — never pre-root positions.
       const before = tr.mapping.slice(0, i);
       const from = before.map(contentFrom, -1);
       const to = before.map(contentTo, 1);
@@ -95,7 +98,7 @@ const nextPending = (
   key: PluginKey,
 ): Pending | null => {
   if (tr.storedMarksSet) {
-    return { marks: tr.storedMarks, explicit: !tr.getMeta(key) };
+    return { marks: tr.storedMarks, explicit: tr.getMeta(key) === undefined };
   }
   // `insertText` etc. reposition the selection as a side effect of their own
   // step, which also flips `selectionSet`; only a step-free selectionSet is

@@ -126,6 +126,24 @@ describe('dispatch context: old caret block survival', () => {
     ).toMatchObject({ pos, wasEmpty: false });
   });
 
+  it('reports an empty caret block, and no old caret at all for a node selection', () => {
+    const empty = track(makeEditor(2, '<p></p>'));
+    expect(
+      context(empty, empty.state.tr.insertText('z')).oldCaret,
+    ).toMatchObject({ wasEmpty: true });
+
+    const withRule = track(makeEditor(2, '<p>abc</p><hr>'));
+    let hrPos = -1;
+    withRule.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'horizontalRule') hrPos = pos;
+    });
+    expect(hrPos).toBeGreaterThan(-1);
+    withRule.commands.setNodeSelection(hrPos);
+    expect(
+      context(withRule, withRule.state.tr.insertText('z')).oldCaret,
+    ).toBeNull();
+  });
+
   it('follows the block through a lift out of a list', () => {
     const editor = track(makeEditor(2, '<ul><li><p>item</p></li></ul>'));
     caretTo(editor, endOf(editor, 'item'));
