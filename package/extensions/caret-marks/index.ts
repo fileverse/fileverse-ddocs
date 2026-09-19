@@ -12,3 +12,4 @@ export {
   serializeMarks,
   stampAttrs,
 } from './caret-style';
+export { captureSplit, declareSplit } from './split-declaration';

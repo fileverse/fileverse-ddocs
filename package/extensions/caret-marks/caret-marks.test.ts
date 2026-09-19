@@ -8,6 +8,7 @@ import {
   track,
   destroyTracked,
   endOf,
+  startOf,
   caretTo,
   caretBlock,
   createdBlock,
@@ -163,3 +164,205 @@ describe('Rule C — pending marks survive appended steps (schema v2)', () => {
     },
   );
 });
+
+describe('declared inheritance — splitBlock override (schema v2)', () => {
+  it('carries bold at the end of a line: stamp, stored marks, typed text', () => {
+    const editor = track(makeEditor(2, '<p><strong>abc</strong></p>'));
+    caretTo(editor, endOf(editor, 'abc'));
+    let root: { storedMarksSet: boolean } | null = null;
+    editor.on('transaction', ({ transaction }) => {
+      root = root ?? transaction;
+    });
+    expect(editor.commands.splitBlock()).toBe(true);
+    expect(root!.storedMarksSet).toBe(true);
+    expect(stampOf(createdBlock(editor).node)).toBe('[{"type":"bold"}]');
+    expect(storedMarkNames(editor)).toEqual(['bold']);
+    expect(typedMarks(editor)).toEqual(['bold']);
+  });
+
+  it('declares an empty style: bold turned off before Enter stays off, stamped "[]"', () => {
+    const editor = track(makeEditor(2, '<p><strong>abc</strong></p>'));
+    caretTo(editor, endOf(editor, 'abc'));
+    editor.commands.toggleBold();
+    editor.commands.splitBlock();
+    expect(stampOf(createdBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+  });
+
+  it('keeps the pending style in front of the right half on a mid-text split', () => {
+    const editor = track(makeEditor(2, '<p><strong>A</strong>B</p>'));
+    caretTo(editor, endOf(editor, 'A'));
+    editor.commands.splitBlock();
+    expect(createdBlock(editor).node.attrs.blockId).toBeTruthy();
+    expect(typedMarks(editor)).toEqual(['bold']);
+    expect(createdBlock(editor).node.textContent).toBe('xB');
+    const b = editor.state.doc.nodeAt(endOf(editor, 'B') - 1);
+    expect(b?.marks).toEqual([]);
+  });
+
+  it('carries a style set mid-word with nothing selected', () => {
+    const editor = track(makeEditor(2, '<p>abc</p>'));
+    caretTo(editor, endOf(editor, 'ab'));
+    editor.commands.toggleBold();
+    editor.commands.splitBlock();
+    expect(typedMarks(editor)).toEqual(['bold']);
+    expect(editor.state.doc.nodeAt(endOf(editor, 'c') - 1)?.marks).toEqual([]);
+  });
+
+  it('carries a legacy font as marks and leaves no attr on the new block', () => {
+    const editor = track(makeEditor(2, '<p style="font-size: 32px">abc</p>'));
+    caretTo(editor, endOf(editor, 'abc'));
+    editor.commands.splitBlock();
+    const created = createdBlock(editor).node;
+    expect(created.attrs.fontSize).toBeNull();
+    expect(JSON.parse(stampOf(created)!)).toEqual([
+      {
+        type: 'textStyle',
+        attrs: expect.objectContaining({ fontSize: '32px' }),
+      },
+    ]);
+    expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+  });
+
+  it('middle split of a legacy-font paragraph keeps the attr on both halves (documented limitation)', () => {
+    const editor = track(
+      makeEditor(2, '<p style="font-size: 32px">abcdef</p>'),
+    );
+    caretTo(editor, endOf(editor, 'abc'));
+    editor.commands.splitBlock();
+    const [left, right] = textblocks(editor);
+    expect(left.node.attrs.fontSize).toBe('32px');
+    expect(right.node.attrs.fontSize).toBe('32px');
+    expect(right.node.textContent).toBe('def');
+  });
+
+  it("drops link from the declaration but leaves the original line's link stamp alone", () => {
+    const editor = track(makeEditor(2, '<p></p>'));
+    editor.commands.setLink({ href: 'https://x.y' });
+    expect(stampOf(caretBlock(editor).node)).toContain('"type":"link"');
+    editor.commands.splitBlock();
+    expect(stampOf(createdBlock(editor).node)).toBe('[]');
+    expect(typedMarks(editor)).toEqual([]);
+    caretTo(editor, textblocks(editor)[0].pos + 1);
+    expect(stampOf(caretBlock(editor).node)).toContain('"type":"link"');
+    expect(typedMarks(editor)).toEqual(['link']);
+  });
+
+  it('keeps inline code active on an empty line', () => {
+    const editor = track(makeEditor(2, '<p></p>'));
+    editor.commands.toggleCode();
+    expect(stampOf(caretBlock(editor).node)).toBe('[{"type":"code"}]');
+    expect(typedMarks(editor)).toEqual(['code']);
+  });
+
+  it('passes keepMarks:false through without a declaration', () => {
+    const editor = track(makeEditor(2, '<p><strong>abc</strong></p>'));
+    caretTo(editor, endOf(editor, 'abc'));
+    editor.commands.splitBlock({ keepMarks: false });
+    expect(stampOf(createdBlock(editor).node)).toBeNull();
+  });
+});
+
+describe.each([
+  [
+    'stale non-null stamp on plain text',
+    '<p>abc</p>',
+    '[{"type":"bold"}]',
+    false,
+    '[]',
+    [],
+  ],
+  [
+    'unstamped bold text',
+    '<p><strong>abc</strong></p>',
+    null,
+    false,
+    '[{"type":"bold"}]',
+    ['bold'],
+  ],
+  [
+    'plain text stamped "[]" with bold pending',
+    '<p>abc</p>',
+    '[]',
+    true,
+    '[{"type":"bold"}]',
+    ['bold'],
+  ],
+])(
+  'splitBlock at offset 0 — %s (schema v2)',
+  (_label, content, stamp, pendingBold, expectedStamp, expectedMarks) => {
+    it('stamps the emptied left half with the captured style; the right half keeps its text', () => {
+      const editor = track(makeEditor(2, content));
+      if (stamp) stampBlock(editor, 0, stamp);
+      caretTo(editor, startOf(editor, 'abc'));
+      if (pendingBold) editor.commands.toggleBold();
+      editor.commands.splitBlock();
+      const [left, right] = textblocks(editor);
+      expect(left.node.content.size).toBe(0);
+      expect(stampOf(left.node)).toBe(expectedStamp);
+      expect(right.node.textContent).toBe('abc');
+      expect(editor.state.selection.from).toBe(right.pos + 1);
+      // The right-hand caret keeps the pending style in front of the text.
+      expect(typedMarks(editor)).toEqual(expectedMarks);
+      // Return to the empty line above: the stamp is what typing gets.
+      caretTo(editor, left.pos + 1);
+      expect(typedMarks(editor)).toEqual(expectedMarks);
+    });
+  },
+);
+
+describe.each([1, 2])(
+  'declared inheritance — splitListItem override (schema v%i)',
+  (version) => {
+    it('carries bold into the next bullet', () => {
+      const editor = track(
+        makeEditor(version, '<ul><li><p><strong>abc</strong></p></li></ul>'),
+      );
+      caretTo(editor, endOf(editor, 'abc'));
+      expect(editor.commands.splitListItem('listItem')).toBe(true);
+      expect(stampOf(createdBlock(editor).node)).toBe('[{"type":"bold"}]');
+      expect(typedMarks(editor)).toEqual(['bold']);
+    });
+
+    it('carries a legacy font out of a list paragraph as marks', () => {
+      const editor = track(
+        makeEditor(
+          version,
+          '<ul><li><p style="font-size: 32px">abc</p></li></ul>',
+        ),
+      );
+      caretTo(editor, endOf(editor, 'abc'));
+      editor.commands.splitListItem('listItem');
+      const created = createdBlock(editor).node;
+      expect(created.attrs.fontSize).toBeNull();
+      expect(typedTextStyle(editor)?.fontSize).toBe('32px');
+    });
+
+    it('stamps the emptied left item on an offset-0 split across the </li><li> boundary', () => {
+      const editor = track(
+        makeEditor(version, '<ul><li><p><strong>abc</strong></p></li></ul>'),
+      );
+      caretTo(editor, startOf(editor, 'abc'));
+      editor.commands.splitListItem('listItem');
+      const [left, right] = textblocks(editor);
+      expect(left.node.content.size).toBe(0);
+      expect(stampOf(left.node)).toBe('[{"type":"bold"}]');
+      expect(right.node.textContent).toBe('abc');
+      expect(typedMarks(editor)).toEqual(['bold']);
+    });
+
+    it('middle split of a legacy-font list paragraph keeps the attr on both halves', () => {
+      const editor = track(
+        makeEditor(
+          version,
+          '<ul><li><p style="font-size: 32px">abcdef</p></li></ul>',
+        ),
+      );
+      caretTo(editor, endOf(editor, 'abc'));
+      editor.commands.splitListItem('listItem');
+      const [left, right] = textblocks(editor);
+      expect(left.node.attrs.fontSize).toBe('32px');
+      expect(right.node.attrs.fontSize).toBe('32px');
+    });
+  },
+);

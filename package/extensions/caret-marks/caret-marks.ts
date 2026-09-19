@@ -1,8 +1,11 @@
-import { Extension } from '@tiptap/core';
+// The core commands come from the `commands` namespace: @tiptap/core's bundle
+// exports them only there, although its .d.ts also advertises top-level names.
+import { Extension, commands as coreCommands } from '@tiptap/core';
 import type { Mark, Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
 import {
   Plugin,
   PluginKey,
+  TextSelection,
   type EditorState,
   type Transaction,
 } from '@tiptap/pm/state';
@@ -19,6 +22,7 @@ import {
   applyDispatchContext,
   type DispatchContext,
 } from './dispatch-context';
+import { captureSplit, declareSplit } from './split-declaration';
 
 export const caretMarksPluginKey = new PluginKey<DispatchContext>('caretMarks');
 export const caretMarksDecorationKey = new PluginKey<DecorationSet>(
@@ -160,7 +164,16 @@ const restoreRule = (
   state: EditorState,
   key: PluginKey<DispatchContext>,
 ): Transaction | null => {
-  if (state.storedMarks !== null || !state.selection.empty) return null;
+  const { selection } = state;
+  if (
+    state.storedMarks !== null ||
+    !(selection instanceof TextSelection) ||
+    !selection.$cursor
+  ) {
+    return null;
+  }
+  // A pending with null marks is A1's to stamp ('[]'); C has nothing to
+  // re-set, so B may run.
   if (ctx.pending && ctx.pending.marks !== null) {
     return state.tr.setStoredMarks(ctx.pending.marks).setMeta(key, true);
   }
@@ -219,6 +232,26 @@ export const CaretMarks = Extension.create({
         },
       },
     ];
+  },
+
+  addCommands() {
+    return {
+      splitBlock: (options) => (props) => {
+        const capture =
+          options?.keepMarks === false
+            ? null
+            : captureSplit(props.tr, props.editor);
+        const ok = coreCommands.splitBlock(options)(props);
+        if (ok && props.dispatch && capture) declareSplit(props.tr, capture);
+        return ok;
+      },
+      splitListItem: (typeOrName, overrideAttrs) => (props) => {
+        const capture = captureSplit(props.tr, props.editor);
+        const ok = coreCommands.splitListItem(typeOrName, overrideAttrs)(props);
+        if (ok && props.dispatch && capture) declareSplit(props.tr, capture);
+        return ok;
+      },
+    };
   },
 
   addProseMirrorPlugins() {
