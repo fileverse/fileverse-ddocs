@@ -89,6 +89,7 @@ export const FontFamilyPersistence = Extension.create({
         attributes: {
           fontFamily: {
             default: null,
+            keepOnSplit: false,
             parseHTML: (element) =>
               element.style.fontFamily?.replace(/['"]+/g, '') || null,
             renderHTML: (attributes) => {
