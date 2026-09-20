@@ -261,7 +261,11 @@ export const useEditorCommands = (
       'edit.delete': cmd(() => editor.chain().focus().deleteSelection().run(), {
         isEnabled: state.hasSelection,
       }),
-      'edit.findReplace': cmd(() => setShowReplacePopoverWithData(editor)),
+      'edit.findReplace': cmd(() =>
+        setShowReplacePopoverWithData(editor, {
+          withReplaceOpen: true,
+        }),
+      ),
       'edit.cut': cmd(() => document.execCommand('cut'), {
         isEnabled: state.hasSelection,
       }),

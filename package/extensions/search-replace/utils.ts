@@ -1,7 +1,12 @@
 import type { Editor } from '@tiptap/core';
 import { useSearchReplaceStore } from '../../stores/search-replace-store';
 
-export function setShowReplacePopoverWithData(editor: Editor) {
+export function setShowReplacePopoverWithData(
+  editor: Editor,
+  meta?: {
+    withReplaceOpen: boolean;
+  },
+) {
   const { from, to } = editor.state.selection;
 
   const selectedText = editor.state.doc.textBetween(from, to, ' ');
@@ -18,7 +23,14 @@ export function setShowReplacePopoverWithData(editor: Editor) {
     editor.commands.setSearchTerm(selectedText);
     editor.commands.resetIndex();
   }
-  setState({
-    showSearchReplacePopover: true,
-  });
+  if (meta?.withReplaceOpen) {
+    setState({
+      showSearchReplacePopover: true,
+      showReplace: true,
+    });
+  } else {
+    setState({
+      showSearchReplacePopover: true,
+    });
+  }
 }
