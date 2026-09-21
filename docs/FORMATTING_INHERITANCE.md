@@ -1,10 +1,10 @@
 # Formatting inheritance and persistence (TEC-3030, stage 1)
 
-Status: **final, 2026-09-19** — accepted for implementation after nine
-review rounds in `FORMATTING_INHERITANCE_REVIEW.md` (findings 1–5,
-R2-1–R2-5, R3-1–R3-5, R4-1–R4-3, R5-1–R5-2, R6-1–R6-4, R7-1, R8-1–R8-2,
-R9-1 and both verification corrections are folded in; their acceptance
-tests are in section 6 and are the implementation's test list). Round
+Status: **implemented** in `package/extensions/caret-marks/` (2026-09-19).
+The design went through nine review rounds; tags such as "(review R4-1)"
+name the finding that shaped a rule (the review log itself is not kept in
+the repo), and the acceptance tests of section 6 live in
+`caret-marks/*.test.ts` and `paragraph-spacing-carryover.test.ts`. Round
 five replaced the after-the-fact "was this block created?" classifier with
 declared inheritance: every path that creates a block sets the caret style
 itself, explicitly, empty or not. Covers the
