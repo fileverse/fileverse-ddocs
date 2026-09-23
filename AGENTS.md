@@ -13,7 +13,7 @@ npm i                         # root deps (CI uses Node 22)
 npm run build                 # tsc type-check + vite lib build -> dist/
 npx tsc                       # type-check only (noEmit; covers package + entries, not tests or demo)
 npm run lint                  # eslint --fix, zero warnings allowed; prettier runs through eslint
-npm test                      # vitest run (jsdom); 84 files / ~736 tests in ~20s
+npm test                      # vitest run (jsdom); 95 files / ~1033 tests in ~24s
 npx vitest run package/extensions/paragraph-spacing.test.ts   # one file
 npx vitest run -t "treats 0 as an explicit value"             # one test by name
 npx vitest package/extensions/docx                            # watch a directory
@@ -76,7 +76,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 
 - Branch names and PR titles are Linear ticket ids (`TEC-1234`).
 - Prettier through eslint: single quotes, trailing commas, semicolons, 2-space indent.
-- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`). Read the relevant one before changing that area.
+- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`). Read the relevant one before changing that area.
 
 ## Consumer repo: ddocs.new
 

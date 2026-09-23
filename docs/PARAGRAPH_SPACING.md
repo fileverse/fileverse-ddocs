@@ -119,6 +119,9 @@ above it, on every Enter, forever.
   sibling — so `dblock.ts` drops `spaceBefore` itself when leaving a heading.
 - Both schemas drop to a **paragraph** when Enter is pressed at the end of a
   heading.
+- List exit (Enter-Enter out of a bullet/numbered list) is handled by the
+  `paragraphSpacingListExit` plugin in v2 and by the dBlock Enter handler's
+  spacing owner in v1; see `FORMATTING_INHERITANCE.md` §3.5.
 
 > An earlier version of this document claimed v1 continued with another heading
 > and needed no carry-over work. Both came from a vacuous test that read **the

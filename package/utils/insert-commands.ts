@@ -3,6 +3,7 @@ import { startImageUpload } from './upload-images';
 import { validateImageExtension } from './check-image-type';
 import { IMG_UPLOAD_SETTINGS } from '../components/editor-utils';
 import { IpfsImageUploadResponse } from '../types';
+import { caretStyle, filterSplittable } from '../extensions/caret-marks';
 
 type InsertCommand = (editor: Editor, range?: Range) => void;
 
@@ -59,40 +60,23 @@ const begin = (editor: Editor, range?: Range) => {
  */
 export const insertCommands: Record<string, InsertCommand> = {
   callout: (editor, range) => {
-    const attrs = editor.getAttributes('textStyle');
-    // Fall back to paragraph node attrs for fontFamily/fontSize
-    const { selection } = editor.state;
-    const $pos = selection.$from;
-    const node = $pos.node($pos.depth);
-    if (node?.type.name === 'paragraph') {
-      if (!attrs.fontFamily && node.attrs.fontFamily) {
-        attrs.fontFamily = node.attrs.fontFamily;
-      }
-      if (!attrs.fontSize && node.attrs.fontSize) {
-        attrs.fontSize = node.attrs.fontSize;
-      }
-    }
-
-    const fontFamily = attrs?.fontFamily || null;
-    const fontSize = attrs?.fontSize || null;
-
+    // Captured from the pre-insert state and declared last (spec 3.3): Rule
+    // A1 stamps the callout's empty paragraph with it.
+    const { $from } = editor.state.selection;
+    const style = filterSplittable(
+      caretStyle(editor.state, $from.parent.isTextblock ? $from.parent : null),
+      editor,
+    );
     begin(editor, range)
       .insertContent({
         type: 'callout',
-        content: [
-          {
-            type: 'paragraph',
-            attrs: { fontFamily, fontSize },
-            content: [],
-          },
-        ],
+        content: [{ type: 'paragraph', content: [] }],
+      })
+      .command(({ tr }) => {
+        tr.setStoredMarks(style);
+        return true;
       })
       .run();
-
-    // Then apply textStyle marks to content inside callout
-    if (attrs && Object.keys(attrs).length > 0) {
-      editor.chain().focus().setMark('textStyle', attrs).run();
-    }
   },
   pageBreak: (editor, range) => {
     begin(editor, range).setPageBreak().run();

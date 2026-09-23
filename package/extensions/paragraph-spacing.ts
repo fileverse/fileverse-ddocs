@@ -1,7 +1,8 @@
 import { Extension, type CommandProps } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
+import { isLocalRoot, isRootTransaction } from './caret-marks/dispatch-context';
 
 export type ParagraphSpacingAttrs = {
   /** Space above the block, in pt. `null` unsets it; omit to leave as-is. */
@@ -24,6 +25,36 @@ declare module '@tiptap/core' {
     };
   }
 }
+
+type ListExitCapture = {
+  pos: number;
+  spaceBefore: number | null;
+  spaceAfter: number | null;
+};
+
+const listExitKey = new PluginKey<ListExitCapture | null>(
+  'paragraphSpacingListExit',
+);
+
+// The node that owns the spacing for a caret inside a list: the listItem for
+// bullets and numbering (setParagraphSpacing skips their paragraph), the
+// paragraph itself under a taskItem (which has no spacing attrs).
+const listSpacingOwner = ($pos: ResolvedPos): ProseMirrorNode | null => {
+  for (let depth = $pos.depth - 1; depth > 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type.name === 'listItem') return node;
+    if (node.type.name === 'taskItem') return $pos.parent;
+  }
+  return null;
+};
+
+const insideListItem = ($pos: ResolvedPos) => {
+  for (let depth = $pos.depth - 1; depth > 0; depth--) {
+    const name = $pos.node(depth).type.name;
+    if (name === 'listItem' || name === 'taskItem') return true;
+  }
+  return false;
+};
 
 /**
  * `spaceBefore` / `spaceAfter` as inline margins, in pt.
@@ -282,6 +313,61 @@ export const ParagraphSpacing = Extension.create({
           });
 
           return modified ? tr : null;
+        },
+      }),
+
+      // Lifting out of a list (`liftEmptyBlock` / `liftListItem`) loses the
+      // item that owned the spacing; BlockId's appended setNodeMarkup then
+      // replaces the node object — so capture by identity, apply by position.
+      new Plugin<ListExitCapture | null>({
+        key: listExitKey,
+        state: {
+          init: () => null,
+          apply: (tr, prev, oldState, newState) => {
+            // The 'applied' check stays first: the transaction that applies
+            // the capture is itself an appended one.
+            if (tr.getMeta(listExitKey) === 'applied') return null;
+            if (!isRootTransaction(tr)) {
+              return prev && { ...prev, pos: tr.mapping.map(prev.pos) };
+            }
+            if (!tr.docChanged || !isLocalRoot(tr)) return null;
+            const $old = oldState.selection.$from;
+            const $new = newState.selection.$from;
+            const block = $old.parent;
+            if (!block.isTextblock || $new.parent !== block) return null;
+            if (!insideListItem($old) || insideListItem($new)) return null;
+            if (
+              block.attrs.spaceBefore !== null ||
+              block.attrs.spaceAfter !== null
+            ) {
+              return null;
+            }
+            const owner = listSpacingOwner($old);
+            if (!owner) return null;
+            const spaceBefore = owner.attrs.spaceBefore ?? null;
+            const spaceAfter = owner.attrs.spaceAfter ?? null;
+            if (spaceBefore === null && spaceAfter === null) return null;
+            return { pos: $new.before(), spaceBefore, spaceAfter };
+          },
+        },
+        appendTransaction: (_transactions, _oldState, newState) => {
+          const capture = listExitKey.getState(newState);
+          if (!capture) return null;
+          const node = newState.doc.nodeAt(capture.pos);
+          if (
+            !node?.isTextblock ||
+            node.attrs.spaceBefore !== null ||
+            node.attrs.spaceAfter !== null
+          ) {
+            return null;
+          }
+          return newState.tr
+            .setNodeMarkup(capture.pos, undefined, {
+              ...node.attrs,
+              spaceBefore: capture.spaceBefore,
+              spaceAfter: capture.spaceAfter,
+            })
+            .setMeta(listExitKey, 'applied');
         },
       }),
     ];

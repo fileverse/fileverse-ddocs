@@ -2,7 +2,7 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "5.0.7",
+  "version": "5.1.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fileverse/fileverse-ddocs.git"

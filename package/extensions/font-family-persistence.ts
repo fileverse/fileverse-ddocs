@@ -36,18 +36,9 @@ export const FontFamilyPersistence = Extension.create({
     return {
       setFontFamily:
         (fontFamily: string) =>
-        ({ chain, state, tr }) => {
+        ({ chain, state }) => {
           const existing = getExistingTextStyleAttrs(this.editor);
-          // Sync to paragraph node attr directly for empty paragraphs
           const { selection } = state;
-          const $pos = selection.$from;
-          const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
-            tr.setNodeMarkup($pos.before($pos.depth), undefined, {
-              ...node.attrs,
-              fontFamily,
-            });
-          }
           return chain()
             .setMark(
               'textStyle',
@@ -59,15 +50,22 @@ export const FontFamilyPersistence = Extension.create({
         () =>
         ({ chain, state, tr }) => {
           const existing = getExistingTextStyleAttrs(this.editor);
-          // Clear the paragraph node attr directly so Plugin 3 doesn't need to
           const { selection } = state;
           const $pos = selection.$from;
           const node = $pos.node($pos.depth);
-          if (node?.type.name === 'paragraph' && node.textContent === '') {
+          if (
+            node?.type.name === 'paragraph' &&
+            node.textContent === '' &&
+            node.attrs.fontFamily !== null
+          ) {
+            // setNodeMarkup is a step, and a step nulls tr.storedMarks; put
+            // the pending marks back so the chain's setMark merges into them.
+            const pending = state.storedMarks;
             tr.setNodeMarkup($pos.before($pos.depth), undefined, {
               ...node.attrs,
               fontFamily: null,
             });
+            if (pending) tr.setStoredMarks(pending);
           }
           return chain()
             .setMark(
@@ -89,6 +87,7 @@ export const FontFamilyPersistence = Extension.create({
         attributes: {
           fontFamily: {
             default: null,
+            keepOnSplit: false,
             parseHTML: (element) =>
               element.style.fontFamily?.replace(/['"]+/g, '') || null,
             renderHTML: (attributes) => {
