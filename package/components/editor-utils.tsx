@@ -41,7 +41,7 @@ import {
   useTheme,
 } from '@fileverse/ui';
 import { useMediaQuery } from 'usehooks-ts';
-import { colors, mobileTextColors, textColors } from '../utils/colors';
+import { colors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
 import { useCommentRefs } from '../stores/comment-store-provider';
@@ -2524,7 +2524,7 @@ export const TextFormatingPopup = ({
                 className="w-full max-w-md mx-auto mt-3"
               >
                 <CarouselContent className="-ml-1">
-                  {mobileTextColors.map((color, index) => {
+                  {textColors.map((color, index) => {
                     const contrastColor = getContrastColor(
                       (color as Record<string, string>)[theme] || color.light,
                     );
