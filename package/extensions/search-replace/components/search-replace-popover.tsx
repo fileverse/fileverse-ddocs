@@ -10,7 +10,7 @@ import {
 } from '@fileverse/ui';
 import { useShallow } from 'zustand/shallow';
 import { useSearchReplaceStore } from '../../../../package/stores/search-replace-store';
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { debounce } from '../../../utils/debounce';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Editor } from '@tiptap/core';
@@ -26,16 +26,24 @@ const SearchReplace = ({
   editor: Editor | null;
   viewerMode?: 'suggest' | 'view-only';
 }) => {
-  const [showReplace, setShowReplace] = useState(false);
   const isNonOwner = typeof viewerMode !== 'undefined';
-  const { searchTerm, replaceTerm, showSearchReplacePopover } =
+  const { searchTerm, replaceTerm, showSearchReplacePopover, showReplace } =
     useSearchReplaceStore(
       useShallow((s) => ({
         searchTerm: s.searchTerm,
         replaceTerm: s.replaceTerm,
+        showReplace: s.showReplace,
         showSearchReplacePopover: s.showSearchReplacePopover,
       })),
     );
+
+  const {
+    setShowReplacePopover,
+    setSearchTerm,
+    setReplaceTerm,
+    setShowReplace,
+    toggleShowReplace,
+  } = useSearchReplaceStore((s) => s.actions);
   // Result count and current match live in editor.storage. Select them
   // through useEditorState so the popover re-renders only when they change,
   // not on every transaction (this used to force a render per keystroke,
@@ -49,9 +57,6 @@ const SearchReplace = ({
   });
   const resultCount = searchState?.resultCount;
   const resultIndex = searchState?.resultIndex;
-
-  const { setShowReplacePopover, setSearchTerm, setReplaceTerm } =
-    useSearchReplaceStore((s) => s.actions);
 
   const gotoSelection = useCallback(
     function gotoSelection() {
@@ -112,7 +117,7 @@ const SearchReplace = ({
     if (isNonOwner) {
       setShowReplace(false);
     }
-    setShowReplace((s) => !s);
+    toggleShowReplace();
   }
 
   function handleSearchTerm(e: React.ChangeEvent<HTMLInputElement>) {
@@ -196,28 +201,30 @@ const SearchReplace = ({
                     {`${typeof resultIndex === 'number' ? resultIndex + 1 : '?'}/${resultCount}`}
                   </span>
                 ) : searchTerm !== '' ? (
-                  <span className="color-text-secondary text-xs shrink-0">
-                    No results found.
-                  </span>
+                  <span className="color-text-secondary text-sm">0/0</span>
                 ) : null}
               </>
             )}
-            {resultCount !== undefined && resultCount > 0 && (
+            {resultCount !== undefined && (
               <div className="flex items-center">
                 <div className="flex items-center">
-                  <Tooltip text="Previous">
+                  <Tooltip text="Previous" asTriggerChild>
                     <IconButton
                       icon={'ArrowUp'}
                       variant={'ghost'}
                       size="sm"
+                      disabled={resultCount < 1}
+                      className="disabled:bg-transparent"
                       onClick={handlePrevious}
                     />
                   </Tooltip>
-                  <Tooltip text="Next">
+                  <Tooltip text="Next" asTriggerChild>
                     <IconButton
                       icon={'ArrowDown'}
                       variant={'ghost'}
                       size="sm"
+                      disabled={resultCount < 1}
+                      className="disabled:bg-transparent"
                       onClick={handleNext}
                     />
                   </Tooltip>
@@ -264,6 +271,7 @@ const SearchReplace = ({
                     size={'sm'}
                     className="min-w-0 text-body-sm-bold"
                     onClick={handleReplaceAll}
+                    disabled={resultCount ? resultCount < 1 : true}
                   >
                     Replace All
                   </Button>
@@ -272,6 +280,7 @@ const SearchReplace = ({
                     size={'sm'}
                     className="min-w-0 text-body-sm-bold"
                     onClick={handleReplace}
+                    disabled={resultCount ? resultCount < 1 : true}
                   >
                     Replace
                   </Button>
