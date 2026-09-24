@@ -1,5 +1,7 @@
 import { Extension, commands as coreCommands, getNodeType } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { isListItemNode, refuse, sharedList } from './shared';
+import { retypeList } from './retype';
 import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
 
@@ -61,7 +63,11 @@ export const ListToggle = Extension.create({
               state.schema.nodes.dBlock,
             );
           }
-          return delegate(); // Tasks 5-6: retype
+          const currentItem = shared.node.firstChild as ProseMirrorNode;
+          if (currentItem.type === itemType) {
+            return retypeList(tr, shared, listType);
+          }
+          return delegate(); // Task 6: retypeItems
         },
     };
   },
