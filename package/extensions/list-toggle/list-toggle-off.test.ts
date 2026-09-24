@@ -217,6 +217,7 @@ describe.each([1, 2])(
       expect(flatShape(editor)).toBe(
         'ul(li(p("aa")) li(p("bb")) li(p("xx")) li(p("yy")) li(p("cc"))) p()',
       );
+      expectValid(editor, version);
     });
 
     it('bullets inside a checklist item: unwrapped into the item, spacing on the paragraphs', () => {
@@ -241,6 +242,7 @@ describe.each([1, 2])(
         'tl(ti(p("aa") p{spaceBefore=2,spaceAfter=7}("bb") p{spaceBefore=0,spaceAfter=3}("cc") ul(li(p("dd"))))) p()',
       );
       expect(selectionText(editor)).toBe('b|c');
+      expectValid(editor, version);
     });
 
     it('a checklist inside a bullet item: unwrapped, the paragraph keeps its own spacing', () => {

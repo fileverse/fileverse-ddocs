@@ -60,11 +60,9 @@ export const toggleOffTopLevel = (
 };
 
 /**
- * Toggle off inside a nested list: stock liftListItem. With an outer item of
- * the same node it lifts the items into the outer list; with the other node
- * (bullets in a checklist item) it unwraps them into the outer item and
- * discards the item wrappers, so their edge spacing is moved onto the
- * paragraphs first (spec §3.4, R4-1).
+ * With an outer item of the other node, stock liftListItem unwraps the
+ * covered items into the outer item and discards their wrappers, so their
+ * edge spacing is moved onto the paragraphs first (spec §3.4, R4-1).
  */
 export const toggleOffNested = (
   props: CommandProps,
