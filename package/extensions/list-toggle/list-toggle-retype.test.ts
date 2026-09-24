@@ -7,6 +7,7 @@ import {
   caretIn,
   rangeOver,
   setAttrs,
+  selectNode,
   expectValid,
 } from './test-helpers';
 
@@ -158,6 +159,16 @@ describe.each([1, 2])('retype across item nodes (schema v%i)', (version) => {
     editor.commands.toggleBulletList();
     expect(flatShape(editor)).toBe(
       'ul(li{spaceBefore=2,spaceAfter=7}(p("aa"))) p()',
+    );
+    expectValid(editor, version);
+  });
+
+  it('a NodeSelection on an item retypes exactly that item', () => {
+    const { editor } = makeListEditor(version, LIST3);
+    selectNode(editor, 'listItem', 'bb');
+    editor.commands.toggleTaskList();
+    expect(flatShape(editor)).toBe(
+      'ul(li(p("aa"))) tl(ti(p("bb"))) ul(li(p("cc"))) p()',
     );
     expectValid(editor, version);
   });

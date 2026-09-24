@@ -7,6 +7,7 @@ import {
   caretIn,
   rangeOver,
   setAttrs,
+  selectNode,
   expectValid,
 } from './test-helpers';
 
@@ -83,6 +84,20 @@ describe.each([1, 2])(
       caretIn(editor, 'cc');
       editor.commands.toggleBulletList();
       expect(flatShape(editor)).toBe('ul(li(p("aa")) li(p("bb"))) p("cc") p()');
+      expectValid(editor, version);
+    });
+
+    it('a NodeSelection on an item covers exactly that item', () => {
+      const { editor } = makeListEditor(version, LIST3);
+      selectNode(editor, 'listItem', 'cc');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe('ul(li(p("aa")) li(p("bb"))) p("cc") p()');
+      expectValid(editor, version);
+
+      editor.commands.setContent(LIST3);
+      selectNode(editor, 'listItem', 'aa');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe('p("aa") ul(li(p("bb")) li(p("cc"))) p()');
       expectValid(editor, version);
     });
 

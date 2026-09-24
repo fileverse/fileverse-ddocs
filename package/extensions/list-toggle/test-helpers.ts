@@ -101,6 +101,17 @@ export const setAttrs = (
   throw new Error(`no ${typeName} around "${text}"`);
 };
 
+/** NodeSelection over the nearest `typeName` ancestor of `text` (e.g. a whole listItem). */
+export const selectNode = (editor: Editor, typeName: string, text: string) => {
+  const $pos = editor.state.doc.resolve(startOf(editor, text));
+  for (let depth = $pos.depth; depth >= 1; depth--) {
+    if ($pos.node(depth).type.name === typeName) {
+      return editor.commands.setNodeSelection($pos.before(depth));
+    }
+  }
+  throw new Error(`no ${typeName} around "${text}"`);
+};
+
 export type ListHarness = { editor: Editor; anchors: CommentAnchor[] };
 
 /** Production extension set + the comment decoration plugin, content set. */

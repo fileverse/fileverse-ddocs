@@ -12,6 +12,7 @@ import {
   caretIn,
   rangeOver,
   selectionText,
+  selectNode,
   expectValid,
 } from './test-helpers';
 
@@ -19,6 +20,7 @@ afterEach(destroyTracked);
 
 const NESTED =
   '<ul><li><p>aa</p></li><li><p>bb</p><ul><li><p>xx</p></li><li><p>yy</p></li></ul></li><li><p>cc</p></li></ul>';
+const LIST3 = '<ul><li><p>aa</p></li><li><p>bb</p></li><li><p>cc</p></li></ul>';
 
 describe.each([1, 2])('list toggle helpers (schema v%i)', (version) => {
   it('sharedList finds the innermost list containing both ends', () => {
@@ -49,6 +51,15 @@ describe.each([1, 2])('list toggle helpers (schema v%i)', (version) => {
     });
     caretIn(editor, 'bb');
     expect(listAtSelection(editor.state)).toBeNull();
+  });
+
+  it('listAtSelection agrees on a NodeSelection of a whole item', () => {
+    const { editor } = makeListEditor(version, LIST3);
+    selectNode(editor, 'listItem', 'cc');
+    expect(listAtSelection(editor.state)).toEqual({
+      listType: 'bulletList',
+      itemType: 'listItem',
+    });
   });
 });
 

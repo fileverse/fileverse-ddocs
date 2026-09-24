@@ -33,7 +33,11 @@ export const ListToggle = Extension.create({
         }
         const parent = $from.node(shared.depth - 1);
         const firstIndex = $from.index(shared.depth);
-        const lastIndex = $to.index(shared.depth);
+        // A NodeSelection of an item ends directly in the list, one past the item.
+        const lastIndex =
+          $to.depth === shared.depth
+            ? Math.max(firstIndex, $to.index(shared.depth) - 1)
+            : $to.index(shared.depth);
 
         if (shared.node.type === listType) {
           if (isListItemNode(parent)) {
