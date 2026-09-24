@@ -85,14 +85,14 @@ every way the bad shape is produced — wrapping a block into a list, pasting,
 importing — is a local transaction, so it is normalised at the moment it is
 created and never reaches the shared document.
 
-**Known, not fixed — one family, not one case.** Spacing is dropped whenever the
-node that owned it stops existing: unwrapping a spaced item back to a paragraph
-(`toggleBulletList` off), and converting a spaced bullet to a task item, which
-is the same thing because `taskItem` is not one of the spacing types. Recovering
-it would mean correlating against `oldState` inside the same appendTransaction.
-Defensible as-is; if it is ever "fixed", fix the family, not one member.
+**Fixed by the list toggle engine (`docs/LIST_TOGGLE.md` §3.5).** Unwrapping
+a spaced item back to a paragraph (`toggleBulletList` off) and converting a
+spaced bullet to a task item move the item's edge gaps onto its first/last
+paragraph before the item node disappears; the reverse conversion moves them
+back. The one documented loss: an item's `spaceAfter` when the item ends with
+a nested list has no paragraph home in a checklist and is dropped.
 
-**Task lists have the opposite ownership model** for the same reason: with
+**Task lists have the opposite ownership model:** with
 `taskItem` outside `types` and outside the parent skip, a task item's gap lives
 on its inner `<p>` while a bullet's lives on the `<li>`. Self-consistent, but do
 not assume the two behave alike.
@@ -121,7 +121,10 @@ above it, on every Enter, forever.
   heading.
 - List exit (Enter-Enter out of a bullet/numbered list) is handled by the
   `paragraphSpacingListExit` plugin in v2 and by the dBlock Enter handler's
-  spacing owner in v1; see `FORMATTING_INHERITANCE.md` §3.5.
+  spacing owner in v1; see `FORMATTING_INHERITANCE.md` §3.5. A list *toggle
+  off* (toolbar, nav, shortcut) no longer goes through this plugin: the list
+  toggle engine carries every lifted item's spacing itself
+  (`docs/LIST_TOGGLE.md` §3.4).
 
 > An earlier version of this document claimed v1 continued with another heading
 > and needed no carry-over work. Both came from a vacuous test that read **the

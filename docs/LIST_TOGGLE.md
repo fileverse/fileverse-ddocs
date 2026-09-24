@@ -1,8 +1,11 @@
 # List toggling (TEC-3030, stage 2)
 
-Status: **design, awaiting implementation** (2026-09-22, revised four times
-after the reviews in `LIST_TOGGLE_REVIEW.md`; tags "(review N)", "(R2-N)",
-"(R3-N)" and "(R4-N)" name the finding that shaped a rule). Covers the "List" rows of TEC-3030: the
+Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
+the acceptance tests of §5 live in `list-toggle/*.test.ts`
+(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`); full suite 99 files,
+1131 passed, 2 skipped. Design revised four times after the reviews in
+`LIST_TOGGLE_REVIEW.md`; tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)"
+name the finding that shaped a rule. Covers the "List" rows of TEC-3030: the
 second-level nav and the toolbar toggle lists through two different engines
 that disagree with each other and between schemas. Stage 1
 (`FORMATTING_INHERITANCE.md`) is the caret-mark model this builds on; zoom is
@@ -19,7 +22,10 @@ Two engines toggle lists:
 - **Hand-rolled** `checkActiveListsAndDBlocks` + `convertToList` /
   `convertListToParagraphs` (`components/editor-bubble-menu/node-selector.tsx`,
   `components/editor-utils.tsx`): the toolbar (desktop and mobile) and the
-  bubble-menu node selector, five copy-pasted call sites, no tests.
+  bubble-menu node selector, eleven copy-pasted call sites, no tests —
+  toolbar (3), the mobile to-do tool (1), the heading dropdown's "Text"
+  entry (1), the mobile text-formatting modal's `listStyles` (2) and the
+  bubble menu (4).
 
 Measured with a jsdom probe over 21 scenarios in both schemas:
 
@@ -79,7 +85,7 @@ for a selection whose blocks (at the depth where the change happens) contain
 | … press a type with a **different item node** (bullet/numbered ↔ checklist) | only the covered items are retyped, the list splits around them; the item's body is untouched (paragraph attrs, sub-lists, other blocks); edge spacing moves between the item and its first/last paragraph (§3.5); a nested list stays nested |
 | selections inside a blockquote, callout, table cell or one column | the same, at that depth (R3-4) |
 | after a wrap or a retype | the result joins a same-type list immediately before or after it (adjacency, both schemas) |
-| comments and suggestions anchored inside the affected items | keep their anchors and highlights through every path, and through undo/redo |
+| comments and suggestions anchored inside the affected items | keep their anchors and highlights through every path and through undo; a known gap drops them after redo of a structural change (below) |
 
 Parked ("mixed elements", to be designed separately): a range whose blocks
 include a list **and** something else, or two lists; the double-tick active
@@ -92,6 +98,13 @@ block). Also out: the clipboard "paste a list item" row and the "to-do list
 Known lossy case, by design (R3-3): an item's own `spaceAfter` when its last
 body child is not a paragraph (the item ends with a sub-list) has no home once
 the item is lifted or becomes a `taskItem`, and is dropped.
+
+**Known gap (pre-existing, not fixed here):** anchors survive every engine
+path and undo; redo of a structural change drops anchors inside the redone
+range (the comment-decoration plugin's Yjs-origin rebuild) — stock
+`toggleBlockquote()` shows the same loss, so it is not list-toggle-specific.
+Kept as a documented `it.skip` in `list-toggle-anchors.test.ts`; needs its
+own ticket.
 
 ## 3. Design
 
@@ -233,9 +246,9 @@ after the item's start, so earlier items keep their positions):
    boundary between the promoted sub-list and the untouched next sibling is
    preserved (R3-1). Works for a second paragraph or any other block as much
    as for a sub-list (R3-2). The item is now `item(p)`.
-3. Isolate it: `tr.split` at its end when it still has a next sibling and at
-   its start when it has a previous one (`splitDepth`: 2 under a dBlock,
-   else 1).
+3. Isolate it with `isolateItem`: `tr.split` at its end when it still has a
+   next sibling and at its start when it has a previous one (`splitDepth`: 2
+   under a dBlock, else 1).
 4. `tr.lift(paragraphRange, shared.depth − 1)`: the paragraph replaces that
    single-item list in the list's parent (the dBlock in v1). The range is
    resolved *inside* the paragraph — `blockRange()` at the item's content
@@ -261,8 +274,9 @@ an outer one: the outer list is retyped, as rule 2 says (R2-3). Probe-
 verified in both schemas, anchors kept.
 
 **Different item node** (↔ checklist), at any depth (R2-2): for each covered
-item from last to first, isolate it as in §3.4 step 3 (splits only — the
-body is not lifted), then swap both wrappers in **one** `ReplaceAroundStep`: from the list's start to its end,
+item from last to first, isolate it with `isolateItem` as in §3.4 step 3
+(splits only — the body is not lifted), then swap both wrappers in **one**
+`ReplaceAroundStep`: from the list's start to its end,
 gap = the item's content, slice = `listType(itemType(attrs))`, insert = 2,
 structure = true. The item's body — paragraphs with their attrs, sub-lists —
 is the gap and is not touched; a `setNodeMarkup` sequence cannot do this
@@ -325,35 +339,43 @@ parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 
 ## 4. Call sites
 
-- Toolbar (`editor-utils.tsx`: the three list tools, the mobile to-do tool)
-  and the bubble-menu `NodeSelector` list items: replace the
-  `checkActiveListsAndDBlocks` / `convertToList` / `convertListToParagraphs`
-  bodies with `editor.chain().focus().toggleBulletList().run()` etc. Drop the
-  trailing `.setTextSelection({ from, to }).focus()`; the selection maps
-  through the transaction.
-- The "Text" entries (bubble `NodeSelector` and the heading dropdown in
-  `editor-utils.tsx`) currently convert a list to paragraphs: they toggle
-  off the `shared` list at the selection (`toggleList(shared.type,
-  itemType)` → §3.4), i.e. the covered items become paragraphs; in a nested
-  list that lifts one level, as stock does. Outside a list they keep
+Eleven sites, across two files, now call the engine instead of the
+hand-rolled functions:
+
+- `editor-utils.tsx` (7): the toolbar's three list tools (List, Ordered
+  List, To-do List) and the mobile toolbar's To-do list tool call
+  `editor.chain().focus().toggleBulletList().run()` etc. directly — the
+  trailing `.setTextSelection({ from, to }).focus()` is gone, since the
+  selection maps through the transaction. The mobile text-formatting
+  modal's heading dropdown "Text" entry and its two `listStyles` entries
+  (Bullet List, Ordered List) round out the seven.
+- `editor-bubble-menu/node-selector.tsx` (4): the Text, To-do List, Bullet
+  List and Numbered List entries.
+- The "Text" entries (bubble `NodeSelector` and the mobile modal's heading
+  dropdown) convert a list to paragraphs: both use the shared
+  `listAtSelection(state)` helper (`extensions/list-toggle`) to find the
+  list at the selection and call `toggleList(list.listType, list.itemType)`
+  — the same type pressed again, so the engine takes the toggle-off branch
+  (§3.4) and the covered items become paragraphs; in a nested list that
+  lifts one level, as stock does. Outside a list they keep
   `toggleNode('paragraph', 'paragraph')`.
-- Delete `checkActiveListsAndDBlocks`, `convertToList`,
-  `convertListToParagraphs`, `processListContent`, the `ListConversionProps`
-  type and the `hasMultipleLists` early returns. `insertCommands` and
-  `useEditorCommands` need no change.
+- `checkActiveListsAndDBlocks`, `convertToList`, `convertListToParagraphs`,
+  `processListContent`, the `ListConversionProps` type and the
+  `hasMultipleLists` early returns are deleted. `insertCommands` and
+  `useEditorCommands` needed no change.
 
 ## 5. Tests
 
-`package/extensions/list-toggle.test.ts`, built with
-`caret-marks/test-helpers.ts` (`makeEditor(version, html, { extensions })`,
-`pressKey`, `selectText`) plus `CommentDecorationExtension` with
-`createCommentAnchorFromEditor` / `triggerDecorationRebuild` as in
-`comment-decoration-plugin.test.ts`. One v1 and one v2 case per row,
-asserting `doc.check()`, document shape (an outline string with the attrs
-that matter), the selection's text or caret offset and, where anchors are
-placed, the decorated text per comment id. Undo tests call
-`undoManager.stopCapturing()` after setup: the Yjs UndoManager groups edits
-within its capture window into one step.
+`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors}.test.ts`,
+built with `list-toggle/test-helpers.ts` (wraps `caret-marks/test-helpers.ts`'s
+`makeEditor(version, html, { extensions })`, `pressKey`, `selectText`) plus
+`CommentDecorationExtension` with `createCommentAnchorFromEditor` /
+`triggerDecorationRebuild` as in `comment-decoration-plugin.test.ts`. One v1
+and one v2 case per row, asserting `doc.check()`, document shape (an outline
+string with the attrs that matter), the selection's text or caret offset
+and, where anchors are placed, the decorated text per comment id. Undo tests
+call `undoManager.stopCapturing()` after setup: the Yjs UndoManager groups
+edits within its capture window into one step.
 
 1. caret in a paragraph → bullet / numbered / checklist
 2. range over paragraph + heading(center) + paragraph → one list, three
@@ -393,7 +415,8 @@ within its capture window into one step.
 10. anchors (R2-1): a comment on each item and one suggestion anchor; toggle
     off the middle item, toggle off the whole list with a sub-list, retype
     to checklist, retype to numbered, wrap three commented paragraphs →
-    every decoration still covers its text; undo and redo keep them
+    every decoration still covers its text; undo keeps them. Redo is a
+    documented `it.skip` (the known gap, §2)
 11. parked: paragraph + list range, two lists, hr in range, a range across a
     whole columns block → `false`, document unchanged, both schemas; the
     same through a chain that starts with `deleteRange` (the delete does not
@@ -463,3 +486,8 @@ Existing suites to keep green: `use-editor-commands.test.tsx`,
   list-exit plugin captures only the paragraph at `$from`.
 - The Yjs UndoManager groups edits within its capture window (500 ms) into
   one undo step; tests call `stopCapturing()` after setup.
+- Tiptap's `keyboardShortcut()` command replays the captured steps through a
+  mapping and mangles the engine's multi-step transactions (v1: three
+  unjoined lists; v2: a `RangeError`). The real keymap path — a
+  `KeyboardEvent` through `handleKeyDown` — works and is what the shortcut
+  test (§5 test 14) uses.
