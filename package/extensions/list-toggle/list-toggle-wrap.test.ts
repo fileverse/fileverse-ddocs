@@ -92,7 +92,7 @@ describe.each([1, 2])('list toggle refusals (schema v%i)', (version) => {
     expect(shape(editor)).toBe(before);
   });
 
-  it('still wraps a single paragraph (stock path for now)', () => {
+  it('wraps a single paragraph', () => {
     const { editor } = makeListEditor(version, '<p>aa</p><p>bb</p>');
     caretIn(editor, 'aa');
     expect(editor.commands.toggleBulletList()).toBe(true);
@@ -154,16 +154,19 @@ describe.each([1, 2])('wrap (schema v%i)', (version) => {
     caretIn(editor, 'bb');
     editor.commands.toggleBulletList();
     expect(flatShape(editor)).toBe('ul(li(p("aa")) li(p("bb"))) p()');
+    expectValid(editor, version);
 
     editor.commands.setContent('<p>bb</p><ul><li><p>cc</p></li></ul>');
     caretIn(editor, 'bb');
     editor.commands.toggleBulletList();
     expect(flatShape(editor)).toBe('ul(li(p("bb")) li(p("cc"))) p()');
+    expectValid(editor, version);
 
     editor.commands.setContent('<ol><li><p>aa</p></li></ol><p>bb</p>');
     caretIn(editor, 'bb');
     editor.commands.toggleBulletList();
     expect(flatShape(editor)).toBe('ol(li(p("aa"))) ul(li(p("bb"))) p()');
+    expectValid(editor, version);
   });
 
   it('wraps inside a blockquote and inside a table cell', () => {
@@ -213,5 +216,6 @@ describe.each([1, 2])('wrap (schema v%i)', (version) => {
     expect(flatShape(editor)).toBe(
       'ul(li(p("aa")) li(p("bb")) li(p("cc"))) p()',
     );
+    expectValid(editor, version);
   });
 });
