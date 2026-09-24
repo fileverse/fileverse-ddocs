@@ -107,6 +107,7 @@ describe.each([1, 2])(
       expect(flatShape(editor)).toBe(
         'p{spaceAfter=11}("aa") p{spaceAfter=22}("bb") p{spaceAfter=0}("cc") p()',
       );
+      expectValid(editor, version);
     });
 
     it('a multi-paragraph item: edges on the first and last paragraph', () => {
@@ -141,6 +142,7 @@ describe.each([1, 2])(
       caretIn(editor, 'aa');
       editor.commands.toggleBulletList();
       expect(flatShape(editor)).toBe('p{spaceAfter=0}("aa") p()');
+      expectValid(editor, version);
 
       editor.commands.setContent(NESTED);
       setAttrs(editor, 'listItem', 'bb', { spaceAfter: 7 });
@@ -151,6 +153,7 @@ describe.each([1, 2])(
       expect(flatShape(editor)).toBe(
         'ul(li(p("aa"))) p{spaceAfter=3}("bb") ul(li(p("xx")) li(p("yy"))) ul(li(p("cc"))) p()',
       );
+      expectValid(editor, version);
     });
 
     it('inside a blockquote and inside a column', () => {
@@ -189,6 +192,7 @@ describe.each([1, 2])(
       expect(flatShape(editor)).toContain(
         'ul(li(p("xx")) li(p("yy"))) ul(li(p("cc")))',
       );
+      expectValid(editor, version);
     });
   },
 );
