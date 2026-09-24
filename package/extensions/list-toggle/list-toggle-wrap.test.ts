@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 import {
   destroyTracked,
   pressEnter,
@@ -82,6 +83,26 @@ describe.each([1, 2])('list toggle refusals (schema v%i)', (version) => {
     expect(editor.commands.toggleBulletList()).toBe(false);
     expect(shape(editor)).toBe(before);
     expect(editor.can().toggleBulletList()).toBe(false);
+    expect(shape(editor)).toBe(before);
+  });
+
+  it('a range across a whole columns block → false, document unchanged', () => {
+    const { editor } = makeListEditor(version, '<p>zz</p>');
+    caretIn(editor, 'zz');
+    editor.commands.setColumns(2);
+    editor.commands.insertContent('aa');
+    const columnPositions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'column') columnPositions.push(pos);
+    });
+    const $secondColumn = editor.state.doc.resolve(columnPositions[1] + 1);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.near($secondColumn, 1)),
+    );
+    editor.commands.insertContent('bb');
+    rangeOver(editor, 'aa', 'bb');
+    const before = shape(editor);
+    expect(editor.commands.toggleBulletList()).toBe(false);
     expect(shape(editor)).toBe(before);
   });
 

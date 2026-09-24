@@ -3,9 +3,10 @@
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
 (`list-toggle-wrap`, `-off`, `-retype`, `-anchors`); full suite 99 files,
-1131 passed, 2 skipped. Design revised four times after the reviews in
-`LIST_TOGGLE_REVIEW.md`; tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)"
-name the finding that shaped a rule. Covers the "List" rows of TEC-3030: the
+1131 passed, 2 skipped. Design revised four times after four review rounds;
+tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)" name the finding that
+shaped a rule — the review log itself is a process artefact and is not kept
+in the repo. Covers the "List" rows of TEC-3030: the
 second-level nav and the toolbar toggle lists through two different engines
 that disagree with each other and between schemas. Stage 1
 (`FORMATTING_INHERITANCE.md`) is the caret-mark model this builds on; zoom is
@@ -93,11 +94,21 @@ indicator (`isActive` counts ancestors, so a numbered sub-list inside a
 bullet list lights both); any block that is not a paragraph, heading or list
 in a wrap range (hr, image, table, code block, blockquote, a whole columns
 block). Also out: the clipboard "paste a list item" row and the "to-do list
-→ checklist" label rename.
+→ checklist" label rename. A NodeSelection or AllSelection covering a whole
+list also refuses: the trailing node makes it a mixed range for Cmd-A; a wrap
+attempted under a v1 dBlock NodeSelection skips the adjacency join (§3.6).
+"Text" on a heading that is a list item's body child toggles the item off
+and leaves the heading in place (pre-existing behaviour; a UX question for
+the mixed-elements follow-up).
 
 Known lossy case, by design (R3-3): an item's own `spaceAfter` when its last
 body child is not a paragraph (the item ends with a sub-list) has no home once
 the item is lifted or becomes a `taskItem`, and is dropped.
+
+Second known lossy case (§3.4): toggling off items that end a nested list
+which is the outer `listItem`'s last child moves the last lifted paragraph's
+`spaceAfter` onto the outer item via the ownership plugin, dropping it if the
+outer item already carries one.
 
 **Known gap (pre-existing, not fixed here):** anchors survive every engine
 path and undo, but redo of a structural change drops anchors inside the
@@ -220,7 +231,11 @@ node type (R4-1):
   delegating the engine moves each covered item's edge spacing onto its
   first/last paragraph (§3.5 policy). Inside a `taskItem` the paragraph is
   the spacing owner anyway; inside a `listItem` the lifted paragraphs are
-  interior children, whose gaps the ownership plugin leaves alone.
+  usually interior children, whose gaps the ownership plugin leaves alone —
+  except when the lifted list is the outer item's last child, where the last
+  paragraph becomes the outer item's own last child and the ownership plugin
+  moves its `spaceAfter` onto it, dropping it if the item already has one
+  (second known lossy case, §2).
 
 Both are structural steps and work in both schemas because the change stays
 inside the outer item. Probe-verified: `tl(ti(p aa ul(li{2,7} bb li cc li
@@ -463,6 +478,8 @@ Existing suites to keep green: `use-editor-commands.test.tsx`,
   `tr.split(pos, 2)` at an item boundary yields two dBlocks; the flat
   equivalents use depth 1. A split inserts `2 × depth` tokens before the
   item.
+- A split copies an ordered list's `start` to both halves: `ol{start=3}(aa bb
+  cc)`, retype `bb` → `ol{3}(aa) tl(bb) ol{3}(cc)`, same as stock.
 - After wrapping two adjacent flat blocks, their boundary position is
   ambiguous under `tr.mapping` (both wraps insert there); the dBlock token
   disambiguates it in v1 only.
