@@ -100,11 +100,10 @@ body child is not a paragraph (the item ends with a sub-list) has no home once
 the item is lifted or becomes a `taskItem`, and is dropped.
 
 **Known gap (pre-existing, not fixed here):** anchors survive every engine
-path and undo; redo of a structural change drops anchors inside the redone
-range (the comment-decoration plugin's Yjs-origin rebuild) — stock
-`toggleBlockquote()` shows the same loss, so it is not list-toggle-specific.
-Kept as a documented `it.skip` in `list-toggle-anchors.test.ts`; needs its
-own ticket.
+path and undo, but redo of a structural change drops anchors inside the
+redone range (comment-decoration plugin's Yjs-origin rebuild) — stock
+`toggleBlockquote()` shows the same loss; kept as a documented `it.skip` in
+`list-toggle-anchors.test.ts`; needs its own ticket.
 
 ## 3. Design
 
@@ -328,7 +327,8 @@ parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 - The document never changes when the override returns `false`
   (`preventDispatch`).
 - Every step is structural; no `ReplaceStep` ever covers anchored text.
-  Comments and suggestions inside the affected items keep their anchors.
+  Comments and suggestions inside the affected items keep their anchors
+  (through undo; redo is the known gap of §2).
 - The output shape is identical in both schemas up to dBlock wrapping; one
   block per dBlock holds after every path.
 - Paragraph attrs (`caretMarks`, `lineHeight`, `textAlign`, indent) survive
