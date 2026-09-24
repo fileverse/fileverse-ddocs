@@ -1698,8 +1698,14 @@ export const TextHeading = ({ editor }: { editor: Editor }) => {
       title: 'Text',
       description: 'Normal',
       icon: 'Type',
-      command: (editor: Editor) =>
-        editor.chain().focus().toggleNode('paragraph', 'paragraph').run(),
+      command: (editor: Editor) => {
+        const list = listAtSelection(editor.state);
+        const chain = editor.chain().focus();
+        (list
+          ? chain.toggleList(list.listType, list.itemType)
+          : chain.toggleNode('paragraph', 'paragraph')
+        ).run();
+      },
       isActive: () =>
         editor.isActive('paragraph') &&
         !editor.isActive('bulletList') &&

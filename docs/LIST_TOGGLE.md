@@ -110,7 +110,8 @@ own ticket.
 
 ### 3.1 One override, one engine, structural steps only
 
-`package/extensions/list-toggle.ts`, registered after the list extensions in
+`package/extensions/list-toggle/`, whose override lives in its
+`list-toggle.ts`, registered after the list extensions in
 `default-extension.ts` (both schema branches), overrides `toggleList` the way
 `caret-marks.ts` overrides `splitBlock`: Tiptap merges `addCommands` with
 later-wins, the original is `commands.toggleList` from `@tiptap/core`. Every
@@ -339,26 +340,29 @@ parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 
 ## 4. Call sites
 
-Eleven sites, across two files, now call the engine instead of the
-hand-rolled functions:
+Twelve sites, across two files, now call the engine — eleven replacing the
+hand-rolled functions, plus the desktop heading dropdown's (`TextHeading`)
+"Text" entry, which never used them: it was a plain `toggleNode` no-op on
+list items, not a conversion.
 
-- `editor-utils.tsx` (7): the toolbar's three list tools (List, Ordered
+- `editor-utils.tsx` (8): the toolbar's three list tools (List, Ordered
   List, To-do List) and the mobile toolbar's To-do list tool call
   `editor.chain().focus().toggleBulletList().run()` etc. directly — the
   trailing `.setTextSelection({ from, to }).focus()` is gone, since the
-  selection maps through the transaction. The mobile text-formatting
-  modal's heading dropdown "Text" entry and its two `listStyles` entries
-  (Bullet List, Ordered List) round out the seven.
+  selection maps through the transaction. The desktop heading dropdown's
+  (`TextHeading`) and the mobile text-formatting modal's
+  (`TextFormatingPopup`) "Text" entries, plus the modal's two `listStyles`
+  entries (Bullet List, Ordered List), round out the eight.
 - `editor-bubble-menu/node-selector.tsx` (4): the Text, To-do List, Bullet
   List and Numbered List entries.
-- The "Text" entries (bubble `NodeSelector` and the mobile modal's heading
-  dropdown) convert a list to paragraphs: both use the shared
-  `listAtSelection(state)` helper (`extensions/list-toggle`) to find the
-  list at the selection and call `toggleList(list.listType, list.itemType)`
-  — the same type pressed again, so the engine takes the toggle-off branch
-  (§3.4) and the covered items become paragraphs; in a nested list that
-  lifts one level, as stock does. Outside a list they keep
-  `toggleNode('paragraph', 'paragraph')`.
+- The "Text" entries (bubble `NodeSelector`, the desktop heading dropdown
+  `TextHeading` and the mobile modal `TextFormatingPopup`) convert a list
+  to paragraphs: all three use the shared `listAtSelection(state)` helper
+  (`extensions/list-toggle`) to find the list at the selection and call
+  `toggleList(list.listType, list.itemType)` — the same type pressed again,
+  so the engine takes the toggle-off branch (§3.4) and the covered items
+  become paragraphs; in a nested list that lifts one level, as stock does.
+  Outside a list they keep `toggleNode('paragraph', 'paragraph')`.
 - `checkActiveListsAndDBlocks`, `convertToList`, `convertListToParagraphs`,
   `processListContent`, the `ListConversionProps` type and the
   `hasMultipleLists` early returns are deleted. `insertCommands` and
