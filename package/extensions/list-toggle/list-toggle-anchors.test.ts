@@ -159,9 +159,9 @@ describe.each([1, 2])('undo, redo and the shortcut (schema v%i)', (version) => {
     expectValid(harness.editor, version);
   });
 
-  // KNOWN GAP, not list-toggle-specific: comment-decoration-plugin's
-  // Yjs-origin rebuild drops the anchor of any redone structural wrap/unwrap
-  // (reproduced with a plain toggleBlockquote too) — see task-7-report.md.
+  // KNOWN GAP (docs/LIST_TOGGLE.md §2): the decoration plugin's Yjs-origin
+  // rebuild drops an anchor inside a REDONE structural change — not
+  // list-toggle-specific; a plain toggleBlockquote() shows the same loss.
   it.skip('anchors survive redo of a toggle off', async () => {
     const harness = makeListEditor(version, LIST3);
     commentAll(harness);
