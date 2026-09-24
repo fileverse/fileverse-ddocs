@@ -1,7 +1,6 @@
-import { Extension, commands as coreCommands } from '@tiptap/core';
-import { refuse, rowBlocks, sharedList } from './shared';
-
-const WRAPPABLE = new Set(['paragraph', 'heading']);
+import { Extension, commands as coreCommands, getNodeType } from '@tiptap/core';
+import { refuse, sharedList } from './shared';
+import { wrapRow } from './wrap';
 
 /**
  * One list engine for every trigger and both schemas (docs/LIST_TOGGLE.md).
@@ -17,7 +16,8 @@ export const ListToggle = Extension.create({
         (listTypeOrName, itemTypeOrName, keepMarks, attributes) => (props) => {
           const { state, tr } = props;
           const { $from, $to } = state.selection;
-          // Tasks 2-6 replace this bridge branch by branch.
+          const listType = getNodeType(listTypeOrName, state.schema);
+          // Tasks 3-6 replace this bridge branch by branch.
           const delegate = () =>
             coreCommands.toggleList(
               listTypeOrName,
@@ -30,11 +30,10 @@ export const ListToggle = Extension.create({
           if (!shared) {
             const range = $from.blockRange($to);
             if (!range) return refuse(tr);
-            const { blocks } = rowBlocks(range);
-            if (!blocks.every((block) => WRAPPABLE.has(block.node.type.name))) {
-              return refuse(tr);
-            }
-            return delegate();
+            return (
+              wrapRow(tr, range, listType, state.schema.nodes.paragraph) ||
+              refuse(tr)
+            );
           }
           return delegate();
         },
