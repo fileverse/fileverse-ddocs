@@ -1,4 +1,4 @@
-# List toggling (TEC-3030, stage 2)
+# List toggling (TEC-3130 — stage 2 of TEC-3030)
 
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
@@ -6,7 +6,7 @@ the acceptance tests of §5 live in `list-toggle/*.test.ts`
 1131 passed, 2 skipped. Design revised four times after four review rounds;
 tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)" name the finding that
 shaped a rule — the review log itself is a process artefact and is not kept
-in the repo. Covers the "List" rows of TEC-3030: the
+in the repo. Covers the "List" rows of TEC-3030, split out as sub-issue TEC-3130: the
 second-level nav and the toolbar toggle lists through two different engines
 that disagree with each other and between schemas. Stage 1
 (`FORMATTING_INHERITANCE.md`) is the caret-mark model this builds on; zoom is
