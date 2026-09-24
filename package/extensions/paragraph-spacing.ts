@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import { isLocalRoot, isRootTransaction } from './caret-marks/dispatch-context';
+import { LIST_TOGGLE_META } from './list-toggle/shared';
 
 export type ParagraphSpacingAttrs = {
   /** Space above the block, in pt. `null` unsets it; omit to leave as-is. */
@@ -325,8 +326,10 @@ export const ParagraphSpacing = Extension.create({
           init: () => null,
           apply: (tr, prev, oldState, newState) => {
             // The 'applied' check stays first: the transaction that applies
-            // the capture is itself an appended one.
+            // the capture is itself an appended one. List toggles tag their
+            // own transactions below; they carry their own spacing.
             if (tr.getMeta(listExitKey) === 'applied') return null;
+            if (tr.getMeta(LIST_TOGGLE_META)) return null;
             if (!isRootTransaction(tr)) {
               return prev && { ...prev, pos: tr.mapping.map(prev.pos) };
             }

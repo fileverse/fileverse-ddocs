@@ -9,6 +9,9 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 const LIST_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
 const ITEM_TYPES = new Set(['listItem', 'taskItem']);
 
+/** The engine moves spacing itself; the stage-1 list-exit plugin skips transactions carrying this meta. */
+export const LIST_TOGGLE_META = 'listToggle';
+
 export const isList = (node: ProseMirrorNode | null | undefined) =>
   !!node && LIST_TYPES.has(node.type.name);
 export const isListItemNode = (node: ProseMirrorNode | null | undefined) =>

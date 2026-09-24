@@ -124,6 +124,32 @@ describe.each([1, 2])(
       expectValid(editor, version);
     });
 
+    it('an interior paragraph of a multi-paragraph item stays untouched', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ul><li><p>aa</p><p>bb</p><p>cc</p></li></ul>',
+      );
+      setAttrs(editor, 'listItem', 'aa', { spaceBefore: 2, spaceAfter: 7 });
+      caretIn(editor, 'bb');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe(
+        'p{spaceBefore=2}("aa") p("bb") p{spaceAfter=7}("cc") p()',
+      );
+      expectValid(editor, version);
+    });
+
+    it('the last paragraph stays untouched when the item has no spaceAfter', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ul><li><p>bb</p><p>b2</p></li></ul>',
+      );
+      setAttrs(editor, 'listItem', 'bb', { spaceBefore: 2 });
+      caretIn(editor, 'b2');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe('p{spaceBefore=2}("bb") p("b2") p()');
+      expectValid(editor, version);
+    });
+
     it('a nested list between two paragraphs', () => {
       const { editor } = makeListEditor(
         version,

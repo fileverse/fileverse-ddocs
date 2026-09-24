@@ -1,6 +1,6 @@
 import { Extension, getNodeType } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { isListItemNode, refuse, sharedList } from './shared';
+import { isListItemNode, LIST_TOGGLE_META, refuse, sharedList } from './shared';
 import { retypeItems, retypeList } from './retype';
 import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
@@ -17,6 +17,7 @@ export const ListToggle = Extension.create({
     return {
       toggleList: (listTypeOrName, itemTypeOrName) => (props) => {
         const { state, tr } = props;
+        tr.setMeta(LIST_TOGGLE_META, true);
         const { $from, $to } = state.selection;
         const listType = getNodeType(listTypeOrName, state.schema);
         const itemType = getNodeType(itemTypeOrName, state.schema);

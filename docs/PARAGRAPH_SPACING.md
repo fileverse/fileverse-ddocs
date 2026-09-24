@@ -122,9 +122,9 @@ above it, on every Enter, forever.
 - List exit (Enter-Enter out of a bullet/numbered list) is handled by the
   `paragraphSpacingListExit` plugin in v2 and by the dBlock Enter handler's
   spacing owner in v1; see `FORMATTING_INHERITANCE.md` §3.5. A list *toggle
-  off* (toolbar, nav, shortcut) no longer goes through this plugin: the list
-  toggle engine carries every lifted item's spacing itself
-  (`docs/LIST_TOGGLE.md` §3.4).
+  off* (toolbar, nav, shortcut) tags its transaction with `LIST_TOGGLE_META`,
+  which the plugin skips: the list toggle engine already carries every
+  lifted item's spacing itself (`docs/LIST_TOGGLE.md` §3.4).
 
 > An earlier version of this document claimed v1 continued with another heading
 > and needed no carry-over work. Both came from a vacuous test that read **the
