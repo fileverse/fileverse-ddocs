@@ -27,9 +27,8 @@ export const retypeList = (
 };
 
 /**
- * bullet/numbered ↔ checklist for the covered items only (spec §3.5). Each
- * item is isolated in its own list, then both wrappers are swapped in one
- * ReplaceAroundStep around the untouched body; a setNodeMarkup sequence is
+ * Covered items only, each isolated so both wrappers can be swapped in one
+ * ReplaceAroundStep around the untouched body — a setNodeMarkup sequence is
  * invalid at every intermediate step (taskList(listItem)).
  */
 export const retypeItems = (
