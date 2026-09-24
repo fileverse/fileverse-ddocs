@@ -65,6 +65,7 @@ import { Callout } from './callout/callout';
 import { FontSize } from './font-size';
 import { FontFamilyPersistence } from './font-family-persistence';
 import { CaretMarks } from './caret-marks';
+import { ListToggle } from './list-toggle';
 import { CustomCodeBlockLowlight } from './code-block/custom-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { LineHeight } from './line-height';
@@ -400,6 +401,8 @@ export const defaultExtensions = ({
       class: 'leading-normal w-full',
     },
   }),
+  // One list engine for every trigger and both schemas (docs/LIST_TOGGLE.md).
+  ListToggle,
   Dropcursor.configure({
     width: 3,
     color: '#d1d5db',
