@@ -1,5 +1,6 @@
 import { Extension, commands as coreCommands, getNodeType } from '@tiptap/core';
-import { refuse, sharedList } from './shared';
+import { isListItemNode, refuse, sharedList } from './shared';
+import { toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
 
 /**
@@ -35,7 +36,21 @@ export const ListToggle = Extension.create({
               refuse(tr)
             );
           }
-          return delegate();
+          const parent = $from.node(shared.depth - 1);
+          const firstIndex = $from.index(shared.depth);
+          const lastIndex = $to.index(shared.depth);
+
+          if (shared.node.type === listType) {
+            if (isListItemNode(parent)) return delegate(); // Task 4: toggleOffNested
+            return toggleOffTopLevel(
+              tr,
+              shared,
+              firstIndex,
+              lastIndex,
+              state.schema.nodes.dBlock,
+            );
+          }
+          return delegate(); // Tasks 5-6: retype
         },
     };
   },
