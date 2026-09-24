@@ -1,7 +1,7 @@
-import { Extension, commands as coreCommands, getNodeType } from '@tiptap/core';
+import { Extension, getNodeType } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { isListItemNode, refuse, sharedList } from './shared';
-import { retypeList } from './retype';
+import { retypeItems, retypeList } from './retype';
 import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
 
@@ -15,60 +15,58 @@ export const ListToggle = Extension.create({
 
   addCommands() {
     return {
-      toggleList:
-        (listTypeOrName, itemTypeOrName, keepMarks, attributes) => (props) => {
-          const { state, tr } = props;
-          const { $from, $to } = state.selection;
-          const listType = getNodeType(listTypeOrName, state.schema);
-          const itemType = getNodeType(itemTypeOrName, state.schema);
-          // Tasks 3-6 replace this bridge branch by branch.
-          const delegate = () =>
-            coreCommands.toggleList(
-              listTypeOrName,
-              itemTypeOrName,
-              keepMarks,
-              attributes,
-            )(props) || refuse(tr);
+      toggleList: (listTypeOrName, itemTypeOrName) => (props) => {
+        const { state, tr } = props;
+        const { $from, $to } = state.selection;
+        const listType = getNodeType(listTypeOrName, state.schema);
+        const itemType = getNodeType(itemTypeOrName, state.schema);
 
-          const shared = sharedList($from, $to);
-          if (!shared) {
-            const range = $from.blockRange($to);
-            if (!range) return refuse(tr);
-            return (
-              wrapRow(tr, range, listType, state.schema.nodes.paragraph) ||
-              refuse(tr)
-            );
-          }
-          const parent = $from.node(shared.depth - 1);
-          const firstIndex = $from.index(shared.depth);
-          const lastIndex = $to.index(shared.depth);
+        const shared = sharedList($from, $to);
+        if (!shared) {
+          const range = $from.blockRange($to);
+          if (!range) return refuse(tr);
+          return (
+            wrapRow(tr, range, listType, state.schema.nodes.paragraph) ||
+            refuse(tr)
+          );
+        }
+        const parent = $from.node(shared.depth - 1);
+        const firstIndex = $from.index(shared.depth);
+        const lastIndex = $to.index(shared.depth);
 
-          if (shared.node.type === listType) {
-            if (isListItemNode(parent)) {
-              return toggleOffNested(
-                props,
-                shared,
-                firstIndex,
-                lastIndex,
-                parent,
-                itemType,
-                itemTypeOrName,
-              );
-            }
-            return toggleOffTopLevel(
-              tr,
+        if (shared.node.type === listType) {
+          if (isListItemNode(parent)) {
+            return toggleOffNested(
+              props,
               shared,
               firstIndex,
               lastIndex,
-              state.schema.nodes.dBlock,
+              parent,
+              itemType,
+              itemTypeOrName,
             );
           }
-          const currentItem = shared.node.firstChild as ProseMirrorNode;
-          if (currentItem.type === itemType) {
-            return retypeList(tr, shared, listType);
-          }
-          return delegate(); // Task 6: retypeItems
-        },
+          return toggleOffTopLevel(
+            tr,
+            shared,
+            firstIndex,
+            lastIndex,
+            state.schema.nodes.dBlock,
+          );
+        }
+        const currentItem = shared.node.firstChild as ProseMirrorNode;
+        if (currentItem.type === itemType) {
+          return retypeList(tr, shared, listType);
+        }
+        return retypeItems(
+          tr,
+          shared,
+          firstIndex,
+          lastIndex,
+          listType,
+          itemType,
+        );
+      },
     };
   },
 });

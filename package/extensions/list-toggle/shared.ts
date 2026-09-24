@@ -114,6 +114,22 @@ export const joinNeighbours = (tr: Transaction, listDepth: number) => {
   }
 };
 
+/** Splits the list so the item at itemPos is alone in its own list; returns the item's new position. */
+export const isolateItem = (
+  tr: Transaction,
+  itemPos: number,
+  splitDepth: number,
+) => {
+  const item = tr.doc.nodeAt(itemPos) as ProseMirrorNode;
+  const $item = tr.doc.resolve(itemPos);
+  if ($item.index() + 1 < $item.parent.childCount) {
+    tr.split(itemPos + item.nodeSize, splitDepth);
+  }
+  const hasPrevious = $item.index() > 0;
+  if (hasPrevious) tr.split(itemPos, splitDepth);
+  return itemPos + (hasPrevious ? 2 * splitDepth : 0);
+};
+
 /** For UI "Text" entries: the list a toggle-off would act on, if any. */
 export const listAtSelection = (state: EditorState) => {
   const { $from, $to } = state.selection;

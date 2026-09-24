@@ -5,6 +5,7 @@ import { liftOut } from './lift-out';
 import {
   childPos,
   isDBlock,
+  isolateItem,
   nodeRangeAt,
   refuse,
   type SharedList,
@@ -44,14 +45,7 @@ export const toggleOffTopLevel = (
     }
 
     // Isolate the now single-paragraph item in its own list, then lift the paragraph.
-    const single = tr.doc.nodeAt(itemPos) as ProseMirrorNode;
-    const $item = tr.doc.resolve(itemPos);
-    if ($item.index() + 1 < $item.parent.childCount) {
-      tr.split(itemPos + single.nodeSize, splitDepth);
-    }
-    const hasPrevious = $item.index() > 0;
-    if (hasPrevious) tr.split(itemPos, splitDepth);
-    const isolatedPos = itemPos + (hasPrevious ? 2 * splitDepth : 0);
+    const isolatedPos = isolateItem(tr, itemPos, splitDepth);
     // Resolve inside the paragraph: at the item's content start blockRange() is the item.
     const paragraphRange = tr.doc.resolve(isolatedPos + 2).blockRange();
     if (paragraphRange) tr.lift(paragraphRange, depth - 1);
