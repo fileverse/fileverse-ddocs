@@ -1,6 +1,6 @@
 import { Extension, commands as coreCommands, getNodeType } from '@tiptap/core';
 import { isListItemNode, refuse, sharedList } from './shared';
-import { toggleOffTopLevel } from './toggle-off';
+import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
 
 /**
@@ -18,6 +18,7 @@ export const ListToggle = Extension.create({
           const { state, tr } = props;
           const { $from, $to } = state.selection;
           const listType = getNodeType(listTypeOrName, state.schema);
+          const itemType = getNodeType(itemTypeOrName, state.schema);
           // Tasks 3-6 replace this bridge branch by branch.
           const delegate = () =>
             coreCommands.toggleList(
@@ -41,7 +42,17 @@ export const ListToggle = Extension.create({
           const lastIndex = $to.index(shared.depth);
 
           if (shared.node.type === listType) {
-            if (isListItemNode(parent)) return delegate(); // Task 4: toggleOffNested
+            if (isListItemNode(parent)) {
+              return toggleOffNested(
+                props,
+                shared,
+                firstIndex,
+                lastIndex,
+                parent,
+                itemType,
+                itemTypeOrName,
+              );
+            }
             return toggleOffTopLevel(
               tr,
               shared,

@@ -196,3 +196,65 @@ describe.each([1, 2])(
     });
   },
 );
+
+describe.each([1, 2])(
+  'toggle off inside a nested list (schema v%i)',
+  (version) => {
+    it('same item node: lifts to the outer list, items after it re-nest', () => {
+      const { editor } = makeListEditor(version, NESTED);
+      setAttrs(editor, 'listItem', 'xx', { spaceAfter: 7 });
+      caretIn(editor, 'xx');
+      expect(editor.can().toggleBulletList()).toBe(true);
+      expect(editor.commands.toggleBulletList()).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'ul(li(p("aa")) li(p("bb")) li{spaceAfter=7}(p("xx") ul(li(p("yy")))) li(p("cc"))) p()',
+      );
+      expectValid(editor, version);
+
+      editor.commands.setContent(NESTED);
+      rangeOver(editor, 'xx', 'yy');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe(
+        'ul(li(p("aa")) li(p("bb")) li(p("xx")) li(p("yy")) li(p("cc"))) p()',
+      );
+    });
+
+    it('bullets inside a checklist item: unwrapped into the item, spacing on the paragraphs', () => {
+      const html =
+        '<ul data-type="taskList"><li data-type="taskItem"><p>aa</p><ul><li><p>bb</p></li><li><p>cc</p></li><li><p>dd</p></li></ul></li></ul>';
+      const { editor } = makeListEditor(version, html);
+      setAttrs(editor, 'listItem', 'bb', { spaceBefore: 2, spaceAfter: 7 });
+      caretIn(editor, 'bb');
+      expect(editor.can().toggleBulletList()).toBe(true);
+      expect(editor.commands.toggleBulletList()).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'tl(ti(p("aa") p{spaceBefore=2,spaceAfter=7}("bb") ul(li(p("cc")) li(p("dd"))))) p()',
+      );
+      expectValid(editor, version);
+
+      editor.commands.setContent(html);
+      setAttrs(editor, 'listItem', 'bb', { spaceBefore: 2, spaceAfter: 7 });
+      setAttrs(editor, 'listItem', 'cc', { spaceBefore: 0, spaceAfter: 3 });
+      rangeOver(editor, 'bb', 'cc');
+      editor.commands.toggleBulletList();
+      expect(flatShape(editor)).toBe(
+        'tl(ti(p("aa") p{spaceBefore=2,spaceAfter=7}("bb") p{spaceBefore=0,spaceAfter=3}("cc") ul(li(p("dd"))))) p()',
+      );
+      expect(selectionText(editor)).toBe('b|c');
+    });
+
+    it('a checklist inside a bullet item: unwrapped, the paragraph keeps its own spacing', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ul><li><p>aa</p><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>bb</p></li><li data-type="taskItem"><p>cc</p></li></ul></li></ul>',
+      );
+      setAttrs(editor, 'paragraph', 'bb', { spaceBefore: 5, spaceAfter: 6 });
+      caretIn(editor, 'bb');
+      editor.commands.toggleTaskList();
+      expect(flatShape(editor)).toBe(
+        'ul(li(p("aa") p{spaceBefore=5,spaceAfter=6}("bb") tl(ti(p("cc"))))) p()',
+      );
+      expectValid(editor, version);
+    });
+  },
+);

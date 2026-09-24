@@ -1,7 +1,14 @@
+import { commands as coreCommands, type CommandProps } from '@tiptap/core';
 import type { Node as ProseMirrorNode, NodeType } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { liftOut } from './lift-out';
-import { childPos, isDBlock, nodeRangeAt, type SharedList } from './shared';
+import {
+  childPos,
+  isDBlock,
+  nodeRangeAt,
+  refuse,
+  type SharedList,
+} from './shared';
 import { edgesToParagraphs } from './spacing';
 
 /**
@@ -50,4 +57,30 @@ export const toggleOffTopLevel = (
     if (paragraphRange) tr.lift(paragraphRange, depth - 1);
   }
   return true;
+};
+
+/**
+ * Toggle off inside a nested list: stock liftListItem. With an outer item of
+ * the same node it lifts the items into the outer list; with the other node
+ * (bullets in a checklist item) it unwraps them into the outer item and
+ * discards the item wrappers, so their edge spacing is moved onto the
+ * paragraphs first (spec §3.4, R4-1).
+ */
+export const toggleOffNested = (
+  props: CommandProps,
+  shared: SharedList,
+  firstIndex: number,
+  lastIndex: number,
+  outerItem: ProseMirrorNode,
+  itemType: NodeType,
+  itemTypeOrName: string | NodeType,
+): boolean => {
+  const { tr } = props;
+  if (outerItem.type !== itemType) {
+    for (let i = lastIndex; i >= firstIndex; i--) {
+      const itemPos = childPos(shared.node, shared.pos, i);
+      edgesToParagraphs(tr, itemPos, tr.doc.nodeAt(itemPos) as ProseMirrorNode);
+    }
+  }
+  return coreCommands.liftListItem(itemTypeOrName)(props) || refuse(tr);
 };
