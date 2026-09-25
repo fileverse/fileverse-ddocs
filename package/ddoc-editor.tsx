@@ -598,6 +598,41 @@ const DdocEditor = forwardRef(
       commentDrawerOpen && setCommentDrawerOpen?.(false);
     };
 
+    // Mod-Alt-P opens the deck; presentation mode already owns Escape to leave
+    // it. This cannot live in the TipTap keymap because entering presentation
+    // mode is React state rather than an editor command.
+    useEffect(() => {
+      const handlePresentationShortcut = (event: KeyboardEvent) => {
+        const isModifier = navigator.platform.includes('Mac')
+          ? event.metaKey
+          : event.ctrlKey;
+
+        // `code` rather than `key`: Option-P emits "π" on macOS, so matching
+        // on the character would never fire there.
+        if (!isModifier || !event.altKey || event.code !== 'KeyP') return;
+
+        // Suppress the browser's own Ctrl/Cmd-P print binding.
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (isPresentationMode) return;
+
+        setIsPresentationMode?.(true);
+        commentDrawerOpen && setCommentDrawerOpen?.(false);
+      };
+
+      // Capture phase: the print shortcut has to be cancelled before anything
+      // else in the page gets a chance to act on the event.
+      window.addEventListener('keydown', handlePresentationShortcut, true);
+      return () =>
+        window.removeEventListener('keydown', handlePresentationShortcut, true);
+    }, [
+      isPresentationMode,
+      commentDrawerOpen,
+      setIsPresentationMode,
+      setCommentDrawerOpen,
+    ]);
+
     useEffect(() => {
       if (!editor) return;
       if (isNativeMobile) {
