@@ -6,6 +6,7 @@ import {
   CommentDecorationExtension,
   commentDecorationPluginKey,
   createCommentAnchorFromEditor,
+  resolveCommentAnchorRangeInState,
   triggerDecorationRebuild,
   type CommentAnchor,
 } from '../comment/comment-decoration-plugin';
@@ -170,6 +171,23 @@ export const decorated = (editor: Editor) => {
     })
     .join(' ');
 };
+
+/**
+ * `id:text` per anchor whose Yjs RelativePositions still resolve, sorted. This
+ * is what the comment store reads after a local edit; `decorated` only shows
+ * the plugin's ProseMirror-mapped decorations.
+ */
+export const resolvedAnchors = ({ editor, anchors }: ListHarness) =>
+  anchors
+    .map((anchor) => {
+      const range = resolveCommentAnchorRangeInState(anchor, editor.state);
+      return range
+        ? `${anchor.id}:${editor.state.doc.textBetween(range.from, range.to, ' ')}`
+        : null;
+    })
+    .filter((entry): entry is string => entry !== null)
+    .sort()
+    .join(' ');
 
 /** Schema validity, and in v1 the "one block per dBlock" invariant. */
 export const expectValid = (editor: Editor, version: number) => {

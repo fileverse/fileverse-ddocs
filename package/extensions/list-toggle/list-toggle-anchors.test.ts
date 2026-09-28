@@ -9,6 +9,7 @@ import {
   setAttrs,
   addComment,
   decorated,
+  resolvedAnchors,
   expectValid,
 } from './test-helpers';
 
@@ -28,60 +29,65 @@ const commentAll = (harness: ReturnType<typeof makeListEditor>) => {
   addComment(harness, 'cc', 'cc');
 };
 
-describe.each([1, 2])('comment anchors (schema v%i)', (version) => {
-  it('survive a toggle off of the middle item', () => {
-    const harness = makeListEditor(version, LIST3);
-    commentAll(harness);
-    caretIn(harness.editor, 'bb');
-    harness.editor.commands.toggleBulletList();
-    expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
-    expectValid(harness.editor, version);
-  });
-
-  it('survive a toggle off of a whole list with a sub-list', () => {
-    const harness = makeListEditor(version, NESTED);
-    commentAll(harness);
-    addComment(harness, 'cx', 'xx');
-    rangeOver(harness.editor, 'aa', 'cc');
-    harness.editor.commands.toggleBulletList();
-    expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc cx:xx');
-    expectValid(harness.editor, version);
-  });
-
-  it('survive both retypes and a wrap', () => {
-    const harness = makeListEditor(version, LIST3);
-    commentAll(harness);
-    rangeOver(harness.editor, 'aa', 'bb');
-    harness.editor.commands.toggleTaskList();
-    expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
-    expectValid(harness.editor, version);
-    caretIn(harness.editor, 'cc');
-    harness.editor.commands.toggleOrderedList();
-    expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
-    expectValid(harness.editor, version);
-
-    const wrap = makeListEditor(version, '<p>aa</p><p>bb</p><p>cc</p>');
-    commentAll(wrap);
-    rangeOver(wrap.editor, 'aa', 'cc');
-    wrap.editor.commands.toggleBulletList();
-    expect(decorated(wrap.editor)).toBe('ca:aa cb:bb cc:cc');
-    expectValid(wrap.editor, version);
-  });
-
-  it('a suggestion anchor survives a toggle off', () => {
-    const harness = makeListEditor(version, LIST3);
-    addComment(harness, 's1', 'bb', {
-      isSuggestion: true,
-      suggestionType: 'replace',
-      originalContent: 'bb',
-      suggestedContent: 'BB',
+// The ProseMirror layer: no step covers anchored text, so the comment store
+// never classifies a comment as deleted and the mapped range stays exact.
+describe.each([1, 2])(
+  'comment anchors, ProseMirror layer (schema v%i)',
+  (version) => {
+    it('survive a toggle off of the middle item', () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.toggleBulletList();
+      expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
+      expectValid(harness.editor, version);
     });
-    caretIn(harness.editor, 'bb');
-    harness.editor.commands.toggleBulletList();
-    expect(decorated(harness.editor)).toBe('s1:bb');
-    expectValid(harness.editor, version);
-  });
-});
+
+    it('survive a toggle off of a whole list with a sub-list', () => {
+      const harness = makeListEditor(version, NESTED);
+      commentAll(harness);
+      addComment(harness, 'cx', 'xx');
+      rangeOver(harness.editor, 'aa', 'cc');
+      harness.editor.commands.toggleBulletList();
+      expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc cx:xx');
+      expectValid(harness.editor, version);
+    });
+
+    it('survive both retypes and a wrap', () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      rangeOver(harness.editor, 'aa', 'bb');
+      harness.editor.commands.toggleTaskList();
+      expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
+      expectValid(harness.editor, version);
+      caretIn(harness.editor, 'cc');
+      harness.editor.commands.toggleOrderedList();
+      expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
+      expectValid(harness.editor, version);
+
+      const wrap = makeListEditor(version, '<p>aa</p><p>bb</p><p>cc</p>');
+      commentAll(wrap);
+      rangeOver(wrap.editor, 'aa', 'cc');
+      wrap.editor.commands.toggleBulletList();
+      expect(decorated(wrap.editor)).toBe('ca:aa cb:bb cc:cc');
+      expectValid(wrap.editor, version);
+    });
+
+    it('a suggestion anchor survives a toggle off', () => {
+      const harness = makeListEditor(version, LIST3);
+      addComment(harness, 's1', 'bb', {
+        isSuggestion: true,
+        suggestionType: 'replace',
+        originalContent: 'bb',
+        suggestedContent: 'BB',
+      });
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.toggleBulletList();
+      expect(decorated(harness.editor)).toBe('s1:bb');
+      expectValid(harness.editor, version);
+    });
+  },
+);
 
 describe.each([1, 2])('caretMarks survival (schema v%i)', (version) => {
   it('survives a wrap, a retype to checklist, and a toggle off', () => {
@@ -159,25 +165,6 @@ describe.each([1, 2])('undo, redo and the shortcut (schema v%i)', (version) => {
     expectValid(harness.editor, version);
   });
 
-  // KNOWN GAP (docs/LIST_TOGGLE.md §2): the decoration plugin's Yjs-origin
-  // rebuild drops an anchor inside a REDONE structural change — not
-  // list-toggle-specific; a plain toggleBlockquote() shows the same loss.
-  it.skip('anchors survive redo of a toggle off', async () => {
-    const harness = makeListEditor(version, LIST3);
-    commentAll(harness);
-    undoManager(harness.editor).stopCapturing();
-    await settle();
-    caretIn(harness.editor, 'bb');
-    harness.editor.commands.toggleBulletList();
-    await settle();
-    harness.editor.commands.undo();
-    await settle();
-    harness.editor.commands.redo();
-    await settle();
-    expect(decorated(harness.editor)).toBe('ca:aa cb:bb cc:cc');
-    expectValid(harness.editor, version);
-  });
-
   it('Mod-Shift-8 reaches the engine', () => {
     const { editor } = makeListEditor(version, '<p>aa</p><p>bb</p><p>cc</p>');
     rangeOver(editor, 'aa', 'cc');
@@ -202,3 +189,58 @@ describe.each([1, 2])('undo, redo and the shortcut (schema v%i)', (version) => {
     expectValid(editor, version);
   });
 });
+
+// KNOWN GAP (TEC-3181, docs/LIST_TOGGLE.md §2): y-prosemirror re-creates the
+// Yjs subtree on any node type change, so the RelativePositions inside die.
+// These flip to "expected to fail but passed" once TEC-3181 re-anchors them.
+describe.each([1, 2])(
+  'comment anchors, Yjs layer (TEC-3181, schema v%i)',
+  (version) => {
+    it('the instrument: typing keeps the Yjs anchors', () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.insertContent('X');
+      expect(resolvedAnchors(harness)).toBe('ca:aa cb:bb cc:cc');
+    });
+
+    it.fails('retype to numbered keeps the Yjs anchors', () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.toggleOrderedList();
+      expect(resolvedAnchors(harness)).toBe('ca:aa cb:bb cc:cc');
+    });
+
+    it.fails('wrap keeps the Yjs anchors', () => {
+      const harness = makeListEditor(version, '<p>aa</p><p>bb</p><p>cc</p>');
+      commentAll(harness);
+      rangeOver(harness.editor, 'aa', 'cc');
+      harness.editor.commands.toggleBulletList();
+      expect(resolvedAnchors(harness)).toBe('ca:aa cb:bb cc:cc');
+    });
+
+    it.fails('toggle off of the middle item keeps the Yjs anchors', () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.toggleBulletList();
+      expect(resolvedAnchors(harness)).toBe('ca:aa cb:bb cc:cc');
+    });
+
+    it.fails('redo of a toggle off keeps the Yjs anchors', async () => {
+      const harness = makeListEditor(version, LIST3);
+      commentAll(harness);
+      undoManager(harness.editor).stopCapturing();
+      await settle();
+      caretIn(harness.editor, 'bb');
+      harness.editor.commands.toggleBulletList();
+      await settle();
+      harness.editor.commands.undo();
+      await settle();
+      harness.editor.commands.redo();
+      await settle();
+      expect(resolvedAnchors(harness)).toBe('ca:aa cb:bb cc:cc');
+    });
+  },
+);
