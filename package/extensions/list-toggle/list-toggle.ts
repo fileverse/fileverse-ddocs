@@ -13,6 +13,26 @@ import { wrapRow } from './wrap';
 export const ListToggle = Extension.create({
   name: 'listToggle',
 
+  addKeyboardShortcuts() {
+    return {
+      // Backspace at the start of an item takes it out of the list in place
+      // (outdents when nested), as GDocs/Notion do, instead of stock's join.
+      Backspace: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.parentOffset !== 0 || !$from.parent.isTextblock) {
+          return false;
+        }
+        if ($from.depth < 2) return false;
+        const item = $from.node($from.depth - 1);
+        if (!isListItemNode(item) || $from.index($from.depth - 1) !== 0) {
+          return false;
+        }
+        const list = $from.node($from.depth - 2);
+        return editor.commands.toggleList(list.type, item.type);
+      },
+    };
+  },
+
   addCommands() {
     return {
       toggleList: (listTypeOrName, itemTypeOrName) => (props) => {
