@@ -59,6 +59,50 @@ export const useSyncManager = (config: SyncManagerConfig) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.ydoc, isConnected]);
 
+  // Resume triggers for a session that dropped on a transient loss: the next local edit, the
+  // tab coming back to the foreground, or the network returning. resume() is a no-op unless
+  // the manager is idle and resumable, so these stay cheap. Bound only while collaboration is
+  // on (callbacks are absent otherwise).
+  const collabOn = !!config.callbacks;
+  useEffect(() => {
+    if (!collabOn || !config.ydoc) return;
+    const resume = () => managerRef.current?.resume();
+
+    const onLocalEdit = (_update: Uint8Array, origin: any) => {
+      if (origin === 'self' || origin === 'remote') return;
+      if (
+        config.ignoredOrigins?.some(
+          (ref) => ref.current !== null && ref.current === origin,
+        )
+      )
+        return;
+      resume();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') resume();
+    };
+
+    config.ydoc.on('update', onLocalEdit);
+    const hasWindow =
+      typeof window !== 'undefined' &&
+      typeof window.addEventListener === 'function';
+    const hasDocument =
+      typeof document !== 'undefined' &&
+      typeof document.addEventListener === 'function';
+    if (hasWindow) window.addEventListener('online', resume);
+    if (hasDocument) {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+    return () => {
+      config.ydoc.off('update', onLocalEdit);
+      if (hasWindow) window.removeEventListener('online', resume);
+      if (hasDocument) {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.ydoc, collabOn]);
+
   // Awareness cleanup — on unmount + beforeunload
   useEffect(() => {
     if (!awareness) return;
@@ -146,7 +190,14 @@ export const useSyncManager = (config: SyncManagerConfig) => {
   const isSyncing = collabState.status === 'syncing';
   const isReady = collabState.status === 'ready' && !!awareness;
 
-  if (collabState.status === 'idle' || collabState.status === 'connecting') {
+  // A resume (idle -> connecting -> syncing after a transient drop) is the same document
+  // coming back, not a fresh load: keep the content marked initialised through it so the
+  // editor is not swapped for a loading state mid-keystroke.
+  const isResuming = manager.isResuming;
+  if (
+    (collabState.status === 'idle' || collabState.status === 'connecting') &&
+    !isResuming
+  ) {
     hasReachedReadyRef.current = false;
   } else if (collabState.status === 'ready') {
     hasReachedReadyRef.current = true;
@@ -156,7 +207,8 @@ export const useSyncManager = (config: SyncManagerConfig) => {
   // Only treat reconnecting as initialized after this connection reached ready.
   const hasCollabContentInitialised =
     collabState.status === 'ready' ||
-    (collabState.status === 'reconnecting' && hasReachedReadyRef.current);
+    ((collabState.status === 'reconnecting' || isResuming) &&
+      hasReachedReadyRef.current);
 
   return {
     state: collabState,
