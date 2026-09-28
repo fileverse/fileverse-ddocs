@@ -70,7 +70,8 @@ Causes:
 - Any `ReplaceStep` whose old range covers a comment anchor marks that
   comment deleted (`analyzeCommentAnchorTransactionChanges`), whatever the new
   content holds. Rebuilding a list with `replaceWith` therefore strips every
-  comment in it (R2-1); only structural steps keep them.
+  comment in it (R2-1); only structural steps keep the comment store's
+  ProseMirror-level range intact (the Yjs layer is a separate, wider gap, §2).
 
 ## 2. Scope
 
@@ -86,7 +87,7 @@ for a selection whose blocks (at the depth where the change happens) contain
 | … press a type with a **different item node** (bullet/numbered ↔ checklist) | only the covered items are retyped, the list splits around them; the item's body is untouched (paragraph attrs, sub-lists, other blocks); edge spacing moves between the item and its first/last paragraph (§3.5); a nested list stays nested |
 | selections inside a blockquote, callout, table cell or one column | the same, at that depth (R3-4) |
 | after a wrap or a retype | the result joins a same-type list immediately before or after it (adjacency, both schemas) |
-| comments and suggestions anchored inside the affected items | keep their anchors and highlights through every path and through undo; a known gap drops them after redo of a structural change (below) |
+| comments and suggestions anchored inside the affected items | keep their ProseMirror-level ranges through every path: no step covers them, so the comment store never marks them deleted and its mapped range stays exact. Their Yjs relative positions still die on retype, wrap and toggle off, as on every block type change in the editor (known gap below, TEC-3181) |
 
 Parked ("mixed elements", to be designed separately): a range whose blocks
 include a list **and** something else, or two lists; the double-tick active
@@ -110,11 +111,18 @@ which is the outer `listItem`'s last child moves the last lifted paragraph's
 `spaceAfter` onto the outer item via the ownership plugin, dropping it if the
 outer item already carries one.
 
-**Known gap (pre-existing, not fixed here):** anchors survive every engine
-path and undo, but redo of a structural change drops anchors inside the
-redone range (comment-decoration plugin's Yjs-origin rebuild) — stock
-`toggleBlockquote()` shows the same loss; kept as a documented `it.skip` in
-`list-toggle-anchors.test.ts`; needs its own ticket.
+**Known gap (pre-existing, comment layer, TEC-3181):** comment anchors are
+Yjs `RelativePosition`s. y-prosemirror's sync re-creates a Y.XmlElement
+whenever its node name changes, so the positions inside a retyped, wrapped or
+lifted subtree collapse and the comment store drops the comment once it
+re-resolves them (after every local edit). Stock `toggleHeading()`,
+`toggleBlockquote()` and Backspace in a list lose comments the same way, and
+"redo drops anchors" was this cause too (undo survives through Yjs
+`followRedone`). The engine's contribution is the prerequisite for the fix: the
+ProseMirror-mapped range stays exact, which re-anchoring after the Yjs flush
+needs. "Anchors kept" throughout this document means that layer. The
+Yjs-layer cases are `it.fails` in `list-toggle-anchors.test.ts` and must flip
+when TEC-3181 lands.
 
 ## 3. Design
 
@@ -139,8 +147,9 @@ Every change is a structural ProseMirror step — `tr.split`, `tr.join`,
 `tr.wrap`, `tr.lift`, `tr.setNodeMarkup`, `tr.setBlockType`, and two
 hand-built `ReplaceAroundStep`s (the item-node swap, §3.5, and the
 dBlock-wrapping lift, §3.4) — so text positions map through the transaction:
-the selection needs no re-placing, and comment and suggestion anchors
-survive because no step's old range ever covers anchored text (R2-1).
+the selection needs no re-placing, and the comment store never marks a
+comment deleted because no step's old range ever covers anchored text (R2-1;
+the Yjs-layer loss is §2's known gap).
 `replaceWith` is not used anywhere. Every test asserts `doc.check()` on the
 result (R3-1).
 
@@ -341,9 +350,10 @@ parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 
 - The document never changes when the override returns `false`
   (`preventDispatch`).
-- Every step is structural; no `ReplaceStep` ever covers anchored text.
-  Comments and suggestions inside the affected items keep their anchors
-  (through undo; redo is the known gap of §2).
+- Every step is structural; no `ReplaceStep` ever covers anchored text, so
+  the comment store never classifies a comment inside the affected items as
+  deleted and its ProseMirror-mapped range stays exact. Their Yjs positions
+  are the known gap of §2 (TEC-3181).
 - The output shape is identical in both schemas up to dBlock wrapping; one
   block per dBlock holds after every path.
 - Paragraph attrs (`caretMarks`, `lineHeight`, `textAlign`, indent) survive
@@ -392,7 +402,9 @@ built with `list-toggle/test-helpers.ts` (wraps `caret-marks/test-helpers.ts`'s
 `triggerDecorationRebuild` as in `comment-decoration-plugin.test.ts`. One v1
 and one v2 case per row, asserting `doc.check()`, document shape (an outline
 string with the attrs that matter), the selection's text or caret offset
-and, where anchors are placed, the decorated text per comment id. Undo tests
+and, where anchors are placed, the decorated text per comment id (the
+plugin's mapped decorations, i.e. the ProseMirror layer; `resolvedAnchors`
+reads the Yjs layer). Undo tests
 call `undoManager.stopCapturing()` after setup: the Yjs UndoManager groups
 edits within its capture window into one step.
 
@@ -434,8 +446,9 @@ edits within its capture window into one step.
 10. anchors (R2-1): a comment on each item and one suggestion anchor; toggle
     off the middle item, toggle off the whole list with a sub-list, retype
     to checklist, retype to numbered, wrap three commented paragraphs →
-    every decoration still covers its text; undo keeps them. Redo is a
-    documented `it.skip` (the known gap, §2)
+    every decoration still covers its text; undo keeps them. At the Yjs
+    layer the same retype, wrap, toggle off and redo are `it.fails` (the
+    known gap, §2, TEC-3181) next to a passing typing control
 11. parked: paragraph + list range, two lists, hr in range, a range across a
     whole columns block → `false`, document unchanged, both schemas; the
     same through a chain that starts with `deleteRange` (the delete does not
@@ -473,7 +486,19 @@ Existing suites to keep green: `use-editor-commands.test.tsx`,
   containing item and discards their item nodes (R4-1).
 - `analyzeCommentAnchorTransactionChanges` marks an anchor deleted when a
   changed range's old span covers it; `ReplaceAroundStep`s (split, join,
-  wrap, lift, setNodeMarkup) leave their gap out of the changed ranges.
+  wrap, lift, setNodeMarkup) leave their gap out of the changed ranges. It
+  re-anchors only anchors a changed range touches; anchors inside a gap keep
+  their old Yjs positions.
+- The comment-decoration plugin maps its decorations through `tr.mapping` for
+  local edits and re-resolves the Yjs positions only on Yjs-origin
+  transactions or an explicit rebuild; the store re-resolves after every
+  transaction. y-prosemirror 1.3.7 `updateYFragment` deletes and re-creates a
+  Y.XmlElement whose node name differs from the ProseMirror node, so every Yjs
+  item inside is new and RelativePositions into it collapse (`from >= to`).
+  Measured both schemas: retype kills every anchor in the list, a partial
+  retype the retyped items, toggle off the item and the tail list, wrap all;
+  stock `toggleHeading`/`toggleBlockquote` kill the paragraph's; typing keeps
+  them.
 - `tr.join(pos, 2)` between `D(ul(li))` neighbours yields `D(ul(li li))`;
   `tr.split(pos, 2)` at an item boundary yields two dBlocks; the flat
   equivalents use depth 1. A split inserts `2 × depth` tokens before the
