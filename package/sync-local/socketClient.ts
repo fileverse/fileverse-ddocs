@@ -76,6 +76,12 @@ interface ISocketClientConfig {
 const toWireFormat = (value: unknown): WireFormat =>
   value === 'xchacha' ? 'xchacha' : 'ecies';
 
+const connectionLostError = () => {
+  const error = new Error('Lost connection to websocket server');
+  error.name = 'SocketConnectionLostError';
+  return error;
+};
+
 export class SocketClient {
   private _socketUrl: string;
   private _restBase: string;
@@ -83,9 +89,15 @@ export class SocketClient {
   private _socket: Socket | null = null;
   private _webSocketStatus: SocketStatusEnum = SocketStatusEnum.CLOSED;
   private _isIntentionalDisconnect = false;
+  private _pendingAckFailures = new Set<(error: Error) => void>();
 
   get isConnected(): boolean {
     return this._webSocketStatus === SocketStatusEnum.CONNECTED;
+  }
+
+  // Transport-level: true while socket.io holds an open connection, authed or not.
+  get isSocketOpen(): boolean {
+    return this._socket?.connected === true;
   }
 
   get status(): SocketStatusEnum {
@@ -213,28 +225,43 @@ export class SocketClient {
           this._webSocketStatus !== SocketStatusEnum.CONNECTING) ||
         !this._socket
       ) {
-        const error = new Error('Lost connection to websocket server');
-        error.name = 'SocketConnectionLostError';
-        reject(error);
+        reject(connectionLostError());
         return;
       }
 
-      let timedOut = false;
+      let settled = false;
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this._pendingAckFailures.delete(fail);
+        reject(error);
+      };
       const timer = setTimeout(() => {
-        timedOut = true;
         const error = new Error(
           `Socket emit "${event}" timed out after ${timeoutMs}ms`,
         );
         error.name = 'SocketTimeoutError';
-        reject(error);
+        fail(error);
       }, timeoutMs);
+      this._pendingAckFailures.add(fail);
 
       this._socket.emit(event, args, (response: AckResponse<T>) => {
-        if (timedOut) return;
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
+        this._pendingAckFailures.delete(fail);
         resolve(response);
       });
     });
+  }
+
+  // socket.io drops plain ack callbacks on disconnect without calling them, so without this
+  // every in-flight emit would wait out its full timeout on a socket that is already gone.
+  private _failPendingAcks() {
+    const failures = Array.from(this._pendingAckFailures);
+    this._pendingAckFailures.clear();
+    failures.forEach((fail) => fail(connectionLostError()));
   }
 
   private async _fetchRoomMembers() {
@@ -384,10 +411,14 @@ export class SocketClient {
     this._isIntentionalDisconnect = true;
     this._webSocketStatus = SocketStatusEnum.CLOSED;
     this._pendingAwarenessUpdates = [];
-    if (!this._socket) return;
+    if (!this._socket) {
+      this._failPendingAcks();
+      return;
+    }
     this._socket.disconnect();
     this._socket = null;
     this._webSocketStatus = SocketStatusEnum.CLOSED;
+    this._failPendingAcks();
   };
 
   // Re-establishes the connection so '/server/handshake' → '/auth' re-runs (re-minting the
@@ -780,6 +811,7 @@ export class SocketClient {
           settled = true;
           clearTimeout(connectionTimeout);
         }
+        this.connectionAttemptErrorCount = 0;
         this._webSocketStatus = SocketStatusEnum.CONNECTING;
         resolve();
       });
@@ -896,12 +928,19 @@ export class SocketClient {
           // Unintentional drop — notify SyncManager so it can transition to reconnecting
           config.onSocketDropped();
         }
+        // After onSocketDropped, so an in-flight sync attempt is already stale when its
+        // pending reads reject.
+        this._failPendingAcks();
       });
 
       this._socket.on('connect_error', (err) => {
         console.error('SocketAPI: socket connect error', err);
         this._webSocketStatus = SocketStatusEnum.CONNECTING;
 
+        // Initial connect only. Once connected, a drop is bounded by the Manager's
+        // reconnectionAttempts ('reconnect_failed' below); tripping here would close the
+        // Manager without any event reaching SyncManager.
+        if (settled) return;
         if (this.connectionAttemptErrorCount >= 3) {
           clearTimeout(connectionTimeout);
           this.connectionAttemptErrorCount = 0;
@@ -916,7 +955,10 @@ export class SocketClient {
         }
       });
 
-      this._socket.on('reconnect_failed', () => {
+      // A Manager event: socket.io never emits it on the Socket.
+      const socket = this._socket;
+      socket.io.on('reconnect_failed', () => {
+        if (this._socket !== socket) return;
         console.error('SocketAPI: reconnection failed');
         this._webSocketStatus = SocketStatusEnum.CLOSED;
         config.onReconnectFailed();
