@@ -5,10 +5,10 @@ the acceptance tests of §5 live in `list-toggle/*.test.ts`
 (`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`); full suite
 100 files, 1173 passed (six `it.fails` mark the TEC-3181 Yjs-layer gap).
 §3.9 (list markers follow the item's font, TEC-3110, folded in on
-2026-09-28) is **proposed**: designed and probe-backed, not implemented; its
-tests are §5 items 17–18. Design revised four times after four review rounds;
-tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)" name the finding that
-shaped a rule — the review log itself is a process artefact and is not kept
+2026-09-28) is **proposed**: designed and probe-backed, revised once after a
+scoped review, not implemented; its tests are §5 items 17–18. Design revised
+four times after four review rounds; tags "(review N)", "(R2-N)", "(R3-N)",
+"(R4-N)" and, for §3.9, "(M-N)" name the finding that shaped a rule — the review log itself is a process artefact and is not kept
 in the repo. Covers the "List" rows of TEC-3030, split out as sub-issue TEC-3130: the
 second-level nav and the toolbar toggle lists through two different engines
 that disagree with each other and between schemas. Stage 1
@@ -418,24 +418,55 @@ its text — `textStyle` marks, or the legacy paragraph `fontSize` /
 item's first paragraph (`listItem` content is `paragraph block*`, so there
 always is one). Each property is decided on its own:
 
-- A text run's value is its `textStyle` attr, else the paragraph's legacy
-  attr, else unset. An empty string counts as unset: parsed HTML yields `''`
-  where the editor's own commands leave `null` (probe).
-- Runs made only of whitespace do not vote: in `<12px>b1</> <12px>b2</>` the
-  space between two words formatted one by one is unmarked (probe). Non-text
-  inline nodes (hard break, mention, math) do not vote either.
-- When every voting run carries the same set value, the marker takes it. Mixed
-  values, or any voting run unset, leave the marker as it is today. This is
-  Google Docs' and Word's paragraph-mark behaviour without a stored mark:
-  restyling the whole line restyles the bullet, restyling one word never does.
-  CKEditor 5's list-marker formatting uses the same "whole item consistent"
-  test.
-- An empty paragraph has no runs; it uses its stage-1 `caretMarks` stamp with
-  the legacy attrs filled in (`fillLegacyFont`), so the bullet Enter creates
-  after a 12px item is already 12px, before anything is typed. Probe, both
-  schemas: Enter at the end of a 12px item stamps the new item's paragraph
-  `[{"type":"textStyle","attrs":{"fontSize":"12px"}}]`. A non-empty paragraph
-  with no voting runs (only whitespace or atoms) keeps the default marker.
+- **Runs.** The paragraph's text nodes vote. Runs made only of whitespace do
+  not: in `<12px>b1</> <12px>b2</>` the space between two words formatted one
+  by one is unmarked (probe). Non-text inline nodes do not vote either; the
+  schema has two, `hardBreak` and `inlineMath` (probe — `Emoji` inserts plain
+  text, `FootnoteRef` is never registered). An empty paragraph votes with one
+  virtual run whose marks are its stage-1 `caretMarks` stamp, so the bullet
+  Enter creates after a 12px item is already 12px before anything is typed.
+  Probe, both schemas: Enter at the end of a 12px item stamps the new item's
+  paragraph `[{"type":"textStyle","attrs":{"fontSize":"12px"}}]`. A non-empty
+  paragraph with no voting runs (only whitespace or atoms) keeps the default
+  marker.
+- **A run's value** is its `textStyle` attr, declared on the run; when that is
+  unset, the paragraph's legacy attr, declared on the paragraph; otherwise
+  unset. An empty string counts as unset: parsed HTML yields `''` where the
+  editor's own commands leave `null` (probe).
+- **Only values the marker can reproduce are copied (M-1).** The marker's CSS
+  parent is the `<li>`; a run's is the `<p>`, which inherits the `<li>`'s font
+  unless it carries legacy attrs. So each value is classified before it votes:
+  - context-free sizes — a number with `px`, `pt`, `pc`, `in`, `cm`, `mm`, `q`
+    or `rem`, or an absolute keyword `xx-small` … `xxx-large` — resolve the
+    same on the marker and are copied;
+  - parent-relative sizes — `%`, `em`, `larger`, `smaller` — are copied when
+    declared on the paragraph (its parent is the `<li>`, like the marker's) or
+    on a run in a paragraph without a legacy size (that paragraph inherits the
+    `<li>`'s). A run's relative size in a paragraph with its own size is
+    unresolvable: the reviewer measured in Chrome that `150%` in a 20px
+    paragraph renders at 30px while the same `150%` on the marker renders at
+    24px, and `1.5em` behaves the same;
+  - every other size (`ex`, `ch`, `lh`, `calc()`, `var()`, CSS-wide keywords,
+    anything unparsable) is unresolvable;
+  - a family is copied unless it is a CSS-wide keyword (`inherit`, `initial`,
+    `unset`, `revert`, `revert-layer`) or contains `var()`, which are
+    unresolvable.
+
+  An unresolvable value keeps the default marker for that property. Computing
+  `calc(20px * 1.5)` in context would cover the relative case too, but it is
+  reachable only through imported HTML over legacy attrs and would be a second
+  resolution path to keep in step with CSS.
+- **Uniform.** When every voting run carries the same copied value, compared
+  trimmed and lower-cased, the marker takes it (in the first run's spelling).
+  Mixed values, or any run unset or unresolvable, leave the marker as it is
+  today. Equal sizes written differently (`12px` next to `9pt`) count as mixed
+  — conservative, and the editor's own commands write `px`. This is Google
+  Docs' and Word's paragraph-mark behaviour without a stored mark: restyling
+  the whole line restyles the bullet, restyling one word never does. CKEditor
+  5's list-marker formatting uses the same "whole item consistent" test.
+- The rule reads declared values: a run that also carries a mark whose CSS
+  resizes it (`code`'s `text-body-sm`, `sub`, `sup`) votes with its
+  `textStyle` value, in the editor and in print alike.
 - `taskItem`s are ignored: they show a checkbox, not a marker.
 - A value containing `;`, `{` or `}` is ignored. ProseMirror appends a
   decoration's `style` to the element's inline style, so such a value would
@@ -480,33 +511,66 @@ markers from the same document. A decoration rather than `renderHTML`, for
 stage 1's reason: ProseMirror reuses an `<li>` whose attrs are unchanged, so
 markup computed from the content would go stale as the user types.
 
-Upkeep follows the stage-1 `caretMarks` decoration (TEC-3008): `init` scans
-the whole document; `apply` returns the set untouched when `!tr.docChanged`,
-otherwise maps it through `tr.mapping` and, for every changed range, widens the
-range to the top-level blocks it touches (v1: the dBlock; v2: the list),
-removes the decorations inside and recomputes them. One difference, measured:
-formatting text is an `AddMarkStep` / `RemoveMarkStep`, and their step maps are
-**empty** in both schemas, so the stage-1 loop over `tr.mapping`'s ranges
-would never see a font change. The changed ranges are therefore every range of
-each `step.getMap()`, plus `[step.from, step.to]` of mark steps and
-`[step.pos, step.pos + 1]` of `AttrStep`, `AddNodeMarkStep` and
-`RemoveNodeMarkStep`, each mapped through the maps of the steps after it.
-Remote edits and Yjs undo arrive as one whole-document `ReplaceStep` (probe,
-both schemas), so they rescan everything, as they already do for
-`caretMarks`. A keystroke rescans one top-level list (the first paragraph of
-each item), the granularity stage 1 accepted. `caret-marks.ts` is not changed.
+Upkeep, at the granularity of the stage-1 `caretMarks` decoration (TEC-3008):
+`init` scans the whole document; `apply` returns the set untouched when
+`!tr.docChanged`, otherwise maps it through `tr.mapping` and rebuilds the
+ranges that `changedBlockRanges(tr)` (same module, exported for its test)
+returns:
+
+1. Raw ranges, per step: every range of `step.getMap()`, plus
+   `[step.from, step.to]` of `AddMarkStep` / `RemoveMarkStep` and
+   `[step.pos, step.pos + 1]` of `AttrStep`, `AddNodeMarkStep` and
+   `RemoveNodeMarkStep`. Measured: formatting text produces only mark steps,
+   whose step maps are **empty** in both schemas, so a loop over `tr.mapping`'s
+   ranges alone — the stage-1 one — would never see a font change.
+2. Each raw range is mapped through the maps of the steps after it, clamped to
+   the final document and widened to the top-level blocks it touches (v1: the
+   dBlock; v2: the list).
+3. The widened ranges are sorted and every overlapping or touching pair is
+   merged (M-3).
+
+Each merged range has its decorations removed and recomputed once, so a
+top-level block is scanned at most once per transaction. Measured, both
+schemas: `setFontSize('12px')` over a 250-item list is 250 `AddMarkStep`s, all
+in one top-level block — one rebuild of 250 items, where rebuilding per raw
+range would evaluate 62,500. Remote edits and Yjs undo arrive as one
+whole-document `ReplaceStep` (probe, both schemas): one range, a full rescan,
+as for `caretMarks`. A keystroke rescans one top-level list (the first
+paragraph of each item). `caret-marks.ts` is not changed: its loop sees only
+map ranges, so mark-only transactions never reach it (it still rebuilds once
+per changed range, which multi-step structural transactions repeat — noted,
+not in scope).
 
 **Print and PDF.** `handleContentPrint(html)` serves the toolbar's print, the
 PDF export and ddocs.new's direct calls; every caller passes `getHTML()`
 output from a temporary editor, where fonts are inline:
 `<span style="font-family: Comic Sans MS; font-size: 12px;">` for marks,
 `<p style="font-family: Georgia; font-size: 12px; …">` for the legacy attrs
-(probe, both schemas). After it parses the sections into the print root,
-`applyMarkerFonts(root)` (same module as the rule) applies the rule to every
-`li` that is not `[data-type="taskItem"]`: the voting runs are the text nodes
-of its first `<p>`, and a run's value is the `style.fontSize` /
-`style.fontFamily` of the nearest element from the text up to and including
-that `<p>`. It sets the same two properties with `style.setProperty`.
+(probe, both schemas). After it parses the sections into the print root and
+before `renderMathInElement` runs, `applyMarkerFonts(root)` (same module as the
+rule) applies the rule to every `li` that is not `[data-type="taskItem"]`,
+with the HTML standing in for the document:
+
+- The runs are the text nodes of the `li`'s first `<p>`, except text inside an
+  element carrying `data-type` (M-2). That attribute is how a non-text inline
+  node serializes — `inlineMath` is `<span data-type="inlineMath">$x$</span>` —
+  and no mark renders it (probe: `a`, `span`, `code`, `s`, `u`, `strong`,
+  `em`, `mark`, `sup`, `sub`). `hardBreak` is a `<br>` with no text. Running
+  before KaTeX means only the serializer's output is read; KaTeX's generated
+  text would sit inside the same `data-type` span anyway.
+- A run's value is the `style.fontSize` / `style.fontFamily` of the nearest
+  element from the text up to and including the `<p>`. A value found on the
+  `<p>` is the paragraph's (the legacy attr), any other is the run's, and the
+  classification above applies unchanged; the paragraph has its own size when
+  the `<p>` has an inline `font-size`.
+- It sets the same two properties with `style.setProperty`.
+
+The rule and its value classification are one function shared by both
+adapters — `markerFont(item)` over the document, `applyMarkerFonts(root)` over
+the HTML — so they differ only in where runs and values come from. A guard
+test locks M-2's assumption: every non-text inline node type in the schema
+serializes either without text or inside an element carrying `data-type`, and
+no mark serializes `data-type`; a new atom that breaks this fails it.
 `CONTENT_STYLES` gets the same reset and a `.print-content-root li::marker`
 rule; print numbers every level with `list-style-type`, so there is no
 `::before` to cover there. The HTML carries no `caretMarks`, so an empty item
@@ -519,14 +583,14 @@ numbering level); presentation mode, which renders slides from HTML with its
 own list CSS; the `<li>`'s line box, which keeps the default font's strut
 height under smaller text (pre-existing).
 
-**Not yet measured in a browser.** jsdom has no layout and Chrome was not
-connected while this was written, so the CSS half — `var()` resolving inside
-`::marker` — rests on the CSS Lists spec (font properties apply to
-`::marker`, and it inherits custom properties from its `<li>`), not on a
-measurement. Safari's `::marker` support has historically been partial; if it
-ignores `font-family` there, bullets and top-level numbers still take the
-size, which is what the ticket asks for. Checking both is the first item of the
-manual QA.
+**Browser evidence.** The reviewer's headless Chrome fixture, with the CSS
+above, computed 12px/Georgia for a decorated item's native `::marker` and for
+a nested counter marker, and 16px/Arial for an undecorated nested item: `var()`
+reaches both pseudo-elements and the reset holds. That was a computed-style
+check. Not measured: the demo itself, and Safari, whose `::marker` support has
+historically been partial — if it ignores `font-family` there, bullets and
+top-level numbers still take the size, which is what the ticket asks for.
+Both are in the manual QA.
 
 ## 4. Call sites
 
@@ -642,26 +706,37 @@ edits within its capture window into one step.
     after a 12px item → the empty item is 12px; a numbered list; a nested
     `a.` item with its own size; a default child under a 12px parent → none
     on the child; a checklist item → none; a family containing `;` → ignored.
-    Live upkeep: formatting the whole line sets the size, making one word
-    bigger clears it, undo sets it again (Yjs undo = whole-document replace);
-    retype bullet → numbered and a toggle off and back keep the result right
-    (ReplaceAroundSteps, range-mapped)
+    Values (M-1): a `150%` run in a paragraph with a legacy 20px size → no
+    size; `150%` and `1.5em` runs in a plain paragraph → copied; a legacy
+    `<p style="font-size: 150%">` with unmarked text → copied; `12px` next to
+    `9pt` → none; `calc(1em + 2px)` and `2ex` → none; `font-family: inherit`
+    → none. Atoms: 12px text plus an unstyled inline math → 12px; only
+    inline math → none. Live upkeep: formatting the whole line sets the size,
+    making one word bigger clears it, undo sets it again (Yjs undo =
+    whole-document replace); retype bullet → numbered and a toggle off and
+    back keep the result right (ReplaceAroundSteps, range-mapped).
+    `changedBlockRanges` (M-3): `setFontSize` over a 250-item list → exactly
+    one range, the list's (v2) or its dBlock's (v1), and every item's marker
+    at 12px; a whole-document replace → one range; edits in two separate
+    lists in one transaction → two ranges
 18. print (§3.9): `applyMarkerFonts` over `getHTML()` of the same documents
-    agrees with item 17 except the empty item; a `handle-print-css.test.ts`
-    case asserts `CONTENT_STYLES` carries the reset and the `::marker` rule;
-    `css-ownership.test.ts` covers the editor rules
+    agrees with item 17 except the empty item, including the relative-size and
+    inline-math cases (M-1, M-2); the atom inventory guard (M-2); a
+    `handle-print-css.test.ts` case asserts `CONTENT_STYLES` carries the reset
+    and the `::marker` rule; `css-ownership.test.ts` covers the editor rules
 
 Existing suites to keep green: `use-editor-commands.test.tsx`,
 `paragraph-spacing-carryover.test.ts`, `caret-marks/*.test.ts`,
 `comment-decoration-plugin.test.ts`, `handle-print-css.test.ts`,
 `css-ownership.test.ts`.
 
-Manual QA for §3.9 in the demo, both schemas, Chrome and Safari: set a whole
-item to 12, then to a font like Comic Sans → the bullet or number follows
-(first check that `var()` reaches `::marker` at all, §3.9); nested `a.` and
-`i.` items follow; one bigger word leaves the marker alone; an unformatted
-item under a formatted one keeps the default; Enter after a 12px item gives a
-12px bullet; print preview shows the same markers.
+Manual QA for §3.9 in the demo, both schemas, Chrome and Safari (Safari's
+`::marker` is unmeasured, §3.9): set a whole item to 12, then to a font like
+Comic Sans → the bullet or number follows; nested `a.` and `i.` items follow;
+one bigger word leaves the marker alone; an unformatted item under a
+formatted one keeps the default; Enter after a 12px item gives a 12px bullet;
+format a long list at once → no visible lag; print preview shows the same
+markers.
 
 ## 6. Measured facts the design rests on
 
@@ -749,3 +824,12 @@ For §3.9 (probe, both schemas, 2026-09-28):
   `<span style="font-family: …; font-size: …;">` and the legacy attrs on the
   `<p>`; parsing HTML back yields `''`, not `null`, for unset `textStyle`
   attrs; jsdom reads both through `element.style.fontSize` / `fontFamily`.
+- Parsing keeps font sizes as written: `<p style="font-size: 20px">` with a
+  `150%` span loads as a legacy 20px paragraph holding a `150%` run; `1.5em`,
+  `larger`, `9pt` and `calc(1em + 2px)` runs load unchanged (M-1).
+- The schema's non-text inline nodes are `hardBreak` (`<br>`) and
+  `inlineMath` (`<span data-type="inlineMath" …>$x$</span>`); the marks
+  serialize as `a`, `span`, `code`, `s`, `u`, `strong`, `em`, `mark`, `sup`,
+  `sub`, none with `data-type` (M-2).
+- `setFontSize('12px')` over a 250-item list is one transaction of 250
+  `AddMarkStep`s, all inside one top-level block (M-3).
