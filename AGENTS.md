@@ -57,7 +57,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 - `extensions/` holds custom Tiptap nodes, marks and plugins; `default-extension.ts` is the registry and its order affects keymap priority.
 - Markdown import/export lives in `extensions/mardown-paste-handler/` (the misspelling is the real path; do not rename it), built on markdown-it and turndown. Docx import is `extensions/docx/` (mammoth); HTML, ODT and text export are extensions too. Headless conversions go through `getHeadlessExtensions` so they share the exact editor schema.
 - Fonts: the package ships only system fonts. Consumers pass a `fonts` catalog that `utils/font-loader.ts` loads on demand (`docs/FONTS.md`).
-- Lists: `extensions/list-toggle/` overrides `toggleList` for every trigger and both schemas with structural steps only (`docs/LIST_TOGGLE.md`). Never `replaceWith` a list: the comment store marks every comment inside it deleted. Comment anchors are Yjs relative positions and still die on any node type change until TEC-3181 lands; verify anchor survival with `resolveCommentAnchorRangeInState`, not the plugin's mapped decorations.
+- Lists: `extensions/list-toggle/` overrides `toggleList` for every trigger (and Backspace at the start of an item) and both schemas with structural steps only (`docs/LIST_TOGGLE.md`). Never `replaceWith` a list: the comment store marks every comment inside it deleted. Comment anchors are Yjs relative positions and still die on any node type change until TEC-3181 lands; verify anchor survival with `resolveCommentAnchorRangeInState`, not the plugin's mapped decorations.
 
 ### Styling and bundling
 

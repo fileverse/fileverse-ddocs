@@ -2,8 +2,8 @@
 
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
-(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`); full suite 99 files,
-1131 passed, 2 skipped. Design revised four times after four review rounds;
+(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`); full suite
+100 files, 1173 passed (six `it.fails` mark the TEC-3181 Yjs-layer gap). Design revised four times after four review rounds;
 tags "(review N)", "(R2-N)", "(R3-N)" and "(R4-N)" name the finding that
 shaped a rule — the review log itself is a process artefact and is not kept
 in the repo. Covers the "List" rows of TEC-3030, split out as sub-issue TEC-3130: the
@@ -45,6 +45,12 @@ Measured with a jsdom probe over 21 scenarios in both schemas:
 | range from a nested item into an outer item, bullet → numbered | nested list only | nested list only | ok | **no-op** |
 | paragraph + hr + paragraph | no-op | hr absorbed into item 1 | **hr deleted** | **hr deleted** |
 | bullet list + numbered list selected | no-op | merged | **first list deleted** | no-op |
+
+A third path, Backspace at the start of an item, disagrees too: v1's dBlock
+keymap splits the list at the item and keeps it bulleted, through a JSON
+`replaceWith` of the whole dBlock (every comment in it is marked deleted);
+v2's stock `ListKeymap` joins the item into the previous one. Both un-bullet
+only the first item.
 
 Causes:
 
@@ -287,7 +293,8 @@ list covered → `p aa p bb ul(li xx li yy) p cc`; a range from `xx` into `cc`
 p{7} b2`; `li(p bb ul(xx) p b2)` → `p bb ul(xx) p b2`; `spaceAfter` 11/22/0
 → 11/22/0; inside a column and a blockquote likewise; comment anchors on aa,
 bb, cc and xx all kept. The stage-1 list-exit plugin is no longer on this
-path; it still serves Shift-Tab and Backspace exits.
+path; it still serves Shift-Tab (Backspace at an item's start now runs
+through the engine, §3.8).
 
 ### 3.5 Retype
 
@@ -346,6 +353,32 @@ ul(c)` with bullet pressed in `b` becomes one list in both schemas, as does
 `ol(a) ul(b) ol(c)` retyped to numbered. A toggle off never joins (stock
 parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 
+### 3.8 Backspace at the start of an item
+
+Backspace with the caret at offset 0 of an item's first textblock takes that
+item out of the list in place — the same operation as pressing the list's own
+type with the caret there (§3.4): a top-level item becomes a paragraph and the
+list splits around it, a nested item is outdented (stock `liftListItem`), an
+empty item becomes an empty paragraph, edge spacing follows §3.5. This is
+what Google Docs, Notion and Word do, and it generalises the one case both
+schemas already agreed on (the first item). It replaces v1's split-and-keep
+(§1) and v2's stock join.
+
+Mechanism: `ListToggle.addKeyboardShortcuts` handles `Backspace` when the
+selection is empty and the caret sits at `parentOffset 0` of a textblock that
+is the first child of a list item, and calls `toggleList(list.type,
+item.type)`. Anything else returns `false` and falls through — a range, a
+caret inside the text, a paragraph after a list (stock's pull-in stays).
+`ListToggle` is registered after `StarterKit`, so its keymap runs before
+`ListKeymap`'s. The v1 dBlock `Backspace` list branch (`dblock.ts`, ~440
+lines: cases 1–5 and `restructureWithNestedContent`) is deleted; its
+page-break case stays. Probe-verified in both schemas via a real keydown:
+`ul(aa bb cc)`, Backspace at cc → `ul(aa bb) p cc`, caret still at the start
+of cc; at bb → `ul(aa) p bb ul(cc)`; at aa → `p aa ul(bb cc)`; an empty middle
+item → `ul(aa) p ul(cc)`; nested `yy` → outdented after its parent item; a
+checklist item → paragraph. The ProseMirror-level comment range on the item
+is kept; its Yjs anchor is the §2 gap (TEC-3181).
+
 ### 3.7 Invariants
 
 - The document never changes when the override returns `false`
@@ -368,7 +401,8 @@ parity: `p bb ul(li xx) ul(li cc)` stays two lists).
 Twelve sites, across two files, now call the engine — eleven replacing the
 hand-rolled functions, plus the desktop heading dropdown's (`TextHeading`)
 "Text" entry, which never used them: it was a plain `toggleNode` no-op on
-list items, not a conversion.
+list items, not a conversion. The Backspace shortcut of §3.8 is a thirteenth
+trigger, inside the extension itself.
 
 - `editor-utils.tsx` (8): the toolbar's three list tools (List, Ordered
   List, To-do List) and the mobile toolbar's To-do list tool call
@@ -395,7 +429,7 @@ list items, not a conversion.
 
 ## 5. Tests
 
-`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors}.test.ts`,
+`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors,backspace}.test.ts`,
 built with `list-toggle/test-helpers.ts` (wraps `caret-marks/test-helpers.ts`'s
 `makeEditor(version, html, { extensions })`, `pressKey`, `selectText`) plus
 `CommentDecorationExtension` with `createCommentAnchorFromEditor` /
@@ -462,6 +496,11 @@ edits within its capture window into one step.
 14. Mod-Shift-8 keydown reaches the override (`ctrlKey` in jsdom)
 15. undo after a wrap, a toggle off and a retype restores the previous
     document in one step
+16. Backspace at the start of an item (§3.8), via a real keydown: last,
+    middle, first and empty items, a nested item (outdent), a checklist
+    item; a caret inside the text and a range fall through unchanged; the
+    ProseMirror-level comment range is kept, the Yjs anchor is an `it.fails`
+    (TEC-3181)
 
 Existing suites to keep green: `use-editor-commands.test.tsx`,
 `paragraph-spacing-carryover.test.ts`, `caret-marks/*.test.ts`,
