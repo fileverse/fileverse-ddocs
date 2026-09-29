@@ -101,6 +101,20 @@ describe('print stylesheet', () => {
     expect(declaration(mediaWrapperRule!.body, 'border')).toBe('none');
   });
 
+  it('lets each list marker take its item font (docs/LIST_TOGGLE.md §3.9)', () => {
+    const find = (selector: string) =>
+      rules.find((rule) => normalizeSelector(rule.selector) === selector);
+    const item = find('.print-content-root li');
+    const marker = find('.print-content-root li::marker');
+
+    expect(item?.body).toMatch(/--ddoc-marker-font-size:\s*initial/);
+    expect(item?.body).toMatch(/--ddoc-marker-font-family:\s*initial/);
+    expect(marker?.body).toMatch(/font-size:\s*var\(--ddoc-marker-font-size\)/);
+    expect(marker?.body).toMatch(
+      /font-family:\s*var\(--ddoc-marker-font-family\)/,
+    );
+  });
+
   it.each([
     ['start', 'margin-left'],
     ['left', 'margin-left'],

@@ -306,3 +306,68 @@ export const markerFontPlugin = () =>
       decorations: (state) => markerFontPluginKey.getState(state),
     },
   });
+
+/** A text node's run: its nearest styled element up to the `<p>` declares it. */
+const domRun = (text: Text, paragraph: HTMLElement): Run => {
+  const nearest = (property: 'fontSize' | 'fontFamily') => {
+    for (
+      let el = text.parentElement;
+      el && el !== paragraph;
+      el = el.parentElement
+    ) {
+      if (el.style[property]) return el.style[property];
+    }
+    return null;
+  };
+  return {
+    fontSize: declaredValue(nearest('fontSize'), paragraph.style.fontSize),
+    fontFamily: declaredValue(
+      nearest('fontFamily'),
+      paragraph.style.fontFamily,
+    ),
+  };
+};
+
+/** Text inside `data-type` is a serialized atom (inline math), not a run (M-2). */
+const insideAtom = (text: Text, paragraph: HTMLElement) => {
+  for (
+    let el = text.parentElement;
+    el && el !== paragraph;
+    el = el.parentElement
+  ) {
+    if (el.hasAttribute('data-type')) return true;
+  }
+  return false;
+};
+
+/**
+ * The HTML adapter for print: sets the marker font on every `li` whose first
+ * `<p>` agrees, by the same rule as the editor. Run before math rendering.
+ */
+export const applyMarkerFonts = (root: ParentNode) => {
+  root.querySelectorAll('li').forEach((li) => {
+    if (li.getAttribute('data-type') === 'taskItem') return;
+    const paragraph = li.firstElementChild;
+    if (!(paragraph instanceof HTMLElement) || paragraph.tagName !== 'P') {
+      return;
+    }
+    const runs: Run[] = [];
+    const walker = paragraph.ownerDocument.createTreeWalker(
+      paragraph,
+      NodeFilter.SHOW_TEXT,
+    );
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node as Text;
+      if (/\S/.test(text.data) && !insideAtom(text, paragraph)) {
+        runs.push(domRun(text, paragraph));
+      }
+    }
+    const font = resolveMarkerFont(runs, paragraph.style.fontSize !== '');
+    if (font.fontSize) {
+      li.style.setProperty(MARKER_FONT_SIZE_VAR, font.fontSize);
+    }
+    if (font.fontFamily) {
+      li.style.setProperty(MARKER_FONT_FAMILY_VAR, font.fontFamily);
+    }
+  });
+};

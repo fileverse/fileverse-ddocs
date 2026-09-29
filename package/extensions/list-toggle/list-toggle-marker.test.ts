@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as Y from 'yjs';
 import type { Editor } from '@tiptap/react';
+import { DOMSerializer, Fragment } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { AddMarkStep } from '@tiptap/pm/transform';
+import { handleContentPrint } from '../../utils/handle-print';
 import {
   destroyTracked,
   endOf,
@@ -19,6 +21,7 @@ import {
 import {
   MARKER_FONT_FAMILY_VAR,
   MARKER_FONT_SIZE_VAR,
+  applyMarkerFonts,
   changedBlockRanges,
   markerFont,
 } from './marker-font';
@@ -172,6 +175,14 @@ const renderedFonts = (root: ParentNode) =>
       ),
     )
     .join(' ');
+
+/** What print writes: the DOM adapter over the editor's own HTML. */
+const printedFonts = (editor: Editor) => {
+  const root = document.createElement('div');
+  root.innerHTML = editor.getHTML();
+  applyMarkerFonts(root);
+  return renderedFonts(root);
+};
 
 /** A real keydown, so ListToggle's Backspace (§3.8) runs as in the browser. */
 const pressBackspace = (editor: Editor) =>
@@ -397,5 +408,103 @@ describe('marker font stylesheet', () => {
     expect(css).toMatch(
       /\.ProseMirror li::marker,\s*\.ProseMirror li > ol > li::before \{\s*font-size: var\(--ddoc-marker-font-size\);\s*font-family: var\(--ddoc-marker-font-family\);\s*\}/,
     );
+  });
+});
+
+describe.each([1, 2])('marker font in print (schema v%i)', (v) => {
+  it.each(CASES)('prints %s like the editor', (_name, html, expected) => {
+    const editor = track(makeEditor(v, html));
+    expect(printedFonts(editor)).toBe(expected);
+    expect(printedFonts(editor)).toBe(renderedFonts(editor.view.dom));
+  });
+
+  it('prints 12.0px next to 12px as the editor does (M-4)', () => {
+    const editor = track(
+      makeEditor(
+        v,
+        '<ul><li><p><span style="font-size: 12px">aa</span> <span style="font-size: 12px">bb</span></p></li></ul>',
+      ),
+    );
+    markText(editor, 'aa', { fontSize: '12.0px' });
+    expect(printedFonts(editor)).toBe(renderedFonts(editor.view.dom));
+  });
+
+  it('prints an empty item with the default marker (no stamp in HTML)', () => {
+    const editor = track(makeEditor(v, ITEM_12PX));
+    editor.commands.setTextSelection(endOf(editor, 'aa'));
+    pressEnter(editor);
+    expect(renderedFonts(editor.view.dom)).toBe('12px/- 12px/-');
+    expect(printedFonts(editor)).toBe('12px/- -/-');
+  });
+
+  it('keeps every text-bearing atom behind data-type, and no mark uses it (M-2)', () => {
+    const { schema } = track(makeEditor(v, '')).state;
+    const serializer = DOMSerializer.fromSchema(schema);
+    Object.values(schema.nodes)
+      .filter((type) => type.isInline && !type.isText)
+      .forEach((type) => {
+        const dom = serializer.serializeNode(type.createAndFill()!);
+        const excluded =
+          !dom.textContent ||
+          (dom instanceof HTMLElement && dom.hasAttribute('data-type'));
+        expect(excluded, type.name).toBe(true);
+      });
+    Object.values(schema.marks).forEach((type) => {
+      const holder = document.createElement('div');
+      holder.appendChild(
+        serializer.serializeFragment(
+          Fragment.from(schema.text('x', [type.create()])),
+        ),
+      );
+      expect(holder.querySelector('[data-type]'), type.name).toBeNull();
+    });
+  });
+});
+
+describe('applyMarkerFonts', () => {
+  const apply = (html: string) => {
+    const root = document.createElement('div');
+    root.innerHTML = html;
+    applyMarkerFonts(root);
+    return renderedFonts(root);
+  };
+
+  it("reads Chrome's normalized spellings the same way (M-4)", () => {
+    expect(
+      apply(
+        `<ul><li><p style='font-family: "Comic Sans MS"'><span style='font-family: "Comic Sans MS"'>aa</span> bb</p></li>` +
+          `<li><p style="font-family: Comic Sans MS"><span style='font-family: "Comic Sans MS"'>cc</span> dd</p></li></ul>`,
+      ),
+    ).toBe('-/"comic sans ms" -/"comic sans ms"');
+  });
+
+  it('skips a formula KaTeX has already rendered (M-2)', () => {
+    expect(
+      apply(
+        '<ul><li><p><span style="font-size: 12px">aa</span> <span data-type="inlineMath"><span class="katex">x</span></span></p></li></ul>',
+      ),
+    ).toBe('12px/-');
+  });
+
+  it('leaves checklist items alone', () => {
+    expect(
+      apply(
+        '<ul data-type="taskList"><li data-type="taskItem"><label><input type="checkbox"></label><div><p><span style="font-size: 12px">tt</span></p></div></li></ul>',
+      ),
+    ).toBe('-/-');
+  });
+});
+
+describe('handleContentPrint', () => {
+  it('marks the printed list items before printing', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    handleContentPrint(
+      '<ul><li><p><span style="font-size: 12px">aa</span></p></li></ul>',
+    );
+    const host = document.querySelector('.ddoc-print-host');
+    expect(host && renderedFonts(host)).toBe('12px/-');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    window.dispatchEvent(new Event('afterprint'));
+    print.mockRestore();
   });
 });
