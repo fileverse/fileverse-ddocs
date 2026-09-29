@@ -424,7 +424,7 @@ const MAIN_DOCUMENT_PRINT_BASELINE = `
   .print-content-root ol { list-style: decimal; }
   .print-content-root ul, .print-content-root ol { margin-top: 0; margin-bottom: 16px; padding-left: 24px; }
   .print-content-root li { margin-top: 0; margin-bottom: 4px; --ddoc-marker-font-size: initial; --ddoc-marker-font-family: initial; }
-  .print-content-root li::marker { font-size: var(--ddoc-marker-font-size); font-family: var(--ddoc-marker-font-family); }
+  .print-content-root li::marker, .print-content-root li > ol > li::before { font-size: var(--ddoc-marker-font-size); font-family: var(--ddoc-marker-font-family); }
   .print-content-root a { color: #3B82F6; text-decoration: underline; }
   .print-content-root strong, .print-content-root b { font-weight: 600; }
   .print-content-root em, .print-content-root i { font-style: italic; }
