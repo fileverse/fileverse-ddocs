@@ -3,7 +3,7 @@
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
 (`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`, `-marker`,
-plus `marker-font`); full suite 102 files, 1380 passed (six `it.fails` mark
+plus `marker-font`); full suite 102 files, 1382 passed (six `it.fails` mark
 the TEC-3181 Yjs-layer gap). §3.9 (list markers follow the item's font,
 TEC-3110, folded in on 2026-09-28) is **implemented** (2026-09-29) in
 `list-toggle/marker-font.ts`, after two scoped reviews; its tests are §5
@@ -550,8 +550,14 @@ returns:
 3. The widened ranges are sorted and every overlapping or touching pair is
    merged (M-3).
 
-Each merged range has its decorations removed and recomputed once, so a
-top-level block is scanned at most once per transaction. Measured, both
+Each merged range is scanned once, so a top-level block is scanned at most
+once per transaction. The fresh decorations are diffed against the mapped ones
+by position and style (the style rides in the decoration's spec), and only the
+differences are removed and added: ProseMirror keeps a list's node
+decorations in one array, so removing and re-adding all of them costs time
+quadratic in the list's length on every keystroke (final review: ~60 ms per
+keystroke at 2,000 decorated items), while a keystroke rarely changes a
+marker. Measured, both
 schemas: `setFontSize('12px')` over a 250-item list is 250 `AddMarkStep`s, all
 in one top-level block — one rebuild of 250 items, where rebuilding per raw
 range would evaluate 62,500. Remote edits and Yjs undo arrive as one
@@ -594,9 +600,13 @@ same document. A guard
 test locks M-2's assumption: every non-text inline node type in the schema
 serializes either without text or inside an element carrying `data-type`, and
 no mark serializes `data-type`; a new atom that breaks this fails it.
-`CONTENT_STYLES` gets the same reset and a `.print-content-root li::marker`
-rule; print numbers every level with `list-style-type`, so there is no
-`::before` to cover there. The HTML carries no `caretMarks`, so an empty item
+`MAIN_DOCUMENT_PRINT_BASELINE` (the print host's stylesheet) gets the same
+reset on `.print-content-root li` and feeds the properties into
+`.print-content-root li::marker` and `li > ol > li::before`. The package's own
+print CSS numbers every level with `list-style-type`, but the print root lives
+in the consumer's document, whose global CSS can still draw nested numbers
+with `::before` counters (ddocs.new's `globals.css` does, per the final
+review), so both are covered. The HTML carries no `caretMarks`, so an empty item
 prints with the default marker; it prints no text either. The signature does
 not change.
 
@@ -752,7 +762,7 @@ edits within its capture window into one step.
     DOM adapter is also fed Chrome's spellings directly (`<p>` and `<span>`
     both quoting `"Comic Sans MS"`, one quoted and one not) and must give the
     same result; the atom inventory guard (M-2); a
-    `handle-print-css.test.ts` case asserts `CONTENT_STYLES` carries the reset
+    `handle-print-css.test.ts` case asserts the print stylesheet carries the reset
     and the `::marker` rule; `css-ownership.test.ts` covers the editor rules
 
 Existing suites to keep green: `use-editor-commands.test.tsx`,
