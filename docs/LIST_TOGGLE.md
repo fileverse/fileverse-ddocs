@@ -2,11 +2,12 @@
 
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
-(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`); full suite
-100 files, 1173 passed (six `it.fails` mark the TEC-3181 Yjs-layer gap).
-§3.9 (list markers follow the item's font, TEC-3110, folded in on
-2026-09-28) is **proposed**: designed and probe-backed, revised twice after scoped
-reviews, not implemented; its tests are §5 items 17–18. Design revised
+(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`, `-marker`,
+plus `marker-font`); full suite 102 files, 1380 passed (six `it.fails` mark
+the TEC-3181 Yjs-layer gap). §3.9 (list markers follow the item's font,
+TEC-3110, folded in on 2026-09-28) is **implemented** (2026-09-29) in
+`list-toggle/marker-font.ts`, after two scoped reviews; its tests are §5
+items 17–18. Design revised
 four times after four review rounds; tags "(review N)", "(R2-N)", "(R3-N)",
 "(R4-N)" and, for §3.9, "(M-N)" name the finding that shaped a rule — the review log itself is a process artefact and is not kept
 in the repo. Covers the "List" rows of TEC-3030, split out as sub-issue TEC-3130: the
@@ -405,7 +406,7 @@ is kept; its Yjs anchor is the §2 gap (TEC-3181).
 
 ### 3.9 Markers follow the item's font (TEC-3110)
 
-Status: **proposed**, not implemented. A customer set a numbered list's text
+Status: **implemented** (2026-09-29). A customer set a numbered list's text
 to size 12 and the numbers stayed at the default 16, in the default font
 (TEC-3110, folded into this stage). Markers are drawn by the browser:
 `::marker` for bullets and top-level numbers (`list-style: revert`,
@@ -599,7 +600,7 @@ rule; print numbers every level with `list-style-type`, so there is no
 prints with the default marker; it prints no text either. The signature does
 not change.
 
-**Out of scope** (a follow-up ticket, raised with the implementation): HTML,
+**Out of scope** (follow-up TEC-3186): HTML,
 Markdown, ODT and docx export (docx would need run properties on each
 numbering level); presentation mode, which renders slides from HTML with its
 own list CSS; the `<li>`'s line box, which keeps the default font's strut
@@ -647,7 +648,8 @@ trigger, inside the extension itself.
 
 ## 5. Tests
 
-`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors,backspace}.test.ts`,
+`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors,backspace,marker}.test.ts`
+(and `marker-font.test.ts` for the pure §3.9 rule),
 built with `list-toggle/test-helpers.ts` (wraps `caret-marks/test-helpers.ts`'s
 `makeEditor(version, html, { extensions })`, `pressKey`, `selectText`) plus
 `CommentDecorationExtension` with `createCommentAnchorFromEditor` /
