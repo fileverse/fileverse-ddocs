@@ -1,3 +1,6 @@
+import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { CARET_MARKS_ATTR, parseMarks } from '../caret-marks/caret-style';
+
 /** Custom properties the marker CSS reads (docs/LIST_TOGGLE.md §3.9). */
 export const MARKER_FONT_SIZE_VAR = '--ddoc-marker-font-size';
 export const MARKER_FONT_FAMILY_VAR = '--ddoc-marker-font-family';
@@ -162,3 +165,33 @@ export const resolveMarkerFont = (
     runs.map((run) => vote('fontFamily', run.fontFamily, paragraphHasOwnSize)),
   ),
 });
+
+const NO_FONT: MarkerFont = { fontSize: null, fontFamily: null };
+
+/** The document adapter: a `listItem`'s marker font from its first paragraph. */
+export const markerFont = (item: ProseMirrorNode): MarkerFont => {
+  const paragraph = item.firstChild;
+  if (item.type.name !== 'listItem' || !paragraph?.isTextblock) return NO_FONT;
+  const legacy = paragraph.attrs;
+  const runOf = (marks: readonly Mark[]): Run => {
+    const textStyle = marks.find((mark) => mark.type.name === 'textStyle');
+    return {
+      fontSize: declaredValue(textStyle?.attrs.fontSize, legacy.fontSize),
+      fontFamily: declaredValue(textStyle?.attrs.fontFamily, legacy.fontFamily),
+    };
+  };
+  const runs: Run[] = [];
+  if (paragraph.content.size === 0) {
+    // An empty paragraph votes with its caret stamp: what typing would produce.
+    runs.push(
+      runOf(parseMarks(paragraph.type.schema, legacy[CARET_MARKS_ATTR])),
+    );
+  } else {
+    paragraph.forEach((child) => {
+      if (child.isText && /\S/.test(child.text ?? '')) {
+        runs.push(runOf(child.marks));
+      }
+    });
+  }
+  return resolveMarkerFont(runs, isSet(legacy.fontSize));
+};
