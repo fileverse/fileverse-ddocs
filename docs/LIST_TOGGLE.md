@@ -5,8 +5,8 @@ the acceptance tests of §5 live in `list-toggle/*.test.ts`
 (`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`); full suite
 100 files, 1173 passed (six `it.fails` mark the TEC-3181 Yjs-layer gap).
 §3.9 (list markers follow the item's font, TEC-3110, folded in on
-2026-09-28) is **proposed**: designed and probe-backed, revised once after a
-scoped review, not implemented; its tests are §5 items 17–18. Design revised
+2026-09-28) is **proposed**: designed and probe-backed, revised twice after scoped
+reviews, not implemented; its tests are §5 items 17–18. Design revised
 four times after four review rounds; tags "(review N)", "(R2-N)", "(R3-N)",
 "(R4-N)" and, for §3.9, "(M-N)" name the finding that shaped a rule — the review log itself is a process artefact and is not kept
 in the repo. Covers the "List" rows of TEC-3030, split out as sub-issue TEC-3130: the
@@ -456,11 +456,31 @@ always is one). Each property is decided on its own:
   `calc(20px * 1.5)` in context would cover the relative case too, but it is
   reachable only through imported HTML over legacy attrs and would be a second
   resolution path to keep in step with CSS.
-- **Uniform.** When every voting run carries the same copied value, compared
-  trimmed and lower-cased, the marker takes it (in the first run's spelling).
-  Mixed values, or any run unset or unresolvable, leave the marker as it is
-  today. Equal sizes written differently (`12px` next to `9pt`) count as mixed
-  — conservative, and the editor's own commands write `px`. This is Google
+- **Canonical form (M-4).** Values are compared, and written onto the marker,
+  in one canonical form, so that the document adapter (raw attrs) and the
+  print adapter (values that went through `getHTML()` and a style parser)
+  agree. Measured, both schemas: importing a paragraph and a marked run that
+  both declare `font-family: "Comic Sans MS"` stores `Comic Sans MS` on the
+  paragraph (its parser strips quotes) and `"Comic Sans MS"` on the mark;
+  jsdom keeps both spellings while Chrome quotes both (reviewer); and a
+  `12.0px` mark leaves `getHTML()` as `12px`.
+  - A size is trimmed and lower-cased, and a number-plus-unit has its number
+    rewritten in its shortest form (`12.0px` → `12px`, `.50em` → `0.5em`).
+    Units are not converted: `12px` next to `9pt` still counts as mixed,
+    deliberately — conservative, and the editor's own commands write `px`.
+  - A family list is split on commas outside quotes; each name is trimmed,
+    unquoted, whitespace-collapsed and lower-cased, then written back
+    double-quoted (with `"` and `\` escaped), so `Comic Sans MS`,
+    `"Comic Sans MS"` and `'comic sans MS'` all become `"comic sans ms"`. A
+    generic family keyword (`serif`, `sans-serif`, `monospace`, `cursive`,
+    `fantasy`, `system-ui`, `ui-serif`, `ui-sans-serif`, `ui-monospace`,
+    `ui-rounded`, `math`, `emoji`, `fangsong`) stays unquoted only when it
+    was written unquoted: a quoted `"serif"` names a font called serif, so
+    `"serif"` and `serif` stay distinct. Family matching is
+    case-insensitive in CSS, so lower-casing loses nothing.
+- **Uniform.** When every voting run carries the same canonical value, the
+  marker takes that value. Mixed values, or any run unset or unresolvable,
+  leave the marker as it is today. This is Google
   Docs' and Word's paragraph-mark behaviour without a stored mark: restyling
   the whole line restyles the bullet, restyling one word never does. CKEditor
   5's list-marker formatting uses the same "whole item consistent" test.
@@ -484,7 +504,7 @@ schemas and in every editor built from `defaultExtensions` — the preview too
 (`PreviewDdocEditor` goes through `useDdocEditor`); in the headless
 conversion editors it only computes decorations nobody renders. The plugin keeps a
 `DecorationSet` of `Decoration.node` over each item whose rule yields a value,
-with `style="--ddoc-marker-font-size: 12px; --ddoc-marker-font-family: Georgia"`
+with `style='--ddoc-marker-font-size: 12px; --ddoc-marker-font-family: "georgia"'`
 (only the properties that are set). ProseMirror merges it with the `<li>`'s
 own `style="line-height: 138%"` (probe, both schemas). `styles/index.css`,
 beside the counter rules:
@@ -565,9 +585,11 @@ with the HTML standing in for the document:
   the `<p>` has an inline `font-size`.
 - It sets the same two properties with `style.setProperty`.
 
-The rule and its value classification are one function shared by both
-adapters — `markerFont(item)` over the document, `applyMarkerFonts(root)` over
-the HTML — so they differ only in where runs and values come from. A guard
+The rule — canonical form, classification and the uniform vote — is one
+function shared by both adapters — `markerFont(item)` over the document,
+`applyMarkerFonts(root)` over the HTML — so they differ only in where runs and
+raw values come from, and they write identical custom-property values for the
+same document. A guard
 test locks M-2's assumption: every non-text inline node type in the schema
 serializes either without text or inside an element carrying `data-type`, and
 no mark serializes `data-type`; a new atom that breaks this fails it.
@@ -710,8 +732,10 @@ edits within its capture window into one step.
     size; `150%` and `1.5em` runs in a plain paragraph → copied; a legacy
     `<p style="font-size: 150%">` with unmarked text → copied; `12px` next to
     `9pt` → none; `calc(1em + 2px)` and `2ex` → none; `font-family: inherit`
-    → none. Atoms: 12px text plus an unstyled inline math → 12px; only
-    inline math → none. Live upkeep: formatting the whole line sets the size,
+    → none. Canonical form (M-4): an imported paragraph and marked run both
+    declaring `"Comic Sans MS"` → `"comic sans ms"`; `12.0px` and `12px`
+    marks (document JSON) → `12px`; `"serif"` next to `serif` → none. Atoms:
+    12px text plus an unstyled inline math → 12px; only inline math → none. Live upkeep: formatting the whole line sets the size,
     making one word bigger clears it, undo sets it again (Yjs undo =
     whole-document replace); retype bullet → numbered and a toggle off and
     back keep the result right (ReplaceAroundSteps, range-mapped).
@@ -720,8 +744,12 @@ edits within its capture window into one step.
     at 12px; a whole-document replace → one range; edits in two separate
     lists in one transaction → two ranges
 18. print (§3.9): `applyMarkerFonts` over `getHTML()` of the same documents
-    agrees with item 17 except the empty item, including the relative-size and
-    inline-math cases (M-1, M-2); the atom inventory guard (M-2); a
+    writes exactly the values item 17 reads from the editor, except the empty
+    item, including the relative-size, canonical-form and inline-math cases
+    (M-1, M-4, M-2); because jsdom keeps spellings Chrome normalizes, the
+    DOM adapter is also fed Chrome's spellings directly (`<p>` and `<span>`
+    both quoting `"Comic Sans MS"`, one quoted and one not) and must give the
+    same result; the atom inventory guard (M-2); a
     `handle-print-css.test.ts` case asserts `CONTENT_STYLES` carries the reset
     and the `::marker` rule; `css-ownership.test.ts` covers the editor rules
 
@@ -833,3 +861,7 @@ For §3.9 (probe, both schemas, 2026-09-28):
   `sub`, none with `data-type` (M-2).
 - `setFontSize('12px')` over a 250-item list is one transaction of 250
   `AddMarkStep`s, all inside one top-level block (M-3).
+- Importing `font-family: "Comic Sans MS"` on both a `<p>` and a `<span>`
+  stores the paragraph attr unquoted and the mark quoted; jsdom's
+  `style.fontFamily` returns each as written. A `12.0px` mark serializes
+  through `getHTML()` as `12px` (M-4).
