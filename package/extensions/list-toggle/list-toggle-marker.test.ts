@@ -16,6 +16,7 @@ import {
   selectText,
   startOf,
   track,
+  type,
   undoManager,
 } from '../caret-marks/test-helpers';
 import {
@@ -24,6 +25,7 @@ import {
   applyMarkerFonts,
   changedBlockRanges,
   markerFont,
+  markerFontPluginKey,
 } from './marker-font';
 import { caretIn } from './test-helpers';
 
@@ -506,5 +508,30 @@ describe('handleContentPrint', () => {
     await new Promise((resolve) => requestAnimationFrame(resolve));
     window.dispatchEvent(new Event('afterprint'));
     print.mockRestore();
+  });
+});
+
+describe.each([1, 2])('marker font upkeep cost (schema v%i)', (v) => {
+  // A rebuilt decoration gets a new type object; a mapped one keeps its own.
+  const decorationTypes = (editor: Editor) =>
+    markerFontPluginKey
+      .getState(editor.state)!
+      .find()
+      .map((d) => (d as unknown as { type: object }).type);
+
+  it('keeps the decorations of unchanged markers while typing', () => {
+    const editor = track(
+      makeEditor(
+        v,
+        '<ul><li><p><span style="font-size: 12px">aa</span></p></li><li><p><span style="font-size: 12px">bb</span></p></li></ul>',
+      ),
+    );
+    const before = decorationTypes(editor);
+    editor.commands.setTextSelection(endOf(editor, 'aa'));
+    type(editor, 'x');
+    const after = decorationTypes(editor);
+    expect(renderedFonts(editor.view.dom)).toBe('12px/- 12px/-');
+    expect(after).toHaveLength(2);
+    after.forEach((each, i) => expect(each).toBe(before[i]));
   });
 });

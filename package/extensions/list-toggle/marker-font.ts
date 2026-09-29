@@ -222,7 +222,9 @@ const decorationsIn = (doc: ProseMirrorNode, from: number, to: number) => {
     if (node.type.name === 'listItem') {
       const style = markerFontStyle(markerFont(node));
       if (style) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, { style }));
+        decorations.push(
+          Decoration.node(pos, pos + node.nodeSize, { style }, { style }),
+        );
       }
     }
     return !node.isTextblock;
@@ -293,11 +295,20 @@ export const markerFontPlugin = () =>
       apply: (tr, set) => {
         if (!tr.docChanged) return set;
         let next = set.map(tr.mapping, tr.doc);
+        // Diff, not rebuild: removing every decoration of a long list is
+        // quadratic in PM, and a keystroke rarely changes any marker.
+        const key = (d: Decoration) => `${d.from}:${d.to}:${d.spec.style}`;
         changedBlockRanges(tr).forEach(([from, to]) => {
-          next = next.remove(
-            next.find(from, to).filter((d) => d.from >= from && d.to <= to),
-          );
-          next = next.add(tr.doc, decorationsIn(tr.doc, from, to));
+          const current = next
+            .find(from, to)
+            .filter((d) => d.from >= from && d.to <= to);
+          const fresh = decorationsIn(tr.doc, from, to);
+          const kept = new Set(current.map(key));
+          const wanted = new Set(fresh.map(key));
+          const stale = current.filter((d) => !wanted.has(key(d)));
+          const added = fresh.filter((d) => !kept.has(key(d)));
+          if (stale.length) next = next.remove(stale);
+          if (added.length) next = next.add(tr.doc, added);
         });
         return next;
       },
