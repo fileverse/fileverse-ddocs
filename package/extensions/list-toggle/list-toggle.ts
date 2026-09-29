@@ -4,6 +4,7 @@ import { isListItemNode, LIST_TOGGLE_META, refuse, sharedList } from './shared';
 import { retypeItems, retypeList } from './retype';
 import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
 import { wrapRow } from './wrap';
+import { markerFontPlugin } from './marker-font';
 
 /**
  * One list engine for every trigger and both schemas (docs/LIST_TOGGLE.md).
@@ -12,6 +13,11 @@ import { wrapRow } from './wrap';
  */
 export const ListToggle = Extension.create({
   name: 'listToggle',
+
+  // List markers take their item's font (docs/LIST_TOGGLE.md §3.9).
+  addProseMirrorPlugins() {
+    return [markerFontPlugin()];
+  },
 
   addKeyboardShortcuts() {
     return {

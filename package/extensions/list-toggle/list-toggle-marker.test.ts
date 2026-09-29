@@ -1,15 +1,28 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import * as Y from 'yjs';
 import type { Editor } from '@tiptap/react';
+import type { Transaction } from '@tiptap/pm/state';
+import { AddMarkStep } from '@tiptap/pm/transform';
 import {
   destroyTracked,
   endOf,
   makeEditor,
   nativeDelete,
   pressEnter,
+  selectText,
   startOf,
   track,
+  undoManager,
 } from '../caret-marks/test-helpers';
-import { markerFont } from './marker-font';
+import {
+  MARKER_FONT_FAMILY_VAR,
+  MARKER_FONT_SIZE_VAR,
+  changedBlockRanges,
+  markerFont,
+} from './marker-font';
+import { caretIn } from './test-helpers';
 
 afterEach(destroyTracked);
 
@@ -149,6 +162,39 @@ const markText = (
 const ITEM_12PX =
   '<ul><li><p><span style="font-size: 12px">aa</span></p></li></ul>';
 
+/** The marker font every `<li>` under `root` carries, in document order. */
+const renderedFonts = (root: ParentNode) =>
+  Array.from(root.querySelectorAll('li'))
+    .map((li) =>
+      fontLabel(
+        li.style.getPropertyValue(MARKER_FONT_SIZE_VAR),
+        li.style.getPropertyValue(MARKER_FONT_FAMILY_VAR),
+      ),
+    )
+    .join(' ');
+
+/** A real keydown, so ListToggle's Backspace (§3.8) runs as in the browser. */
+const pressBackspace = (editor: Editor) =>
+  editor.view.someProp('handleKeyDown', (f) =>
+    f(
+      editor.view,
+      new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace' }),
+    ),
+  );
+
+/** The first doc-changing transaction `run` dispatches. */
+const firstTransaction = (editor: Editor, run: () => void) => {
+  const seen: { tr?: Transaction } = {};
+  const listener = ({ transaction }: { transaction: Transaction }) => {
+    if (transaction.docChanged) seen.tr ??= transaction;
+  };
+  editor.on('transaction', listener);
+  run();
+  editor.off('transaction', listener);
+  if (!seen.tr) throw new Error('no doc-changing transaction');
+  return seen.tr;
+};
+
 describe.each([1, 2])('marker font from the document (schema v%i)', (v) => {
   it.each(CASES)('%s', (_name, html, expected) => {
     expect(documentFonts(track(makeEditor(v, html)))).toBe(expected);
@@ -182,5 +228,174 @@ describe.each([1, 2])('marker font from the document (schema v%i)', (v) => {
     const editor = track(makeEditor(v, ITEM_12PX));
     nativeDelete(editor, startOf(editor, 'aa'), endOf(editor, 'aa'));
     expect(documentFonts(editor)).toBe('12px/-');
+  });
+});
+
+describe.each([1, 2])('marker font in the editor (schema v%i)', (v) => {
+  it.each(CASES)('renders %s', (_name, html, expected) => {
+    expect(renderedFonts(track(makeEditor(v, html)).view.dom)).toBe(expected);
+  });
+
+  it('renders 12.0px next to 12px as 12px (M-4)', () => {
+    const editor = track(
+      makeEditor(
+        v,
+        '<ul><li><p><span style="font-size: 12px">aa</span> <span style="font-size: 12px">bb</span></p></li></ul>',
+      ),
+    );
+    markText(editor, 'aa', { fontSize: '12.0px' });
+    expect(renderedFonts(editor.view.dom)).toBe('12px/-');
+  });
+
+  it('follows formatting of the whole line, one word, and undo', () => {
+    const editor = track(makeEditor(v, '<ul><li><p>aa bb</p></li></ul>'));
+    selectText(editor, 'aa bb');
+    editor.commands.setFontSize('12px');
+    expect(renderedFonts(editor.view.dom)).toBe('12px/-');
+    undoManager(editor).stopCapturing();
+    selectText(editor, 'bb');
+    editor.commands.setFontSize('24px');
+    expect(renderedFonts(editor.view.dom)).toBe('-/-');
+    editor.commands.undo();
+    expect(renderedFonts(editor.view.dom)).toBe('12px/-');
+  });
+
+  it('keeps the marker through a retype, a toggle off and back', () => {
+    const editor = track(
+      makeEditor(
+        v,
+        '<ul><li><p><span style="font-size: 12px">aa</span></p></li><li><p>bb</p></li></ul>',
+      ),
+    );
+    caretIn(editor, 'aa');
+    editor.commands.toggleOrderedList();
+    expect(renderedFonts(editor.view.dom)).toBe('12px/- -/-');
+    caretIn(editor, 'aa');
+    editor.commands.toggleOrderedList();
+    expect(renderedFonts(editor.view.dom)).toBe('-/-');
+    caretIn(editor, 'aa');
+    editor.commands.toggleBulletList();
+    expect(renderedFonts(editor.view.dom)).toBe('12px/- -/-');
+  });
+
+  it('gives a bullet the size when wrapping a 12px paragraph', () => {
+    const editor = track(
+      makeEditor(v, '<p><span style="font-size: 12px">aa</span></p>'),
+    );
+    caretIn(editor, 'aa');
+    editor.commands.toggleBulletList();
+    expect(renderedFonts(editor.view.dom)).toBe('12px/-');
+  });
+
+  it('gives the empty item Enter creates its stamped size', () => {
+    const editor = track(makeEditor(v, ITEM_12PX));
+    editor.commands.setTextSelection(endOf(editor, 'aa'));
+    pressEnter(editor);
+    expect(renderedFonts(editor.view.dom)).toBe('12px/- 12px/-');
+  });
+
+  it('keeps 12px after deleting the text of a 12px item', () => {
+    const editor = track(makeEditor(v, ITEM_12PX));
+    nativeDelete(editor, startOf(editor, 'aa'), endOf(editor, 'aa'));
+    expect(renderedFonts(editor.view.dom)).toBe('12px/-');
+  });
+
+  it('drops the marker style with Backspace at the start of an item', () => {
+    const editor = track(
+      makeEditor(
+        v,
+        '<ul><li><p>aa</p></li><li><p><span style="font-size: 12px">bb</span></p></li><li><p><span style="font-size: 12px">cc</span></p></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(startOf(editor, 'bb'));
+    pressBackspace(editor);
+    expect(renderedFonts(editor.view.dom)).toBe('-/- 12px/-');
+  });
+
+  it('follows a collaborator formatting the item', () => {
+    const ydocA = new Y.Doc();
+    const ydocB = new Y.Doc();
+    const a = track(
+      makeEditor(v, '<ul><li><p>aa</p></li></ul>', { ydoc: ydocA }),
+    );
+    Y.applyUpdate(ydocB, Y.encodeStateAsUpdate(ydocA));
+    const b = track(makeEditor(v, null, { ydoc: ydocB }));
+    selectText(b, 'aa');
+    b.commands.setFontSize('12px');
+    Y.applyUpdate(
+      ydocA,
+      Y.encodeStateAsUpdate(ydocB, Y.encodeStateVector(ydocA)),
+    );
+    expect(renderedFonts(a.view.dom)).toBe('12px/-');
+  });
+
+  describe('changedBlockRanges (M-3)', () => {
+    it('rebuilds a bulk-formatted list once', () => {
+      const items = Array.from(
+        { length: 250 },
+        (_, i) => `<li><p>item${i}</p></li>`,
+      ).join('');
+      const editor = track(makeEditor(v, `<ul>${items}</ul>`));
+      editor.commands.setTextSelection({
+        from: startOf(editor, 'item0'),
+        to: endOf(editor, 'item249'),
+      });
+      const tr = firstTransaction(editor, () =>
+        editor.commands.setFontSize('12px'),
+      );
+      expect(
+        tr.steps.filter((step) => step instanceof AddMarkStep),
+      ).toHaveLength(250);
+      expect(changedBlockRanges(tr)).toEqual([[0, tr.doc.child(0).nodeSize]]);
+      expect(renderedFonts(editor.view.dom)).toBe(
+        Array(250).fill('12px/-').join(' '),
+      );
+    });
+
+    it('treats a whole-document replace as one range', () => {
+      const editor = track(makeEditor(v, '<p>aa</p>'));
+      const tr = firstTransaction(editor, () =>
+        editor.commands.setContent('<ul><li><p>bb</p></li></ul><p>cc</p>'),
+      );
+      expect(changedBlockRanges(tr)).toEqual([[0, tr.doc.content.size]]);
+    });
+
+    it('keeps edits in two separate lists apart', () => {
+      const editor = track(
+        makeEditor(
+          v,
+          '<ul><li><p>aa</p></li></ul><p>mid</p><ul><li><p>bb</p></li></ul>',
+        ),
+      );
+      const { state } = editor;
+      const mark = state.schema.marks.textStyle.create({ fontSize: '12px' });
+      const tr = state.tr
+        .addMark(startOf(editor, 'aa'), endOf(editor, 'aa'), mark)
+        .addMark(startOf(editor, 'bb'), endOf(editor, 'bb'), mark);
+      const blocks: [number, number][] = [];
+      tr.doc.forEach((node, offset) =>
+        blocks.push([offset, offset + node.nodeSize]),
+      );
+      expect(changedBlockRanges(tr)).toEqual([blocks[0], blocks[2]]);
+    });
+  });
+});
+
+describe('marker font stylesheet', () => {
+  const css = readFileSync(
+    path.join(__dirname, '../../styles/index.css'),
+    'utf8',
+  );
+
+  it('resets the properties on every item so nested items never inherit them', () => {
+    expect(css).toMatch(
+      /\.ProseMirror li \{\s*--ddoc-marker-font-size: initial;\s*--ddoc-marker-font-family: initial;\s*\}/,
+    );
+  });
+
+  it('feeds them into the native marker and the nested counters', () => {
+    expect(css).toMatch(
+      /\.ProseMirror li::marker,\s*\.ProseMirror li > ol > li::before \{\s*font-size: var\(--ddoc-marker-font-size\);\s*font-family: var\(--ddoc-marker-font-family\);\s*\}/,
+    );
   });
 });

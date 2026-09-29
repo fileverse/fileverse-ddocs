@@ -1,4 +1,13 @@
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import {
+  AddMarkStep,
+  AddNodeMarkStep,
+  AttrStep,
+  RemoveMarkStep,
+  RemoveNodeMarkStep,
+} from '@tiptap/pm/transform';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { CARET_MARKS_ATTR, parseMarks } from '../caret-marks/caret-style';
 
 /** Custom properties the marker CSS reads (docs/LIST_TOGGLE.md §3.9). */
@@ -195,3 +204,105 @@ export const markerFont = (item: ProseMirrorNode): MarkerFont => {
   }
   return resolveMarkerFont(runs, isSet(legacy.fontSize));
 };
+
+/** The inline style carrying a marker font to its `<li>`; null for the default. */
+export const markerFontStyle = ({
+  fontSize,
+  fontFamily,
+}: MarkerFont): string | null => {
+  const parts: string[] = [];
+  if (fontSize) parts.push(`${MARKER_FONT_SIZE_VAR}: ${fontSize}`);
+  if (fontFamily) parts.push(`${MARKER_FONT_FAMILY_VAR}: ${fontFamily}`);
+  return parts.length ? parts.join('; ') : null;
+};
+
+const decorationsIn = (doc: ProseMirrorNode, from: number, to: number) => {
+  const decorations: Decoration[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name === 'listItem') {
+      const style = markerFontStyle(markerFont(node));
+      if (style) {
+        decorations.push(Decoration.node(pos, pos + node.nodeSize, { style }));
+      }
+    }
+    return !node.isTextblock;
+  });
+  return decorations;
+};
+
+/**
+ * The top-level block ranges a transaction changed, merged so each block is
+ * rebuilt once (M-3). Mark and attr steps have empty step maps, so their own
+ * positions are read as well.
+ */
+export const changedBlockRanges = (tr: Transaction): [number, number][] => {
+  const size = tr.doc.content.size;
+  const clamp = (pos: number) => Math.max(0, Math.min(pos, size));
+  const widened: [number, number][] = [];
+  tr.steps.forEach((step, index) => {
+    const raw: [number, number][] = [];
+    step
+      .getMap()
+      .forEach((_oldStart, _oldEnd, newStart, newEnd) =>
+        raw.push([newStart, newEnd]),
+      );
+    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
+      raw.push([step.from, step.to]);
+    }
+    if (
+      step instanceof AttrStep ||
+      step instanceof AddNodeMarkStep ||
+      step instanceof RemoveNodeMarkStep
+    ) {
+      raw.push([step.pos, step.pos + 1]);
+    }
+    const later = tr.mapping.slice(index + 1);
+    raw.forEach(([start, end]) => {
+      const $start = tr.doc.resolve(clamp(later.map(start, -1)));
+      const $end = tr.doc.resolve(clamp(later.map(end, 1)));
+      widened.push([
+        $start.depth ? $start.before(1) : $start.pos,
+        $end.depth ? $end.after(1) : $end.pos,
+      ]);
+    });
+  });
+  widened.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  widened.forEach(([from, to]) => {
+    const last = merged[merged.length - 1];
+    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  });
+  return merged;
+};
+
+export const markerFontPluginKey = new PluginKey<DecorationSet>(
+  'listMarkerFont',
+);
+
+/** Display only: decorations carry each marker's font, the document is never written. */
+export const markerFontPlugin = () =>
+  new Plugin<DecorationSet>({
+    key: markerFontPluginKey,
+    state: {
+      init: (_, state) =>
+        DecorationSet.create(
+          state.doc,
+          decorationsIn(state.doc, 0, state.doc.content.size),
+        ),
+      apply: (tr, set) => {
+        if (!tr.docChanged) return set;
+        let next = set.map(tr.mapping, tr.doc);
+        changedBlockRanges(tr).forEach(([from, to]) => {
+          next = next.remove(
+            next.find(from, to).filter((d) => d.from >= from && d.to <= to),
+          );
+          next = next.add(tr.doc, decorationsIn(tr.doc, from, to));
+        });
+        return next;
+      },
+    },
+    props: {
+      decorations: (state) => markerFontPluginKey.getState(state),
+    },
+  });
