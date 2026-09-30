@@ -577,7 +577,7 @@ const MEDIA_FIGURE_SKIP_ATTRS = new Set([
 ]);
 turndownService.addRule('mediaFigure', {
   filter: (node) =>
-    emitInlineStyles &&
+    (emitInlineStyles || emitSlideMedia) &&
     node.nodeName === 'DIV' &&
     (node as HTMLElement).getAttribute('data-type') === 'resizable-media',
   replacement: function (_content, node) {
@@ -688,6 +688,15 @@ turndownService.addRule('strikethrough', {
 let emitInlineStyles = false;
 export const setMarkdownInlineStyles = (enabled: boolean) => {
   emitInlineStyles = enabled;
+};
+
+// Presentation export keeps media and its structurally-owned caption in one
+// HTML block so slide pagination can treat the pair as an atomic unit. This is
+// deliberately separate from inline-style export: regular Markdown, Split
+// View, and blog-publish behavior must remain unchanged.
+let emitSlideMedia = false;
+export const setMarkdownSlideMedia = (enabled: boolean) => {
+  emitSlideMedia = enabled;
 };
 
 // Standalone exports (downloads, blog publish) resolve `var(--color-editor-*)`

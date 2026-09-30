@@ -3,9 +3,14 @@ import { getSchema } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { DOMParser as PMDOMParser } from '@tiptap/pm/model';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { turndownService, setMarkdownInlineStyles } from './index';
+import {
+  turndownService,
+  setMarkdownInlineStyles,
+  setMarkdownSlideMedia,
+} from './index';
 import { ResizableMedia } from '../resizable-media';
 import { MediaCaption } from '../resizable-media/media-caption';
+import { convertMarkdownToHTML } from '../../utils/md-to-html';
 
 const exportStyled = (html: string) => {
   setMarkdownInlineStyles(true);
@@ -13,6 +18,15 @@ const exportStyled = (html: string) => {
     return turndownService.turndown(html);
   } finally {
     setMarkdownInlineStyles(false);
+  }
+};
+
+const exportForSlides = (html: string) => {
+  setMarkdownSlideMedia(true);
+  try {
+    return turndownService.turndown(html);
+  } finally {
+    setMarkdownSlideMedia(false);
   }
 };
 
@@ -118,6 +132,56 @@ describe('media figure export (styles mode)', () => {
     expect(md).not.toContain('<figure');
     expect(md).toContain('![chart](a.png)');
     expect(md).toContain('my caption');
+  });
+});
+
+describe('media figure export (presentation mode)', () => {
+  it('keeps a current-schema caption and its formatting inside the figure', () => {
+    const md = exportForSlides(
+      wrapper(
+        `<img src="a.png" alt="chart" />${captioned(
+          'see <strong>the</strong> <a href="https://x.dev">docs</a>',
+        )}`,
+      ),
+    );
+
+    expect(md).toContain('<figure data-type="resizable-media"');
+    expect(md).toContain(
+      '<figcaption>see <strong>the</strong> <a href="https://x.dev">docs</a></figcaption>',
+    );
+  });
+
+  it('keeps a legacy caption attribute rendered as .media-caption', () => {
+    const md = exportForSlides(
+      wrapper(
+        '<img src="legacy.png" alt="legacy" /><div class="media-caption">legacy caption</div>',
+      ),
+    );
+
+    expect(md).toContain('<figcaption>legacy caption</figcaption>');
+  });
+
+  it('feeds the current caption to the paginator as one slide unit', () => {
+    const md = exportForSlides(
+      wrapper(`<img src="a.png" alt="chart" />${captioned('my caption')}`),
+    );
+    const html = convertMarkdownToHTML(md);
+
+    expect(html).toContain('class="slide-media"');
+    expect(html).toContain('class="slide-caption"');
+    expect(html).not.toContain('data-type="page-break"');
+  });
+
+  it('does not change subsequent plain Markdown export behavior', () => {
+    exportForSlides(
+      wrapper(`<img src="a.png" alt="chart" />${captioned('caption')}`),
+    );
+    const plain = turndownService.turndown(
+      wrapper(`<img src="a.png" alt="chart" />${captioned('caption')}`),
+    );
+
+    expect(plain).not.toContain('<figure');
+    expect(plain).toContain('![chart](a.png)');
   });
 });
 

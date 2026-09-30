@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import { Editor } from '@tiptap/react';
 import {
   searchForSecureImageNodeAndEmbedImageContent,
+  setMarkdownSlideMedia,
   turndownService,
 } from '../extensions/mardown-paste-handler';
 import TurndownService from 'turndown';
@@ -190,9 +191,13 @@ export const convertToMarkdown = async (
 
   const inlineHtml = temporalEditor.getHTML();
 
-  const md = turndownService.turndown(inlineHtml);
-  temporalEditor.destroy();
-  return md;
+  setMarkdownSlideMedia(true);
+  try {
+    return turndownService.turndown(inlineHtml);
+  } finally {
+    setMarkdownSlideMedia(false);
+    temporalEditor.destroy();
+  }
 };
 
 export const processMarkdownContent = (markdown: string): Slides => {

@@ -14,7 +14,10 @@ import { PreviewPanel } from './preview-panel';
 import { cn } from '@fileverse/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import copy from 'copy-to-clipboard';
-import { convertMarkdownToHTML } from '../../utils/md-to-html';
+import {
+  convertMarkdownToHTML,
+  isSoloSlideImage,
+} from '../../utils/md-to-html';
 import { useResponsive } from '../../utils/responsive';
 import { IpfsImageFetchPayload, DdocProps, ThemeKey } from '../../types';
 import { dedupeResolvedExtensions } from '../../utils/helpers';
@@ -67,20 +70,12 @@ const SlideContent = ({
   documentStyling?: DdocProps['documentStyling'];
   theme?: ThemeKey;
 }) => {
-  const isSoloImage = (html: string): boolean => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const img = doc.querySelector('img.slide-image');
-    // Check if there's exactly one image with class 'slide-image' and it's the only content
-    return !!img && doc.body.children.length === 1;
-  };
-
   useEffect(() => {
     setTimeout(() => {
       if (!editor.view?.dom) return;
       editor.commands.setContent(content);
 
-      if (isSoloImage(content)) {
+      if (isSoloSlideImage(content)) {
         // Add a class to the editor root for solo image slides
         editor.view.dom.classList.add('solo-slide-image');
       } else {
