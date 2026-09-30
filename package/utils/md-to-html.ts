@@ -28,7 +28,7 @@ markdownIt.renderer.rules.list_item_open = (tokens, idx) => {
 };
 
 interface SlideContent {
-  type: 'h1' | 'h2' | 'h3' | 'content' | 'image' | 'table';
+  type: 'h1' | 'h2' | 'h3' | 'content' | 'image' | 'media' | 'table';
   content: string;
 }
 
@@ -198,6 +198,31 @@ const splitListIntoChunks = (
   return chunks;
 };
 
+const normalizeSlideMediaFigure = (html: string): string | null => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const figure = doc.querySelector<HTMLElement>(
+    'figure[data-type="resizable-media"]',
+  );
+  if (!figure) return null;
+
+  figure.classList.add('slide-media');
+  figure.querySelector('img')?.classList.add('slide-image');
+  figure.querySelector('video')?.classList.add('slide-video');
+  figure.querySelector('figcaption')?.classList.add('slide-caption');
+  return figure.outerHTML;
+};
+
+export const isSoloSlideImage = (html: string): boolean => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const image = doc.querySelector('img.slide-image');
+  const caption = doc.querySelector('figcaption, .slide-caption');
+  return (
+    !!image && !caption?.textContent?.trim() && doc.body.children.length === 1
+  );
+};
+
 export function convertMarkdownToHTML(
   markdown: string,
   options: ConversionOptions = {},
@@ -334,6 +359,63 @@ export function convertMarkdownToHTML(
     if (currentSection.length > 0) {
       sections.push(currentSection);
       currentSection = [];
+    }
+  };
+
+  const appendMedia = (
+    type: 'image' | 'media',
+    content: string,
+    sizingContent: string,
+  ) => {
+    const hasHeadingAndContent =
+      currentSection.length > 0 &&
+      currentSection[0].type === 'h2' &&
+      currentSection.length > 1;
+
+    const previousContentLines = currentSection.reduce((sum, item) => {
+      if (item.type === 'content') {
+        const paragraphs = item.content
+          .split('\n')
+          .filter((line) => line.trim().length > 0);
+        const estimatedLines = paragraphs.reduce((lineCount, paragraph) => {
+          const cleanText = paragraph.replace(/<[^>]+>/g, '');
+          return lineCount + Math.max(1, Math.ceil(cleanText.length / 200));
+        }, 0);
+        return sum + estimatedLines;
+      }
+      return sum + 1;
+    }, 0);
+
+    let captionLines = 0;
+    if (type === 'media') {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const captionText = doc.querySelector('figcaption')?.textContent?.trim();
+      if (captionText) {
+        captionLines = Math.max(1, Math.ceil(captionText.length / 200));
+      }
+    }
+    const isPreviousContentLong =
+      previousContentLines > maxLinesPerSlide - 3 - captionLines;
+    const alreadyHasMedia = currentSection.some(
+      (item) => item.type === 'image' || item.type === 'media',
+    );
+
+    if (
+      isPreviousContentLong ||
+      (!hasHeadingAndContent && alreadyHasMedia) ||
+      (currentSection.length === 0 &&
+        shouldCreateNewSection(sizingContent, currentSection))
+    ) {
+      createNewSection();
+    }
+
+    currentSection.push({ type, content });
+
+    // Preserve the existing rule: content after media starts a new slide,
+    // except for the existing short heading-plus-content layout.
+    if (!hasHeadingAndContent || isPreviousContentLong) {
+      createNewSection();
     }
   };
 
@@ -563,65 +645,33 @@ export function convertMarkdownToHTML(
       continue;
     }
 
+    // Presentation serialization emits a captioned media node as one figure.
+    // Consume the complete raw HTML block before pagination so a page break can
+    // never be inserted between the media and its caption.
+    if (
+      line.startsWith('<figure') &&
+      line.includes('data-type="resizable-media"')
+    ) {
+      const figureLines = [lines[i]];
+      while (
+        i + 1 < lines.length &&
+        !figureLines.some((figureLine) => figureLine.includes('</figure>'))
+      ) {
+        figureLines.push(lines[++i]);
+      }
+      const figureHtml = figureLines.join('\n').trim();
+      const normalizedFigure = normalizeSlideMediaFigure(figureHtml);
+      if (normalizedFigure) {
+        appendMedia('media', normalizedFigure, figureHtml);
+        continue;
+      }
+    }
+
     // Handle images
     if (line.match(/!\[.*\]\(.*\)/)) {
       const imgMatch = line.match(/!\[(.*)\]\((.*)\)/);
       if (imgMatch) {
-        // Check if current section starts with h2 and has content
-        const hasHeadingAndContent =
-          currentSection.length > 0 &&
-          currentSection[0].type === 'h2' &&
-          currentSection.length > 1;
-
-        // console.log('Current Section:', currentSection);
-
-        // Count actual lines in previous content
-        const previousContentLines = currentSection.reduce((sum, item) => {
-          if (item.type === 'content') {
-            // Split content by newlines first
-            const paragraphs = item.content
-              .split('\n')
-              .filter((line) => line.trim().length > 0);
-
-            // For each paragraph, estimate wrapped lines based on character length
-            const estimatedLines = paragraphs.reduce((lineCount, paragraph) => {
-              // Remove HTML tags for more accurate character count
-              const cleanText = paragraph.replace(/<[^>]+>/g, '');
-              // Estimate lines based on characters (assuming ~200 chars per line)
-              const estimatedParagraphLines = Math.ceil(cleanText.length / 200);
-              return lineCount + Math.max(1, estimatedParagraphLines);
-            }, 0);
-
-            return sum + estimatedLines;
-          }
-          // Count other types (h2, etc) as 1 line
-          return sum + 1;
-        }, 0);
-
-        const isPreviousContentLong =
-          previousContentLines > maxLinesPerSlide - 3; // -4 to account for the image and some padding
-
-        // Create new section if:
-        // 1. Previous content has too many lines, OR
-        // 2. We already have an image in current section, OR
-        // 3. We don't have a heading with content and should create new section
-        if (
-          isPreviousContentLong ||
-          (!hasHeadingAndContent &&
-            currentSection.some((item) => item.type === 'image')) ||
-          (currentSection.length === 0 &&
-            shouldCreateNewSection(line, currentSection))
-        ) {
-          createNewSection();
-        }
-
-        currentSection.push({ type: 'image', content: imgMatch[2] });
-
-        // Create new section after image unless it's following a heading with content
-        // and the previous content wasn't too long
-        if (!hasHeadingAndContent || isPreviousContentLong) {
-          createNewSection();
-        }
+        appendMedia('image', imgMatch[2], line);
       }
       continue;
     }
@@ -704,6 +754,8 @@ export function convertMarkdownToHTML(
             return `<h2>${content.content}</h2>`;
           case 'image':
             return `<img src="${content.content}" class="slide-image"/>`;
+          case 'media':
+            return content.content;
           case 'table':
             return content.content; // Table content is already HTML
           default:

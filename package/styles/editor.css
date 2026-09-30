@@ -1356,6 +1356,19 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
       border-radius: 1rem;
     }
 
+    .slide-media {
+      width: 100%;
+      margin: 0;
+
+      .slide-caption {
+        margin-top: 0.5rem;
+        color: hsla(var(--color-text-secondary));
+        font-size: 1rem;
+        line-height: 1.4;
+        text-align: center;
+      }
+    }
+
     ol,
     ul {
       font-size: 1.5rem;
@@ -1602,6 +1615,28 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
       margin: 2vh auto;
       border-radius: 8px;
       display: block;
+    }
+
+    .slide-media {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 80vw;
+      margin: 0 auto;
+
+      img {
+        max-height: calc(70vh - 3rem);
+        margin-bottom: 0;
+      }
+
+      .slide-caption {
+        max-width: 80vw;
+        margin-top: 0.5rem;
+        color: hsla(var(--color-text-secondary));
+        font-size: min(1.5vw, 23.04px);
+        line-height: 1.5;
+        text-align: center;
+      }
     }
 
     /* // Tables */
