@@ -36,6 +36,24 @@ export const ListToggle = Extension.create({
         const list = $from.node($from.depth - 2);
         return editor.commands.toggleList(list.type, item.type);
       },
+      // Enter on an empty last nested item moves it out a level, as v1 does.
+      // Stock rebuilds it there with default attrs, dropping the item's spacing.
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        if (!empty || $from.depth < 4 || $from.parent.content.size !== 0) {
+          return false;
+        }
+        const item = $from.node(-1);
+        if (
+          item.type.name !== 'listItem' ||
+          $from.node(-3).type !== item.type ||
+          $from.indexAfter(-1) !== item.childCount ||
+          $from.index(-2) !== $from.node(-2).childCount - 1
+        ) {
+          return false;
+        }
+        return editor.commands.liftListItem(item.type);
+      },
     };
   },
 
