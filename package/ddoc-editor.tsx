@@ -163,6 +163,7 @@ const DdocEditor = forwardRef(
       isCollabDocumentPublished = true,
       disableInlineComment,
       renderThemeToggle,
+      renderToolbarLeading,
       metadataProxyUrl,
       extensions,
       onCopyHeadingLink,
@@ -814,6 +815,7 @@ const DdocEditor = forwardRef(
               exportTriggerRef.current = trigger;
             }}
             fonts={fonts}
+            renderToolbarLeading={renderToolbarLeading}
           />
         </div>
       </div>

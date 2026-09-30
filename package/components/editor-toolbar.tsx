@@ -61,6 +61,7 @@ const TiptapToolBar = ({
   isSplitView,
   onToggleSplitView,
   fonts: consumerFonts,
+  renderToolbarLeading,
 }: {
   editor: Editor | null;
   onError?: (errorString: string) => void;
@@ -94,6 +95,7 @@ const TiptapToolBar = ({
     | ((trigger: ((format?: string, name?: string) => void) | null) => void)
     | undefined;
   fonts?: FontDescriptor[];
+  renderToolbarLeading?: () => React.ReactNode;
 }) => {
   const {
     toolbar,
@@ -166,6 +168,8 @@ const TiptapToolBar = ({
     [setIsNavbarVisible],
   );
 
+  const leadingSlot = renderToolbarLeading?.();
+
   if (!editor) return null;
 
   return (
@@ -182,6 +186,10 @@ const TiptapToolBar = ({
         className="w-full bg-transparent px-2 py-1 items-center h-9 flex justify-between relative"
       >
         <div className="flex h-9 items-center gap-1 justify-center">
+          {/* Host-provided leading item (renderToolbarLeading), grouped with
+              the import/export button: no divider between them. */}
+          {leadingSlot}
+
           {/* Export/Import Dropdown */}
 
           {isLoading
