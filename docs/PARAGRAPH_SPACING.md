@@ -388,12 +388,13 @@ is missing. Fixing it means a `patch-package` fork or an upstream PR; deferred.
    1 on v1 too, and pasting into a table cell gives 1 with bare paragraphs.)
 
    Fixed in `transformPasted`: when the target paragraph is empty — or is fully
-   selected, and so about to be — there is nothing to merge with, so the slice
-   start is marked closed (`openStart = 0`) and the pasted block simply becomes
-   that block. Pasting into a block that has text still merges, which is
-   correct mid-sentence. `gdocs-paste.test.ts` pins both sides on both schemas.
+   selected, and so about to be — there is nothing to merge with, so the first
+   pasted textblock is closed (`openStart` drops to just above it) and simply
+   becomes that block. Pasting into a block that has text still merges, which
+   is correct mid-sentence. `gdocs-paste.test.ts` pins both sides on both
+   schemas.
 
-   Three scoping decisions, each deliberate and each pinned by a test:
+   Four scoping decisions, each deliberate and each pinned by a test:
 
    - **Drops are excluded.** `transformPasted` is ProseMirror's *drop* hook as
      well, and there the insertion point is the mouse — an external drop
@@ -408,6 +409,11 @@ is missing. Fixing it means a `patch-package` fork or an upstream PR; deferred.
    - **Full-selection replace is included.** Selecting a whole paragraph and
      pasting over it leaves the same empty target and lost the same
      attributes.
+   - **Wrappers above the textblock stay open.** An in-editor copy carries its
+     list/dBlock context; closing that too (the original `openStart = 0`)
+     pasted onto an empty list item as a new list or block beside it (v1) or
+     a list nested under it (v2). Top-level slices are unaffected: their
+     textblock sits at depth 1, so they still close at 0.
 
    **[LIMIT]** If the clipboard's `text/plain` looks like markdown, `handlePaste`
    takes the markdown branch and the HTML — attributes and all — is discarded

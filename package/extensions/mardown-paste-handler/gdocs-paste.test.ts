@@ -282,3 +282,124 @@ describe.each([1, 2])('Google Docs paste on schema v%i', (version) => {
     expect(first.lineHeight).toBe('138%');
   });
 });
+
+/** Copies `range` as ProseMirror's copy handler does (the slice keeps its
+ *  list/dBlock context) and pastes it at `at`. */
+const copyPaste = (
+  editor: Editor,
+  range: { from: number; to: number },
+  at: number,
+) => {
+  editor.commands.setTextSelection(range);
+  const content = editor.state.selection.content();
+  const { dom } = editor.view.serializeForClipboard(content);
+  // The mounted editor's plain text, not tiptap-markdown's ("- One" would
+  // route the paste into the markdown branch); see use-tab-editor.tsx.
+  const text = content.content.textBetween(0, content.content.size, '\n\n');
+  editor.commands.setTextSelection(at);
+  editor.view.pasteHTML(
+    dom.innerHTML,
+    new FakeClipboardEvent('paste', dom.innerHTML, text) as never,
+  );
+};
+
+const contentOf = (editor: Editor, text: string) => {
+  let range = { from: 0, to: 0 };
+  editor.state.doc.descendants((node, pos) => {
+    if (node.isTextblock && node.textContent === text) {
+      range = { from: pos + 1, to: pos + 1 + node.content.size };
+    }
+  });
+  return range;
+};
+
+const emptyItem = (editor: Editor) => {
+  let at = 0;
+  editor.state.doc.descendants((node, pos, parent) => {
+    if (
+      node.isTextblock &&
+      !node.childCount &&
+      parent?.type.name === 'listItem'
+    )
+      at = pos + 1;
+  });
+  return at;
+};
+
+/** Top-level blocks as strings, v1 dBlock wrappers dropped. */
+const blocks = (editor: Editor) => {
+  const out: string[] = [];
+  editor.state.doc.forEach((node) =>
+    out.push(
+      (node.type.name === 'dBlock' ? node.firstChild! : node).toString(),
+    ),
+  );
+  return out;
+};
+
+// The empty-target override must close only the pasted paragraph: closing
+// the copied list/dBlock context too inserted it as a new list or block
+// beside the item (v1) or nested it under the item (v2).
+describe.each([1, 2])('in-editor paste onto an empty list item, v%i', (v) => {
+  const LIST =
+    '<ul><li><p>One</p></li><li><p>Two</p></li><li><p></p></li></ul>';
+
+  it('fills the item with a copied list item', () => {
+    const editor = mount(v, `${LIST}<p>After</p>`);
+    const before = blocks(editor);
+
+    copyPaste(editor, contentOf(editor, 'One'), emptyItem(editor));
+
+    expect(blocks(editor)).toEqual(
+      before.map((b) =>
+        b.replace('listItem(paragraph)', 'listItem(paragraph("One"))'),
+      ),
+    );
+  });
+
+  it('fills the item with a copied top-level paragraph', () => {
+    const editor = mount(v, `${LIST}<p>After</p>`);
+    const before = blocks(editor);
+
+    copyPaste(editor, contentOf(editor, 'After'), emptyItem(editor));
+
+    expect(blocks(editor)).toEqual(
+      before.map((b) =>
+        b.replace('listItem(paragraph)', 'listItem(paragraph("After"))'),
+      ),
+    );
+  });
+
+  it('places copied items from the empty item on, in the same list', () => {
+    const editor = mount(v, `${LIST}<p>After</p>`);
+    const before = blocks(editor);
+
+    copyPaste(
+      editor,
+      { from: contentOf(editor, 'One').from, to: contentOf(editor, 'Two').to },
+      emptyItem(editor),
+    );
+
+    expect(blocks(editor)).toEqual(
+      before.map((b) =>
+        b.replace(
+          'listItem(paragraph)',
+          'listItem(paragraph("One")), listItem(paragraph("Two"))',
+        ),
+      ),
+    );
+  });
+
+  it('gives the item the pasted paragraph its own attributes', () => {
+    const editor = mount(v, `${LIST}<p style="${LINE_HEIGHT}">After</p>`);
+
+    copyPaste(editor, contentOf(editor, 'After'), emptyItem(editor));
+
+    const inItem: unknown[] = [];
+    editor.state.doc.descendants((node, _pos, parent) => {
+      if (parent?.type.name === 'listItem' && node.textContent === 'After')
+        inItem.push(node.attrs.lineHeight);
+    });
+    expect(inItem).toEqual(['180%']);
+  });
+});
