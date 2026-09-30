@@ -1,4 +1,4 @@
-import { Extension, getNodeType } from '@tiptap/core';
+import { Extension, getNodeType, getSplittedAttributes } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { isListItemNode, LIST_TOGGLE_META, refuse, sharedList } from './shared';
 import { retypeItems, retypeList } from './retype';
@@ -36,8 +36,8 @@ export const ListToggle = Extension.create({
         const list = $from.node($from.depth - 2);
         return editor.commands.toggleList(list.type, item.type);
       },
-      // Enter on an empty last nested item moves it out a level, as v1 does.
-      // Stock rebuilds it there with default attrs, dropping the item's spacing.
+      // Enter on an empty last nested line takes it out a level keeping the
+      // item's attrs (spacing); stock rebuilds with defaults (LIST_TOGGLE §3.10).
       Enter: ({ editor }) => {
         const { $from, empty } = editor.state.selection;
         if (!empty || $from.depth < 4 || $from.parent.content.size !== 0) {
@@ -52,7 +52,29 @@ export const ListToggle = Extension.create({
         ) {
           return false;
         }
-        return editor.commands.liftListItem(item.type);
+        if (item.childCount === 1) {
+          return editor.commands.liftListItem(item.type);
+        }
+        // Other content stays nested: split the line off as stock does, then
+        // give the new item the attrs a normal Enter split would carry.
+        const carried = getSplittedAttributes(
+          editor.extensionManager.attributes,
+          item.type.name,
+          item.attrs,
+        );
+        return editor
+          .chain()
+          .splitListItem(item.type)
+          .command(({ tr }) => {
+            const $new = tr.selection.$from;
+            if ($new.node(-1).type !== item.type) return false;
+            tr.setNodeMarkup($new.before(-1), undefined, {
+              ...$new.node(-1).attrs,
+              ...carried,
+            });
+            return true;
+          })
+          .run();
       },
     };
   },

@@ -233,6 +233,9 @@ export const DBlock = Node.create<DBlockOptions>({
             return true;
           }
           if (isCurrentItemEmpty && !isTopLevelList) {
+            // Only an item that is just this empty line moves; with other
+            // content, ListToggle splits the line off (LIST_TOGGLE.md §3.10).
+            if (parent.childCount > 1) return false;
             // The block is moved, not created: it keeps its own stamp.
             const itemType = parent.type.name as 'listItem' | 'taskItem';
             if (!editor.can().liftListItem(itemType)) return false;

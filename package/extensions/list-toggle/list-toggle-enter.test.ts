@@ -30,7 +30,7 @@ const emptyNestedItem = (version: number) => {
 };
 
 const listShape = (editor: Editor) =>
-  flatShape(editor).replace(/ p\{[^}]*\}\(\)$/, '');
+  flatShape(editor).replace(/ p(\{[^}]*\})?\(\)$/, '');
 
 describe.each([1, 2])('Enter out of a nested list (schema v%i)', (version) => {
   it('moves the empty item out one level with its spacing', () => {
@@ -52,6 +52,42 @@ describe.each([1, 2])('Enter out of a nested list (schema v%i)', (version) => {
     expect(listShape(editor)).toBe(
       `ul(li${SPACING}(p("aa") ul(li${SPACING}(p("xx")))) li${SPACING}(p{caretMarks=[]}("nn")) li${SPACING}(p{caretMarks=[]}("mm")))`,
     );
+  });
+
+  it('splits the empty line off an item with other content, which stays nested (PR597-1)', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<ul><li><p>parent</p><ul><li><p>content</p><p></p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection({
+      from: 1,
+      to: editor.state.doc.content.size - 1,
+    });
+    editor.commands.setParagraphSpacing({ spaceBefore: 6, spaceAfter: 12 });
+    editor.commands.setTextSelection(endOf(editor, 'content') + 2);
+    pressEnter(editor);
+    expect(listShape(editor).replace(/\{caretMarks=[^}]*\}/g, '')).toBe(
+      `ul(li${SPACING}(p("parent") ul(li${SPACING}(p("content")))) li${SPACING}(p()))`,
+    );
+    expect(editor.state.selection.$from.parent.content.size).toBe(0);
+    expectValid(editor, version);
+  });
+
+  it('does the same for a checklist item with other content', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>parent</p><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>content</p><p></p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'content') + 2);
+    pressEnter(editor);
+    expect(listShape(editor).replace(/\{caretMarks=[^}]*\}/g, '')).toBe(
+      'tl(ti(p("parent") tl(ti(p("content")))) ti(p()))',
+    );
+    expectValid(editor, version);
   });
 
   it('undoes in one step', () => {
