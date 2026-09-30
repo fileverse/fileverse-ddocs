@@ -84,10 +84,6 @@
     white-space: normal;
   }
 
-  ul + ul {
-    margin-top: 1.5rem;
-  }
-
   /* Uniform 24px block gap. prose-lg gives headings 48px margins; v1 used to
      hide them because margins collapsed through the dBlock wrapper rows, so
      this pin was v2-only. Bottom-only spacing collapses nothing, which would

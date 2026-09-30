@@ -93,6 +93,18 @@ describe('editor block rhythm', () => {
     expect(find('.ProseMirror > * + *', 'margin-top')).toBeUndefined();
   });
 
+  // A list's last item owns the gap below it. A top margin on the next list
+  // (flat v2 makes top-level lists siblings) floors that gap, so "0pt after"
+  // on the item could not close it.
+  it('gives no list a top margin from its preceding sibling', () => {
+    const listAfterSibling = decls.filter(
+      (d) =>
+        /^margin(-top)?$/.test(d.prop) &&
+        /\+\s*(ul|ol|:is\(ul, ?ol\))$/.test(d.chain),
+    );
+    expect(listAfterSibling).toEqual([]);
+  });
+
   // v1 wraps every block twice: dBlock row > div > block. `.ProseMirror > *`
   // lands the gap on the outer wrapper, while authored spacing renders on the
   // block itself. A parent's bottom margin collapses with its last child's and
