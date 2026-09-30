@@ -2,8 +2,8 @@
 
 Status: **implemented** in `package/extensions/list-toggle/` (2026-09-24);
 the acceptance tests of §5 live in `list-toggle/*.test.ts`
-(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`, `-marker`,
-plus `marker-font`); full suite 102 files, 1382 passed (six `it.fails` mark
+(`list-toggle-wrap`, `-off`, `-retype`, `-anchors`, `-backspace`, `-enter`,
+`-marker`, plus `marker-font`); full suite 103 files, 1388 passed (six `it.fails` mark
 the TEC-3181 Yjs-layer gap). §3.9 (list markers follow the item's font,
 TEC-3110, folded in on 2026-09-28) is **implemented** (2026-09-29) in
 `list-toggle/marker-font.ts`, after two scoped reviews; its tests are §5
@@ -625,13 +625,35 @@ historically been partial — if it ignores `font-family` there, bullets and
 top-level numbers still take the size, which is what the ticket asks for.
 Both are in the manual QA.
 
+### 3.10 Enter out of a nested list keeps the item's spacing
+
+Enter on an empty last item of a nested list moves that item out one level
+(it becomes the next item of the outer list), and the item node moves with
+all its attrs, spacing included. Items typed after it split from it, so they
+keep the spacing too. v1's dBlock Enter handler already did this with
+`liftListItem` ("the block is moved, not created"). v2 fell through to stock
+`splitListItem`, whose nested branch deletes the empty item and builds a new
+one with `type.createAndFill(null, …)`: the paragraph inside gets split attrs
+but the `listItem` gets defaults, so the item-owned `spaceBefore` /
+`spaceAfter` were dropped and every later Enter repeated the loss (reported
+in QA, 2026-09-30).
+
+Mechanism: `ListToggle.addKeyboardShortcuts` handles `Enter` in exactly
+stock's rebuild case for a `listItem` — an empty selection in an empty
+paragraph that is the item's last child, the item last in its list, the list
+inside an item of the same type — and calls `liftListItem(item.type)`, one
+`ReplaceAroundStep`, one undo step. Anything else returns `false` and falls
+through to stock. `taskItem`s are left to stock: their spacing lives on the
+paragraph, which stock carries, and stock resets `checked` on the new item.
+
 ## 4. Call sites
 
 Twelve sites, across two files, now call the engine — eleven replacing the
 hand-rolled functions, plus the desktop heading dropdown's (`TextHeading`)
 "Text" entry, which never used them: it was a plain `toggleNode` no-op on
 list items, not a conversion. The Backspace shortcut of §3.8 is a thirteenth
-trigger, inside the extension itself.
+trigger, inside the extension itself; the Enter shortcut of §3.10 lifts
+rather than toggles, so it is not a toggle trigger.
 
 - `editor-utils.tsx` (8): the toolbar's three list tools (List, Ordered
   List, To-do List) and the mobile toolbar's To-do list tool call
@@ -658,7 +680,7 @@ trigger, inside the extension itself.
 
 ## 5. Tests
 
-`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors,backspace,marker}.test.ts`
+`package/extensions/list-toggle/list-toggle-{wrap,off,retype,anchors,backspace,enter,marker}.test.ts`
 (and `marker-font.test.ts` for the pure §3.9 rule),
 built with `list-toggle/test-helpers.ts` (wraps `caret-marks/test-helpers.ts`'s
 `makeEditor(version, html, { extensions })`, `pressKey`, `selectText`) plus
@@ -764,6 +786,10 @@ edits within its capture window into one step.
     same result; the atom inventory guard (M-2); a
     `handle-print-css.test.ts` case asserts the print stylesheet carries the reset
     and the `::marker` rule; `css-ownership.test.ts` covers the editor rules
+19. Enter out of a nested list (§3.10), `list-toggle-enter.test.ts`, via a
+    real keydown: spacing set on every item, Enter after `xx` then Enter on
+    the empty nested item → the item moves out with its spacing, the caret
+    stays in it; items typed after it keep the spacing; one undo step
 
 Existing suites to keep green: `use-editor-commands.test.tsx`,
 `paragraph-spacing-carryover.test.ts`, `caret-marks/*.test.ts`,
@@ -848,6 +874,12 @@ markers.
   unjoined lists; v2: a `RangeError`). The real keymap path — a
   `KeyboardEvent` through `handleKeyDown` — works and is what the shortcut
   test (§5 test 14) uses.
+
+- Stock `splitListItem`, on Enter in an empty last item of a nested list
+  (§3.10), deletes that item and appends `type.createAndFill(null, …)` to
+  the outer list: the new `listItem` has default attrs and only its
+  paragraph gets split attrs (`@tiptap/core`). v2 lost the item's spacing
+  there (probe, 2026-09-30); v1's dBlock Enter lifts the item instead.
 
 For §3.9 (probe, both schemas, 2026-09-28):
 
