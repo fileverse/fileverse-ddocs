@@ -941,9 +941,23 @@ const MarkdownPasteHandler = (
                 $from.parentOffset === 0 &&
                 $to.parentOffset === $to.parent.content.size;
 
+              // Close only the first pasted textblock: wrappers open above it
+              // (a copied item's list/dBlock context) must still join the
+              // target's, or the paste lands beside or under the list item.
+              let textblockDepth = 0;
+              for (
+                let node = content.firstChild, depth = 1;
+                node && depth <= slice.openStart;
+                node = node.firstChild, depth++
+              ) {
+                if (node.isTextblock) {
+                  textblockDepth = depth;
+                  break;
+                }
+              }
               const openStart =
                 !dropInFlight && targetIsEmptied && content.childCount > 0
-                  ? 0
+                  ? Math.max(textblockDepth - 1, 0)
                   : slice.openStart;
 
               if (content === slice.content && openStart === slice.openStart) {

@@ -323,6 +323,19 @@ input[type='number'].buttonless::-webkit-inner-spin-button {
   inset-inline-start: -1.4em;
 }
 
+/* A marker takes its item's font when the first paragraph agrees on it
+   (docs/LIST_TOGGLE.md §3.9). The reset stops a nested item inheriting it. */
+.ProseMirror li {
+  --ddoc-marker-font-size: initial;
+  --ddoc-marker-font-family: initial;
+}
+
+.ProseMirror li::marker,
+.ProseMirror li > ol > li::before {
+  font-size: var(--ddoc-marker-font-size);
+  font-family: var(--ddoc-marker-font-family);
+}
+
 /* On the editor root, so it inherits into every block in both schemas: the
    v1 dBlock contentDOM's children and the flat schema's top-level blocks
    alike. (Scoping this to `[data-node-view-content]` covers v1 only, since

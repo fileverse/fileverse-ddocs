@@ -1,6 +1,7 @@
 import renderMathInElement from 'katex/contrib/auto-render';
 import { getRegisteredFonts, primaryToken } from './font-loader';
 import type { FontDescriptor } from '../types';
+import { applyMarkerFonts } from '../extensions/list-toggle/marker-font';
 
 const A4_HEIGHT_INCHES = 11.69;
 const A4_WIDTH_INCHES = 8.27;
@@ -422,7 +423,8 @@ const MAIN_DOCUMENT_PRINT_BASELINE = `
   .print-content-root ul { list-style: disc; }
   .print-content-root ol { list-style: decimal; }
   .print-content-root ul, .print-content-root ol { margin-top: 0; margin-bottom: 16px; padding-left: 24px; }
-  .print-content-root li { margin-top: 0; margin-bottom: 4px; }
+  .print-content-root li { margin-top: 0; margin-bottom: 4px; --ddoc-marker-font-size: initial; --ddoc-marker-font-family: initial; }
+  .print-content-root li::marker, .print-content-root li > ol > li::before { font-size: var(--ddoc-marker-font-size); font-family: var(--ddoc-marker-font-family); }
   .print-content-root a { color: #3B82F6; text-decoration: underline; }
   .print-content-root strong, .print-content-root b { font-weight: 600; }
   .print-content-root em, .print-content-root i { font-style: italic; }
@@ -954,6 +956,8 @@ export const handleContentPrint = (content: string) => {
   const contentRoot = document.createElement('div');
   contentRoot.className = 'print-content-root';
   contentRoot.innerHTML = sectionsHtml;
+  // Before KaTeX, so the marker vote reads only the serializer's output.
+  applyMarkerFonts(contentRoot);
   host.appendChild(contentRoot);
 
   document.head.appendChild(styleEl);

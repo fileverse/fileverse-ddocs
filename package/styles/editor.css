@@ -75,17 +75,13 @@
        Chrome as 0px where it should be 24px. jsdom resolves this cascade
        differently and reports 24px either way, so no jsdom test can catch it;
        block-rhythm.test.ts asserts the `:where()` on the CSS source instead. */
-    &:where(:last-child) {
+    &:where(:last-of-type) {
       margin-bottom: 0;
     }
   }
 
   .katex-display > .katex > .katex-html {
     white-space: normal;
-  }
-
-  ul + ul {
-    margin-top: 1.5rem;
   }
 
   /* Uniform 24px block gap. prose-lg gives headings 48px margins; v1 used to

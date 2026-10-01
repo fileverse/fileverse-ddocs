@@ -49,17 +49,18 @@ describe('editor block rhythm', () => {
 
   // The v1 dBlock node view wraps every top-level paragraph as
   // `[data-type=d-block] > [data-node-view-content] > p`, alone in that div, so
-  // EVERY v1 paragraph is also a :last-child. A bare `&:last-child` here
+  // EVERY v1 paragraph is also its last p. A bare `&:last-of-type` here
   // compiles to (0,2,1) and outranks the v1 block rule at (0,2,0), which
   // zeroed the gap under every v1 paragraph. Measured in Chrome against this
-  // stylesheet: 0px with `:last-child`, 24px with `:where(:last-child)`.
+  // stylesheet (then `:last-child`): 0px bare, 24px inside `:where()`.
   // jsdom resolves that contest the other way and reports 24px for both, so a
   // rendered test cannot catch it — this source assertion is the only guard.
-  it('keeps the nested-paragraph last-child reset specificity-neutral', () => {
+  it('keeps the nested-paragraph last-of-type reset specificity-neutral', () => {
     expect(
-      find('.ProseMirror >> p >> &:where(:last-child)', 'margin-bottom')?.value,
+      find('.ProseMirror >> p >> &:where(:last-of-type)', 'margin-bottom')
+        ?.value,
     ).toBe('0');
-    expect(find('.ProseMirror >> p >> &:last-child', 'margin-bottom')).toBe(
+    expect(find('.ProseMirror >> p >> &:last-of-type', 'margin-bottom')).toBe(
       undefined,
     );
   });
@@ -90,6 +91,18 @@ describe('editor block rhythm', () => {
     expect(find('.ProseMirror > *', 'margin-bottom')?.value).toBe('1.5em');
     expect(find('.ProseMirror > *', 'margin-top')?.value).toBe('0');
     expect(find('.ProseMirror > * + *', 'margin-top')).toBeUndefined();
+  });
+
+  // A list's last item owns the gap below it. A top margin on the next list
+  // (flat v2 makes top-level lists siblings) floors that gap, so "0pt after"
+  // on the item could not close it.
+  it('gives no list a top margin from its preceding sibling', () => {
+    const listAfterSibling = decls.filter(
+      (d) =>
+        /^margin(-top)?$/.test(d.prop) &&
+        /\+\s*(ul|ol|:is\(ul, ?ol\))$/.test(d.chain),
+    );
+    expect(listAfterSibling).toEqual([]);
   });
 
   // v1 wraps every block twice: dBlock row > div > block. `.ProseMirror > *`

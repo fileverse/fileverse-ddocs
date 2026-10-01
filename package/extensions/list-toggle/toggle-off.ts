@@ -1,0 +1,78 @@
+import { commands as coreCommands, type CommandProps } from '@tiptap/core';
+import type { Node as ProseMirrorNode, NodeType } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
+import { liftOut } from './lift-out';
+import {
+  childPos,
+  isDBlock,
+  isolateItem,
+  nodeRangeAt,
+  refuse,
+  type SharedList,
+} from './shared';
+import { edgesToParagraphs } from './spacing';
+
+/**
+ * Toggle off when the list's parent is not a list item (spec §3.4): the
+ * covered items leave the list, each body child becoming its own block at
+ * the list's level. Items are processed last to first, so every edit lands
+ * at or after the item's start and earlier items keep their positions.
+ */
+export const toggleOffTopLevel = (
+  tr: Transaction,
+  shared: SharedList,
+  firstIndex: number,
+  lastIndex: number,
+  dBlockType: NodeType | undefined,
+): true => {
+  const { node: list, depth, pos: listPos } = shared;
+  const throughDBlock = isDBlock(tr.doc.resolve(listPos).parent);
+  const splitDepth = throughDBlock ? 2 : 1;
+  const liftTarget = throughDBlock ? depth - 2 : depth - 1;
+  const wrapper = throughDBlock ? (dBlockType as NodeType) : null;
+
+  for (let i = lastIndex; i >= firstIndex; i--) {
+    const itemPos = childPos(list, listPos, i);
+    const item = tr.doc.nodeAt(itemPos) as ProseMirrorNode;
+    edgesToParagraphs(tr, itemPos, item);
+
+    // Body children after the first paragraph, lifted whole, last to first.
+    let offset = item.content.size;
+    for (let k = item.childCount - 1; k >= 1; k--) {
+      const child = item.child(k);
+      offset -= child.nodeSize;
+      liftOut(tr, nodeRangeAt(tr, itemPos + 1 + offset), liftTarget, wrapper);
+    }
+
+    // Isolate the now single-paragraph item in its own list, then lift the paragraph.
+    const isolatedPos = isolateItem(tr, itemPos, splitDepth);
+    // Resolve inside the paragraph: at the item's content start blockRange() is the item.
+    const paragraphRange = tr.doc.resolve(isolatedPos + 2).blockRange();
+    if (paragraphRange) tr.lift(paragraphRange, depth - 1);
+  }
+  return true;
+};
+
+/**
+ * With an outer item of the other node, stock liftListItem unwraps the
+ * covered items into the outer item and discards their wrappers, so their
+ * edge spacing is moved onto the paragraphs first (spec §3.4, R4-1).
+ */
+export const toggleOffNested = (
+  props: CommandProps,
+  shared: SharedList,
+  firstIndex: number,
+  lastIndex: number,
+  outerItem: ProseMirrorNode,
+  itemType: NodeType,
+  itemTypeOrName: string | NodeType,
+): boolean => {
+  const { tr } = props;
+  if (outerItem.type !== itemType) {
+    for (let i = lastIndex; i >= firstIndex; i--) {
+      const itemPos = childPos(shared.node, shared.pos, i);
+      edgesToParagraphs(tr, itemPos, tr.doc.nodeAt(itemPos) as ProseMirrorNode);
+    }
+  }
+  return coreCommands.liftListItem(itemTypeOrName)(props) || refuse(tr);
+};
