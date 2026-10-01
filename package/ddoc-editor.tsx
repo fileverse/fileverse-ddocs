@@ -771,7 +771,7 @@ const DdocEditor = forwardRef(
       <div
         id="toolbar"
         className={cn(
-          'z-[45] hidden mobile:flex items-center justify-center w-full h-11 fixed left-0 transition-all duration-300 top-[var(--navbar)]',
+          'z-[45] hidden mobile:flex items-center color-bg-secondary justify-center w-full h-11 fixed left-0 transition-all duration-300 top-[var(--navbar)]',
           {
             'translate-y-0 opacity-100': !isFocusMode && isNavbarVisible,
             '-translate-y-[var(--navbar)] opacity-100':
