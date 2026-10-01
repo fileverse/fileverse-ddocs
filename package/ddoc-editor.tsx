@@ -1061,7 +1061,7 @@ const DdocEditor = forwardRef(
                         <div
                           ref={editorRef}
                           className={cn(
-                            'w-full pt-8 md:pt-0',
+                            'w-full',
                             {
                               'color-bg-default':
                                 !documentStyling?.canvasBackground &&
@@ -1399,7 +1399,7 @@ const DdocEditor = forwardRef(
             {!isPreviewMode && !disableBottomToolbar && !isFocusMode && (
               <div
                 className={cn(
-                  'flex mobile:hidden w-full h-[52px] fixed left-0 z-10 transition-all duration-300 ease-in-out',
+                  'flex mobile:hidden w-full h-[52px] fixed left-0 z-10 transition-all duration-300 ease-in-out color-bg-default',
                   isKeyboardVisible && 'hidden',
                   {
                     'top-[var(--navbar)]': isNavbarVisible,
@@ -1409,7 +1409,7 @@ const DdocEditor = forwardRef(
               >
                 <ToolbarReveal
                   isReady={isToolbarReady}
-                  className="flex items-center w-full h-full px-4 color-bg-default border-b border-color-default"
+                  className="flex items-center w-full h-full px-4 border-b border-color-default"
                 >
                   <MobileToolbar
                     onError={onError}
