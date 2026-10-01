@@ -280,7 +280,7 @@ export const TabSidebar = ({
                     )}
                   </div>
                 </div>
-                <div className="w-full overflow-y-auto no-scrollbar space-y-1">
+                <div className="w-full overflow-y-auto space-y-1">
                   {tabs.map((tab, tabIndex) => (
                     <DdocTab
                       key={tab.id}
