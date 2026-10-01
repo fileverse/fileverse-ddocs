@@ -9,7 +9,6 @@ import TiptapToolBar from './editor-toolbar';
 vi.mock('@fileverse/ui', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   IconButton: () => <button />,
-  Skeleton: () => <div />,
   Popover: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -37,11 +36,6 @@ vi.mock('../hooks/use-editor-states', () => ({
 
 vi.mock('./import-export-button', () => ({
   ImportExportButton: () => <button data-testid="import-export" />,
-}));
-
-vi.mock('./motion-div', () => ({
-  fadeInTransition: (node: React.ReactNode) => node,
-  slideUpTransition: (node: React.ReactNode) => node,
 }));
 
 vi.mock('./editor-toolbar/zoom-level', () => ({
@@ -75,7 +69,6 @@ const renderToolbar = (renderToolbarLeading?: () => React.ReactNode) =>
       setZoomLevel={vi.fn()}
       isNavbarVisible
       setIsNavbarVisible={vi.fn()}
-      isLoading={false}
       tabs={[]}
       ydoc={new Y.Doc()}
       renderToolbarLeading={renderToolbarLeading}
@@ -111,7 +104,6 @@ describe('TiptapToolBar renderToolbarLeading', () => {
         setZoomLevel={vi.fn()}
         isNavbarVisible
         setIsNavbarVisible={vi.fn()}
-        isLoading={false}
         tabs={[]}
         ydoc={new Y.Doc()}
         renderToolbarLeading={() => null}

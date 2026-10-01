@@ -8,11 +8,8 @@ import {
   Drawer,
   DrawerTrigger,
   DynamicModal,
-  Skeleton,
 } from '@fileverse/ui';
 import ToolbarButton from '../common/toolbar-button';
-import { AnimatePresence } from 'framer-motion';
-import { fadeInTransition, slideUpTransition } from './motion-div';
 import {
   FontDescriptor,
   IpfsImageFetchPayload,
@@ -29,7 +26,6 @@ const MobileToolbar = ({
   isNavbarVisible,
   setIsNavbarVisible,
   ipfsImageUploadFn,
-  isLoading,
   ipfsImageFetchFn,
   fetchV1ImageFn,
   fonts,
@@ -40,7 +36,6 @@ const MobileToolbar = ({
   isNavbarVisible: boolean;
   setIsNavbarVisible: React.Dispatch<React.SetStateAction<boolean>>;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
-  isLoading: boolean;
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
@@ -196,57 +191,25 @@ const MobileToolbar = ({
             return (
               <div key={tool.title} className="flex items-center">
                 {tool.title === 'Text formating' ? (
-                  <DrawerTrigger asChild>
-                    <AnimatePresence>
-                      {isLoading
-                        ? fadeInTransition(
-                            <Skeleton
-                              className={`w-[36px] h-[36px] rounded-sm`}
-                            />,
-                            'mobile' + tool.title + 'skeleton',
-                          )
-                        : slideUpTransition(
-                            <ToolbarButton
-                              onClick={tool.onClick}
-                              isActive={tool.isActive}
-                              icon={tool.icon}
-                            />,
-                            tool.title + 'mobile',
-                          )}
-                    </AnimatePresence>
-                  </DrawerTrigger>
+                  <ToolbarButton
+                    onClick={tool.onClick}
+                    isActive={tool.isActive}
+                    icon={tool.icon}
+                  />
                 ) : tool.title === 'Text color' ? (
                   <DrawerTrigger asChild>
-                    {isLoading
-                      ? fadeInTransition(
-                          <Skeleton
-                            className={`w-[36px] h-[36px] rounded-sm`}
-                          />,
-                          'mobile' + tool.title,
-                        )
-                      : slideUpTransition(
-                          <ToolbarButton
-                            onClick={tool.onClick}
-                            icon={tool.icon}
-                            isActive={false}
-                          />,
-                          'text-color-button',
-                        )}
-                  </DrawerTrigger>
-                ) : isLoading ? (
-                  fadeInTransition(
-                    <Skeleton className={`w-[36px] h-[36px] rounded-sm`} />,
-                    'skeleton' + tool.title,
-                  )
-                ) : (
-                  slideUpTransition(
                     <ToolbarButton
                       onClick={tool.onClick}
                       icon={tool.icon}
                       isActive={false}
-                    />,
-                    'mobile-button' + tool.title,
-                  )
+                    />
+                  </DrawerTrigger>
+                ) : (
+                  <ToolbarButton
+                    onClick={tool.onClick}
+                    icon={tool.icon}
+                    isActive={false}
+                  />
                 )}
               </div>
             );

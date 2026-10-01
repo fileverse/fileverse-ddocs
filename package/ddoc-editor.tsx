@@ -52,6 +52,7 @@ import { CommentFloatingContainer } from './components/inline-comment/comment-fl
 import { DocumentOutline } from './components/toc/document-outline';
 import { EditorProvider } from './context/editor-context';
 import { fadeInTransition, slideUpTransition } from './components/motion-div';
+import { ToolbarReveal } from './components/toolbar-reveal';
 import { PreviewContentLoader } from './components/preview-content-loader';
 import { EmbedSettings } from './extensions/twitter-embed/embed-settings';
 import { CustomSpacingDialogHost } from './components/editor-toolbar/custom-spacing-dialog';
@@ -764,11 +765,13 @@ const DdocEditor = forwardRef(
 
     // Extracted so the formatting toolbar renders in BOTH normal and Split View
     // modes (Split View bypasses the rest of renderComp but must keep the toolbar).
+    const isToolbarReady = !!editor && !isContentLoading;
+
     const editorToolbar = !isPreviewMode ? (
       <div
         id="toolbar"
         className={cn(
-          'z-[45] hidden mobile:flex items-center justify-center w-full h-11 fixed left-0 color-bg-default border-b color-border-default transition-all duration-300 top-[var(--navbar)]',
+          'z-[45] hidden mobile:flex items-center justify-center w-full h-11 fixed left-0 transition-all duration-300 top-[var(--navbar)]',
           {
             'translate-y-0 opacity-100': !isFocusMode && isNavbarVisible,
             '-translate-y-[var(--navbar)] opacity-100':
@@ -778,46 +781,50 @@ const DdocEditor = forwardRef(
           },
         )}
       >
-        <div className="justify-center items-center grow relative color-text-default">
-          <EditorToolBar
-            isPresentationMode={isPresentationMode}
-            setIsPresentationMode={handlePresentationMode}
-            enableCollaboration={isLiveCollabSession(collaboration)}
-            onError={onError}
-            editor={editor}
-            zoomLevel={zoomLevel}
-            setZoomLevel={setZoomLevel}
-            isNavbarVisible={isNavbarVisible}
-            setIsNavbarVisible={setIsNavbarVisible}
-            ipfsImageUploadFn={ipfsImageUploadFn}
-            onMarkdownExport={onMarkdownExport}
-            onMarkdownImport={onMarkdownImport}
-            onPdfExport={onPdfExport}
-            onHtmlExport={onHtmlExport}
-            onTxtExport={onTxtExport}
-            onOdtExport={onOdtExport}
-            onDocxImport={onDocxImport}
-            isLoading={!editor || isContentLoading}
-            ipfsImageFetchFn={ipfsImageFetchFn}
-            fetchV1ImageFn={fetchV1ImageFn}
-            isConnected={isConnected}
-            tabs={tabs}
-            ydoc={ydoc}
-            toggleFocusMode={toggleFocusMode}
-            isSplitView={isSplitView}
-            onToggleSplitView={
-              // Hidden during collaboration — Split View is solo-only in v1.
-              setIsSplitView && !isCollabEnabled
-                ? () => setIsSplitView((open) => !open)
-                : undefined
-            }
-            onRegisterExportTrigger={(trigger) => {
-              exportTriggerRef.current = trigger;
-            }}
-            fonts={fonts}
-            renderToolbarLeading={renderToolbarLeading}
-          />
-        </div>
+        <ToolbarReveal
+          isReady={isToolbarReady}
+          className="flex items-center justify-center w-full h-full color-bg-default border-b color-border-default"
+        >
+          <div className="justify-center items-center grow relative color-text-default">
+            <EditorToolBar
+              isPresentationMode={isPresentationMode}
+              setIsPresentationMode={handlePresentationMode}
+              enableCollaboration={isLiveCollabSession(collaboration)}
+              onError={onError}
+              editor={editor}
+              zoomLevel={zoomLevel}
+              setZoomLevel={setZoomLevel}
+              isNavbarVisible={isNavbarVisible}
+              setIsNavbarVisible={setIsNavbarVisible}
+              ipfsImageUploadFn={ipfsImageUploadFn}
+              onMarkdownExport={onMarkdownExport}
+              onMarkdownImport={onMarkdownImport}
+              onPdfExport={onPdfExport}
+              onHtmlExport={onHtmlExport}
+              onTxtExport={onTxtExport}
+              onOdtExport={onOdtExport}
+              onDocxImport={onDocxImport}
+              ipfsImageFetchFn={ipfsImageFetchFn}
+              fetchV1ImageFn={fetchV1ImageFn}
+              isConnected={isConnected}
+              tabs={tabs}
+              ydoc={ydoc}
+              toggleFocusMode={toggleFocusMode}
+              isSplitView={isSplitView}
+              onToggleSplitView={
+                // Hidden during collaboration — Split View is solo-only in v1.
+                setIsSplitView && !isCollabEnabled
+                  ? () => setIsSplitView((open) => !open)
+                  : undefined
+              }
+              onRegisterExportTrigger={(trigger) => {
+                exportTriggerRef.current = trigger;
+              }}
+              fonts={fonts}
+              renderToolbarLeading={renderToolbarLeading}
+            />
+          </div>
+        </ToolbarReveal>
       </div>
     ) : null;
 
@@ -1392,7 +1399,7 @@ const DdocEditor = forwardRef(
             {!isPreviewMode && !disableBottomToolbar && !isFocusMode && (
               <div
                 className={cn(
-                  'flex mobile:hidden items-center w-full h-[52px] fixed left-0 z-10 px-4 color-bg-default transition-all duration-300 ease-in-out border-b border-color-default',
+                  'flex mobile:hidden w-full h-[52px] fixed left-0 z-10 transition-all duration-300 ease-in-out',
                   isKeyboardVisible && 'hidden',
                   {
                     'top-[var(--navbar)]': isNavbarVisible,
@@ -1400,18 +1407,22 @@ const DdocEditor = forwardRef(
                   },
                 )}
               >
-                <MobileToolbar
-                  onError={onError}
-                  editor={editor}
-                  isKeyboardVisible={isKeyboardVisible}
-                  isNavbarVisible={isNavbarVisible}
-                  setIsNavbarVisible={setIsNavbarVisible}
-                  ipfsImageUploadFn={ipfsImageUploadFn}
-                  isLoading={!editor || isContentLoading}
-                  ipfsImageFetchFn={ipfsImageFetchFn}
-                  fetchV1ImageFn={fetchV1ImageFn}
-                  fonts={fonts}
-                />
+                <ToolbarReveal
+                  isReady={isToolbarReady}
+                  className="flex items-center w-full h-full px-4 color-bg-default border-b border-color-default"
+                >
+                  <MobileToolbar
+                    onError={onError}
+                    editor={editor}
+                    isKeyboardVisible={isKeyboardVisible}
+                    isNavbarVisible={isNavbarVisible}
+                    setIsNavbarVisible={setIsNavbarVisible}
+                    ipfsImageUploadFn={ipfsImageUploadFn}
+                    ipfsImageFetchFn={ipfsImageFetchFn}
+                    fetchV1ImageFn={fetchV1ImageFn}
+                    fonts={fonts}
+                  />
+                </ToolbarReveal>
               </div>
             )}
             {editor && (
