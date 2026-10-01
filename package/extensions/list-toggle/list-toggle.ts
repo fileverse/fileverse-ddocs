@@ -68,10 +68,13 @@ export const ListToggle = Extension.create({
           .command(({ tr }) => {
             const $new = tr.selection.$from;
             if ($new.node(-1).type !== item.type) return false;
+            const storedMarks = tr.storedMarks;
             tr.setNodeMarkup($new.before(-1), undefined, {
               ...$new.node(-1).attrs,
               ...carried,
             });
+            // The attribute step clears the split's typing-style declaration.
+            tr.setStoredMarks(storedMarks);
             return true;
           })
           .run();

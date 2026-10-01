@@ -7,6 +7,7 @@ import {
   pressEnter,
   track,
   type,
+  typedRun,
   undoManager,
 } from '../caret-marks/test-helpers';
 import { expectValid, flatShape } from './test-helpers';
@@ -72,6 +73,41 @@ describe.each([1, 2])('Enter out of a nested list (schema v%i)', (version) => {
       `ul(li${SPACING}(p("parent") ul(li${SPACING}(p("content")))) li${SPACING}(p()))`,
     );
     expect(editor.state.selection.$from.parent.content.size).toBe(0);
+    expectValid(editor, version);
+  });
+
+  it('preserves typing marks when splitting the empty line off an item with other content (PR597-2)', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<ul><li><p>parent</p><ul><li><p>content</p><p></p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'content') + 2);
+    editor.chain().setFontSize('12px').setFontFamily('Georgia').setBold().run();
+    pressEnter(editor);
+
+    const typed = typedRun(editor);
+    expect(typed.names).toEqual(['bold', 'textStyle']);
+    expect(typed.textStyle).toMatchObject({
+      fontSize: '12px',
+      fontFamily: 'Georgia',
+    });
+    expectValid(editor, version);
+  });
+
+  it('keeps formatting cleared when splitting the empty line off a formatted item', () => {
+    const editor = track(
+      makeEditor(
+        version,
+        '<ul><li><p>parent</p><ul><li><p><strong>content</strong></p><p></p></li></ul></li></ul>',
+      ),
+    );
+    editor.commands.setTextSelection(endOf(editor, 'content') + 2);
+    editor.commands.unsetBold();
+    pressEnter(editor);
+
+    expect(typedRun(editor).names).toEqual([]);
     expectValid(editor, version);
   });
 
