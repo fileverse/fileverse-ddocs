@@ -309,3 +309,23 @@ through a mapping and mangles multi-step transactions.
   parser strips family quotes, the mark keeps them.
 - Tiptap builds plugins from the reversed extension list, so a later-registered
   extension's keymap runs first.
+
+## 7. Tiptap upgrade
+
+Verified on `@tiptap/*` 3.11.0 (`core`, `pm` and `extension-collaboration`
+pinned exactly). The engine leans on these behaviours; after a bump, run
+`npx vitest run package/extensions/list-toggle` first.
+
+| Relies on | Where | Fails first |
+| --- | --- | --- |
+| `addCommands` merges later-wins, so ours replaces stock `toggleList` | §3.1 | `list-toggle-off` (lifted items keep spacing), `list-toggle-wrap` (refusals) |
+| `run()` and `commands.x()` dispatch a `false` command unless it sets `preventDispatch` | §3.1 | `list-toggle-wrap` refusals ("document unchanged") |
+| Reversed plugin order: v1 dBlock's keymap, then ours, then StarterKit's `ListKeymap` | §3.8, §3.10 | `list-toggle-backspace`, `list-toggle-enter` (real `keydown`) |
+| `getSplittedAttributes` exported from `@tiptap/core` | §3.10 | `list-toggle-enter` (PR597-1) |
+| Stock `splitListItem` exits a nested list with default item attrs; `liftListItem` uses `liftToOuterList` only for a matching outer item | §3.10, §6 | `list-toggle-enter` |
+| Any step clears `storedMarks`, so the Enter split restores the typing style after `setNodeMarkup` | §3.10 | `list-toggle-enter` (PR597-2) |
+| `Decoration.node` style lands on the `<li>` | §3.9 | `list-toggle-marker` editor-DOM suite |
+| `@tiptap/y-tiptap`: a remote update or Yjs undo is one whole-document `ReplaceStep`; a node type change re-creates the subtree (TEC-3181). Anchors resolve through `y-prosemirror`, a separate dependency | §2, §3.9 | `list-toggle-marker` (collaborator, undo), `list-toggle-anchors` |
+
+A newer Tiptap that fixes stock `toggleList`'s spacing or comment loss does not
+make the override removable: it also unifies v1/v2 and the refusals (§2).
