@@ -36,6 +36,20 @@ import {
 const MAX_RETRIES = 3;
 // Pause between self-heal attempts while a rotation's on-chain anchor is still landing.
 const HEAL_RETRY_BACKOFF_MS = 4_000;
+// Resend backoff for an update batch the server never acked.
+const SEND_RETRY_BASE_MS = 1_000;
+const SEND_RETRY_MAX_MS = 30_000;
+// Backoff between resume attempts that fail before reaching ready.
+const RESUME_BACKOFF_BASE_MS = 2_000;
+const RESUME_BACKOFF_MAX_MS = 30_000;
+// One emit stays well under the collab server's 10MB per-packet cap (maxHttpBufferSize)
+// after encryption and base64. A single update over MAX_WIRE_UPDATE_CHARS can never be
+// delivered; resending it would only get the socket closed again.
+const MAX_BATCH_BYTES = 4_000_000;
+const MAX_WIRE_UPDATE_CHARS = 9_000_000;
+
+const backoffDelay = (failures: number, baseMs: number, maxMs: number) =>
+  Math.min(maxMs, baseMs * 2 ** Math.min(Math.max(failures - 1, 0), 10));
 
 // 'rekeyed': a new key was resolved and applied. 'current-key-ok': the resolved key already
 // matches what we hold — nothing to rekey, but the miss/409 that triggered the heal isn't a
@@ -118,6 +132,20 @@ export class SyncManager {
   // encryptForWire so a ratchet applies to the next batch without any other change.
   private wireFormat: WireFormat = 'ecies';
   private lastReportedWriteFormat: WireFormat | null = null;
+  // Bumped by connect() and by every teardown. Socket callbacks, timers and async
+  // continuations capture it and stand down once their session is gone, so a late event
+  // from a dropped socket can never act on the session that replaced it.
+  private sessionGen = 0;
+  private sendFailures = 0;
+  private sendRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Resume after a transient loss: the session's config is kept so resume() can reopen it
+  // without the host. Only set by dropToResumableIdle; anything intentional or terminal
+  // clears it.
+  private lastConnectConfig: CollabConnectionConfig | null = null;
+  private resumable = false;
+  private resuming = false;
+  private resumeFailures = 0;
+  private nextResumeAt = 0;
 
   getWireFormat(): WireFormat {
     return this.wireFormat;
@@ -208,6 +236,8 @@ export class SyncManager {
   ) {
     this.callbacksRef = callbacks;
     this.onLocalUpdate = onLocalUpdate;
+    // The host turned collaboration off: a dropped session must not come back on its own.
+    if (!callbacks) this.resumable = false;
   }
 
   // ─── Derived properties ───
@@ -222,6 +252,12 @@ export class SyncManager {
 
   get isReady(): boolean {
     return this._status === 'ready';
+  }
+
+  // Dropped and waiting to resume, or reopening after such a drop. The editor keeps its
+  // content on screen through this; it is the same document, not a fresh load.
+  get isResuming(): boolean {
+    return this.resumable || this.resuming;
   }
 
   get awareness(): Awareness | null {
@@ -297,6 +333,17 @@ export class SyncManager {
     if (to === 'ready' && from === 'syncing') {
       this.initializeAwareness();
     }
+    if (to === 'ready') {
+      this.resuming = false;
+      this.resumeFailures = 0;
+      this.nextResumeAt = 0;
+    }
+    if (to === 'terminated' || to === 'error') {
+      this.resumable = false;
+      this.resuming = false;
+      this.resumeFailures = 0;
+      this.nextResumeAt = 0;
+    }
     if (to === 'error') {
       const error = this._context.error;
       if (error) {
@@ -309,6 +356,13 @@ export class SyncManager {
 
   async connect(config: CollabConnectionConfig): Promise<void> {
     if (this._status !== 'idle') return;
+
+    const gen = ++this.sessionGen;
+    // A resume keeps what the dropped session still had queued; any other connect starts
+    // clean (late requeues from an ended session must not leak into a new one).
+    if (!this.resuming) this.updateQueue = [];
+    this.resumable = false;
+    this.lastConnectConfig = config;
 
     this.roomKey = config.roomKey;
     this.roomKeyBytes = toUint8Array(config.roomKey);
@@ -419,6 +473,8 @@ export class SyncManager {
 
     try {
       await this.connectSocket();
+      // A terminal handshake outcome already tore this session down and resolved.
+      if (gen !== this.sessionGen) return;
       // After successful handshake, transition to syncing
       this.send({ type: 'AUTH_SUCCESS' });
       syncId = this.beginSyncAttempt();
@@ -460,19 +516,105 @@ export class SyncManager {
         });
       }
     } catch (err) {
+      if (gen !== this.sessionGen) return;
       if (syncId !== null && !this.isCurrentSyncAttempt(syncId)) {
         return;
       }
       console.error('SyncManager: connect failed', err);
+      if (this.resuming) {
+        this.dropToResumableIdle('resume failed');
+        return;
+      }
       const error = err instanceof Error ? err : new Error(String(err));
       this.handleConnectionError(error);
     }
   }
 
   async disconnect(): Promise<void> {
+    this.resumable = false;
+    this.resuming = false;
     if (this._status === 'idle' || this._status === 'terminated') return;
     await this.awaitFlush();
     await this.disconnectInternal();
+  }
+
+  /** Reopens a session that ended on a transient loss (see dropToResumableIdle). A cheap
+   *  no-op in every other state, so hosts can call it on each local edit, tab focus and
+   *  network return. */
+  resume(): void {
+    if (
+      this._status !== 'idle' ||
+      !this.resumable ||
+      !this.lastConnectConfig ||
+      !this.callbacksRef
+    ) {
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden'
+    ) {
+      return;
+    }
+    if (Date.now() < this.nextResumeAt) return;
+
+    this.resuming = true;
+    this.connect(this.lastConnectConfig).catch((err) => {
+      console.error('SyncManager: resume failed', err);
+      // connect() only throws before its own error handling runs (client construction),
+      // leaving the manager idle; keep it resumable with backoff.
+      if (this._status === 'idle' && this.resuming) {
+        this.resuming = false;
+        this.resumable = true;
+        this.resumeFailures += 1;
+        this.nextResumeAt =
+          Date.now() +
+          backoffDelay(
+            this.resumeFailures,
+            RESUME_BACKOFF_BASE_MS,
+            RESUME_BACKOFF_MAX_MS,
+          );
+      }
+    });
+  }
+
+  // A transient loss (reconnect attempts exhausted, a failed reconnect sync, a handshake
+  // error on a live socket): end the session quietly instead of surfacing an error, and let
+  // resume() open a fresh one on the next local edit, tab focus or network return. The fresh
+  // session's first walk re-sends whatever the server lacks, including batches lost before
+  // the drop, exactly like a page load.
+  private dropToResumableIdle(reason: string): void {
+    console.warn(
+      `SyncManager: collaboration session dropped (${reason}); will resume on activity`,
+    );
+    const pending = this.updateQueue;
+    const failedResume = this.resuming;
+    // Before disconnect(): its synchronous 'disconnect' event must not re-enter this session.
+    this.sessionGen += 1;
+    if (this._awareness) {
+      removeAwarenessStates(
+        this._awareness,
+        [this.ydoc.clientID],
+        'disconnect',
+      );
+    }
+    this.socketClient?.disconnect();
+    this.resetInternalState();
+    this.updateQueue = pending;
+    if (failedResume) {
+      this.resumeFailures += 1;
+      this.nextResumeAt =
+        Date.now() +
+        backoffDelay(
+          this.resumeFailures,
+          RESUME_BACKOFF_BASE_MS,
+          RESUME_BACKOFF_MAX_MS,
+        );
+    }
+    this.resuming = false;
+    this.resumable = true;
+    this.send({ type: 'RESET' });
   }
 
   /** Owner rename mid-session — see SocketClient.updateDocumentMeta. */
@@ -484,6 +626,8 @@ export class SyncManager {
   }
 
   async terminateSession(): Promise<void> {
+    this.resumable = false;
+    this.resuming = false;
     if (this._status === 'idle') return;
     await this.awaitFlush();
 
@@ -531,6 +675,7 @@ export class SyncManager {
     }
 
     this.rotating = true;
+    const gen = this.sessionGen;
     const prevRoomKey = this.roomKey;
     this.roomKeyBytesPrev = this.roomKeyBytes; // dual-decrypt window
     // Swap FIRST: inbound new-session traffic arriving during the re-auth round-trip must
@@ -541,6 +686,15 @@ export class SyncManager {
 
     try {
       await this.socketClient?.rekey(newRoomKey, newAppLock, newEditUcan);
+      // A resume must reopen with the rotated key material, as the socket client now holds it.
+      if (gen === this.sessionGen && this.lastConnectConfig) {
+        this.lastConnectConfig = {
+          ...this.lastConnectConfig,
+          roomKey: newRoomKey,
+          ...(newAppLock !== undefined ? { editLock: newAppLock } : {}),
+          ...(newEditUcan ? { editUcan: newEditUcan } : {}),
+        };
+      }
       // Same Awareness instance + clientID — only the outbound broadcast handler is rebound,
       // since it closes over roomKey by value (createAwarenessUpdateHandler) and won't pick up
       // the swap on its own. Re-stamping local state after rebinding re-broadcasts under the
@@ -573,16 +727,20 @@ export class SyncManager {
     } catch (e) {
       // Re-auth failed and SocketClient reverted its own key material — revert ours too; the
       // self-heal path retries from scratch.
-      this.roomKey = prevRoomKey;
-      this.roomKeyBytes = this.roomKeyBytesPrev;
-      this.roomKeyBytesPrev = null;
+      if (gen === this.sessionGen) {
+        this.roomKey = prevRoomKey;
+        this.roomKeyBytes = this.roomKeyBytesPrev;
+        this.roomKeyBytesPrev = null;
+      }
       throw e;
     } finally {
-      this.rotating = false;
-      if (this.updateQueue.length > 0) {
-        this.processUpdateQueue().catch((err) => {
-          console.error('SyncManager: post-rekey flush failed', err);
-        });
+      if (gen === this.sessionGen) {
+        this.rotating = false;
+        if (this.updateQueue.length > 0) {
+          this.processUpdateQueue().catch((err) => {
+            console.error('SyncManager: post-rekey flush failed', err);
+          });
+        }
       }
     }
   }
@@ -728,15 +886,22 @@ export class SyncManager {
   }
 
   /**
-   * Fire-and-forget: merge all queued updates, encrypt, and emit via Socket.IO
-   * without awaiting the server ACK. The server broadcasts to peers immediately
-   * (before MongoDB write), so content reaches observers in near-real-time.
+   * Live path: merge the queued updates, encrypt, and emit via Socket.IO without waiting on
+   * earlier acks, so peers see typing at the flush cadence. A batch the server does not ack
+   * is re-queued, never dropped.
    */
   private sendUpdateBatch(): void {
     if (
       this.updateQueue.length === 0 ||
       !this.roomKey ||
-      !this.isConnected ||
+      // Only a live, synced session sends here. In 'reconnecting'/'syncing' the queue is
+      // held and drained by processUpdateQueue once the session is ready again.
+      this._status !== 'ready' ||
+      // The drain owns the queue while it runs.
+      this.isProcessing ||
+      // A resend is scheduled after a failure: keystrokes must not bypass its backoff, or
+      // every flush would resend the backlog at a failing server.
+      this.sendRetryTimer !== null ||
       this.rotating ||
       // A self-heal just failed (rotation anchor not landed yet): hold the queue until
       // the backoff elapses instead of re-triggering a doomed heal on every keystroke.
@@ -745,13 +910,73 @@ export class SyncManager {
       return;
     }
 
-    const updates = this.updateQueue;
-    this.updateQueue = [];
+    while (this.updateQueue.length > 0) {
+      const updates = this.takeBatch();
+      this.updateQueue = this.updateQueue.slice(updates.length);
 
-    const merged = Y.mergeUpdates(updates);
-    const encrypted = this.encryptForWire(merged);
+      const merged = Y.mergeUpdates(updates);
+      const encrypted = this.encryptForWire(merged);
+      if (this.isUndeliverable(updates, encrypted)) continue;
 
-    void this.sendUpdateBatchAttempt(updates, encrypted);
+      void this.sendUpdateBatchAttempt(updates, encrypted);
+    }
+  }
+
+  // Leading queue items up to MAX_BATCH_BYTES (at least one). Queue items are independent
+  // Yjs updates, so a batch can end at any item.
+  private takeBatch(): Uint8Array[] {
+    let bytes = 0;
+    let count = 0;
+    for (const update of this.updateQueue) {
+      if (count > 0 && bytes + update.byteLength > MAX_BATCH_BYTES) break;
+      bytes += update.byteLength;
+      count += 1;
+    }
+    return this.updateQueue.slice(0, count);
+  }
+
+  private isUndeliverable(updates: Uint8Array[], encrypted: string): boolean {
+    if (updates.length !== 1 || encrypted.length <= MAX_WIRE_UPDATE_CHARS) {
+      return false;
+    }
+    console.error(
+      `SyncManager: dropping a ${updates[0].byteLength}-byte update, over the collaboration server's packet limit`,
+    );
+    return true;
+  }
+
+  // The server may or may not have persisted an unacked batch; Yjs applies a duplicate as a
+  // no-op, so resend it rather than lose it. The backoff keeps a failing server from a
+  // resend storm. In 'reconnecting' the timer is a no-op and the reconnect drain sends it.
+  private requeueUnacked(updates: Uint8Array[]): void {
+    this.updateQueue = [...updates, ...this.updateQueue];
+    this.scheduleSendRetry();
+  }
+
+  // The server is accepting writes again: drop any pending resend backoff so live typing is
+  // not held behind it.
+  private markSendSucceeded(): void {
+    this.sendFailures = 0;
+    if (this.sendRetryTimer) {
+      clearTimeout(this.sendRetryTimer);
+      this.sendRetryTimer = null;
+    }
+  }
+
+  private scheduleSendRetry(): void {
+    this.sendFailures += 1;
+    if (this.sendRetryTimer) return;
+    const gen = this.sessionGen;
+    this.sendRetryTimer = setTimeout(
+      () => {
+        this.sendRetryTimer = null;
+        if (gen !== this.sessionGen || this._status !== 'ready') return;
+        this.processUpdateQueue().catch((err) => {
+          console.error('SyncManager: send retry failed', err);
+        });
+      },
+      backoffDelay(this.sendFailures, SEND_RETRY_BASE_MS, SEND_RETRY_MAX_MS),
+    );
   }
 
   // Extracted from sendUpdateBatch so a 'current-key-ok' 409 (a stale ack for a pre-rotation
@@ -831,12 +1056,16 @@ export class SyncManager {
           return;
         }
         console.error('SyncManager: server rejected update', response?.error);
+        this.requeueUnacked(updates);
         return;
       }
       this.staleAckRetries = 0;
+      this.markSendSucceeded();
       this.maybeAuthorSnapshotAfterSend();
     } catch (err) {
+      // Ack timeout or lost connection: the batch may never have reached the server.
       console.error('SyncManager: update send failed', err);
+      this.requeueUnacked(updates);
     }
   }
 
@@ -968,6 +1197,8 @@ export class SyncManager {
   }
 
   forceCleanup(): void {
+    this.resumable = false;
+    this.resuming = false;
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
@@ -1041,6 +1272,7 @@ export class SyncManager {
     const reconnected = this.send({ type: 'RECONNECTED' });
     if (!reconnected) return;
 
+    const gen = this.sessionGen;
     const syncId = this.beginSyncAttempt();
 
     try {
@@ -1069,12 +1301,11 @@ export class SyncManager {
         });
       }
     } catch (err) {
-      if (!this.isCurrentSyncAttempt(syncId)) {
+      if (gen !== this.sessionGen || !this.isCurrentSyncAttempt(syncId)) {
         return;
       }
       console.error('SyncManager: reconnection handling failed', err);
-      const error = err instanceof Error ? err : new Error(String(err));
-      this.handleConnectionError(error);
+      this.dropToResumableIdle('reconnect sync failed');
     }
   }
 
@@ -1089,10 +1320,22 @@ export class SyncManager {
       // One-shot per connect attempt: connectSocket() runs once per SyncManager.connect(),
       // so this covers every socket.io-internal reconnect within that attempt too.
       let selfHealAttempted = false;
+      const gen = this.sessionGen;
+      // A newer session exists (or this one was torn down): ignore the event, but settle
+      // the connect promise so connect() can see the change and return.
+      const standDown = () => {
+        if (gen === this.sessionGen) return false;
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+        return true;
+      };
 
       this.socketClient
         .connectSocket({
           onHandshakeSuccess: () => {
+            if (standDown()) return;
             if (!settled) {
               settled = true;
               resolve();
@@ -1107,6 +1350,7 @@ export class SyncManager {
             }
           },
           onDisconnect: () => {
+            if (standDown()) return;
             if (!settled) {
               settled = true;
               reject(new Error('Socket disconnected during connection'));
@@ -1116,11 +1360,19 @@ export class SyncManager {
             this.disconnect();
           },
           onSocketDropped: () => {
+            if (standDown()) return;
             if (this._status === 'ready' || this._status === 'syncing') {
               this.send({ type: 'SOCKET_DROPPED' });
             }
           },
           onHandShakeError: (e, statusCode, errorCode) => {
+            if (standDown()) return;
+            // Transport-level: the socket dropped mid-/auth (or its ack timed out on a dead
+            // socket). Not a rejection, and not terminal for any role: socket.io's reconnect
+            // re-runs the handshake, bounded by reconnect_failed and the connect timeout.
+            if (statusCode === undefined && !this.socketClient?.isSocketOpen) {
+              return;
+            }
             // The room is locked to a wire format this bundle predates. Terminal for every
             // role: no reconnect, the host prompts a reload.
             if (errorCode === ServerErrorCode.WIRE_FORMAT_UNSUPPORTED) {
@@ -1193,6 +1445,7 @@ export class SyncManager {
                     return this.rekey(newRoomKey);
                   })
                   .then(() => {
+                    if (standDown()) return;
                     if (!settled) {
                       settled = true;
                       resolve();
@@ -1206,6 +1459,7 @@ export class SyncManager {
                     this.handleReconnection();
                   })
                   .catch((e) => {
+                    if (standDown()) return;
                     console.error(
                       'SyncManager: terminated-join self-heal failed',
                       e,
@@ -1239,9 +1493,12 @@ export class SyncManager {
               reject(e);
               return;
             }
-            this.disconnect();
+            // Any other rejection of a re-auth on a live socket (401, 500, a thrown
+            // refreshEditClaim). Terminal outcomes were handled above.
+            this.dropToResumableIdle('reconnect handshake failed');
           },
           onContentUpdate: (payload) => {
+            if (standDown()) return;
             this.handleRemoteContentUpdate(payload);
           },
           onMembershipChange: () => {
@@ -1265,8 +1522,10 @@ export class SyncManager {
             // await — onDecryptMiss's own healingPromise join covers that race). Try the
             // same heal once before kicking; only a heal that can't recover a live session
             // falls through, so a genuine owner-termination still kicks.
+            if (standDown()) return;
             if (!this.rotating && this.callbacksRef?.onRotationSelfHeal) {
               const outcome = await this.onDecryptMiss();
+              if (standDown()) return;
               if (outcome === 'rekeyed') {
                 // rekey() already re-authed into the live session; nothing else to do.
                 return;
@@ -1281,17 +1540,8 @@ export class SyncManager {
             });
           },
           onReconnectFailed: () => {
-            if (this._status === 'reconnecting') {
-              this.send({ type: 'RETRY_EXHAUSTED' });
-            } else if (this._status === 'ready' || this._status === 'syncing') {
-              // Safety net: disconnect event was missed, go straight to error
-              const error = createCollabError(
-                'CONNECTION_FAILED',
-                'Connection lost and reconnection failed',
-              );
-              this.send({ type: 'ERROR', error });
-            }
-            // Also reject the initial connection promise if it hasn't settled
+            if (standDown()) return;
+            // Initial connection: surfaces through connect() as before.
             if (!settled) {
               settled = true;
               const error = new Error(
@@ -1299,9 +1549,20 @@ export class SyncManager {
               );
               error.name = 'SocketConnectionFailedError';
               reject(error);
+              return;
+            }
+            // An established session ran out of socket.io reconnect attempts: a network
+            // gap, not a failure to report. Resume on the next activity instead of erroring.
+            if (
+              this._status === 'reconnecting' ||
+              this._status === 'ready' ||
+              this._status === 'syncing'
+            ) {
+              this.dropToResumableIdle('reconnect attempts exhausted');
             }
           },
           onError: (e) => {
+            if (standDown()) return;
             console.error('SyncManager: socket error', e);
             if (!settled) {
               settled = true;
@@ -1692,9 +1953,12 @@ export class SyncManager {
   private async processUpdateQueue(): Promise<void> {
     if (this.isProcessing) return;
     this.isProcessing = true;
+    const gen = this.sessionGen;
 
     try {
       while (this.updateQueue.length > 0) {
+        // This session ended mid-drain; whatever replaced it drains its own queue.
+        if (gen !== this.sessionGen) break;
         // Drain only while actively writable. A soft revocation reroutes to `reconnecting`
         // (bouncing the socket to re-mint the edit claim); stop here rather than send on the
         // dropped socket — the reconnect resumes the drain with the queue intact.
@@ -1709,28 +1973,47 @@ export class SyncManager {
         await this.processNextUpdate();
       }
 
-      if (!this.isConnected) {
+      if (gen === this.sessionGen && !this.isConnected) {
         await this.disconnectInternal();
       }
     } catch (err) {
+      // The batch is still queued. A failed drain is retried with backoff, never a reason to
+      // end the session: a real loss of the session arrives on its own signal.
       console.error('SyncManager: processUpdateQueue failed', err);
-      await this.disconnectInternal();
+      if (gen === this.sessionGen) this.scheduleSendRetry();
     } finally {
-      this.isProcessing = false;
+      if (gen === this.sessionGen) this.isProcessing = false;
     }
+  }
+
+  private removeFromQueue(sent: Uint8Array[]): void {
+    const done = new Set(sent);
+    this.updateQueue = this.updateQueue.filter((update) => !done.has(update));
   }
 
   private async processNextUpdate(): Promise<void> {
     if (this.updateQueue.length === 0 || !this.roomKey) return;
 
-    const queueOffset = this.updateQueue.length;
-    const nextUpdate = Y.mergeUpdates(this.updateQueue);
+    // Removed by identity on success, so a re-queue landing mid-send can't shift what
+    // gets dropped from the queue.
+    const batch = this.takeBatch();
+    const nextUpdate = Y.mergeUpdates(batch);
     // Re-encrypted in place on a 'current-key-ok' retry below — the plaintext (`nextUpdate`)
     // doesn't change across a retry, but the key it's encrypted under might.
     let updateToSend = this.encryptForWire(nextUpdate);
+    if (this.isUndeliverable(batch, updateToSend)) {
+      this.removeFromQueue(batch);
+      return;
+    }
 
+    const gen = this.sessionGen;
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      // The session ended, or left the writable states, mid-retry: keep the batch for the
+      // drain that runs once a session is ready again, rather than burning attempts on a
+      // dead socket.
+      if (gen !== this.sessionGen) return;
+      if (this._status !== 'ready' && this._status !== 'syncing') return;
       try {
         const response = await this.socketClient?.sendUpdate({
           update: updateToSend,
@@ -1800,9 +2083,9 @@ export class SyncManager {
           );
         }
 
-        // Remove processed updates from queue
-        this.updateQueue = this.updateQueue.slice(queueOffset);
+        this.removeFromQueue(batch);
         this.staleAckRetries = 0;
+        this.markSendSucceeded();
         this.maybeAuthorSnapshotAfterSend();
         return;
       } catch (err) {
@@ -1964,10 +2247,16 @@ export class SyncManager {
   }
 
   private resetInternalState(): void {
+    this.sessionGen += 1;
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
+    if (this.sendRetryTimer) {
+      clearTimeout(this.sendRetryTimer);
+      this.sendRetryTimer = null;
+    }
+    this.sendFailures = 0;
     if (this.mirrorIdleTimer) {
       clearTimeout(this.mirrorIdleTimer);
       this.mirrorIdleTimer = null;

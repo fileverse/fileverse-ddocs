@@ -306,6 +306,12 @@ export interface DdocProps extends CommentAccountProps {
   ignoreCorruptedData?: boolean;
   onSlidesShare?: () => void;
   renderThemeToggle?: () => JSX.Element;
+  /**
+   * Host UI rendered as the first item of the desktop toolbar, before the
+   * import/export button (e.g. ddocs.new's "Explore ddocs" button), with no
+   * divider between the two. Return null to render nothing.
+   */
+  renderToolbarLeading?: () => React.ReactNode;
   metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
   footerHeight?: string;
