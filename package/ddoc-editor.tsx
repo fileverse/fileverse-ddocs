@@ -1357,7 +1357,7 @@ const DdocEditor = forwardRef(
               <div
                 className={cn(
                   'editor-right-rail',
-                  !isMobile && 'max-w-[263px] w-full',
+                  !isMobile && 'max-w-[263px] w-full xl:shrink-[2]',
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&

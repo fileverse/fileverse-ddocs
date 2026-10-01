@@ -355,8 +355,15 @@ export const TabItem = ({
             </span>
           )}
 
-          {!hideContentMenu && shouldShowContextMenu && (
-            <TabContextMenu sections={menuSections} />
+          {!hideContentMenu && (
+            <div
+              data-testid="tab-context-menu-slot"
+              className="w-[24px] h-[24px] shrink-0"
+            >
+              {shouldShowContextMenu && (
+                <TabContextMenu sections={menuSections} />
+              )}
+            </div>
           )}
         </div>
       )}
