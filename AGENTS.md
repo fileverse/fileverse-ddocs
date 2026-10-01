@@ -13,7 +13,7 @@ npm i                         # root deps (CI uses Node 22)
 npm run build                 # tsc type-check + vite lib build -> dist/
 npx tsc                       # type-check only (noEmit; covers package + entries, not tests or demo)
 npm run lint                  # eslint --fix, zero warnings allowed; prettier runs through eslint
-npm test                      # vitest run (jsdom); 95 files / ~1033 tests in ~24s
+npm test                      # vitest run (jsdom); 99 files / ~1131 tests (2 skipped) in ~24s
 npx vitest run package/extensions/paragraph-spacing.test.ts   # one file
 npx vitest run -t "treats 0 as an explicit value"             # one test by name
 npx vitest package/extensions/docx                            # watch a directory
@@ -57,6 +57,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 - `extensions/` holds custom Tiptap nodes, marks and plugins; `default-extension.ts` is the registry and its order affects keymap priority.
 - Markdown import/export lives in `extensions/mardown-paste-handler/` (the misspelling is the real path; do not rename it), built on markdown-it and turndown. Docx import is `extensions/docx/` (mammoth); HTML, ODT and text export are extensions too. Headless conversions go through `getHeadlessExtensions` so they share the exact editor schema.
 - Fonts: the package ships only system fonts. Consumers pass a `fonts` catalog that `utils/font-loader.ts` loads on demand (`docs/FONTS.md`).
+- Lists: `extensions/list-toggle/` overrides `toggleList` for every trigger (and Backspace at the start of an item; Enter out of a nested list lifts the item, keeping its spacing) and both schemas with structural steps only (`docs/LIST_TOGGLE.md`). Markers take the item's font size and family through a display-only decoration when its first paragraph agrees (§3.9, print too). Never `replaceWith` a list: the comment store marks every comment inside it deleted. Comment anchors are Yjs relative positions and still die on any node type change until TEC-3181 lands; verify anchor survival with `resolveCommentAnchorRangeInState`, not the plugin's mapped decorations. Before a Tiptap upgrade, read §7 of that doc: what the engine relies on and which test catches each.
 
 ### Styling and bundling
 
@@ -76,7 +77,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 
 - Branch names and PR titles are Linear ticket ids (`TEC-1234`).
 - Prettier through eslint: single quotes, trailing commas, semicolons, 2-space indent.
-- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`). Read the relevant one before changing that area.
+- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`). Read the relevant one before changing that area.
 
 ## Consumer repo: ddocs.new
 

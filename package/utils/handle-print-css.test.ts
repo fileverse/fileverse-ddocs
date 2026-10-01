@@ -101,6 +101,32 @@ describe('print stylesheet', () => {
     expect(declaration(mediaWrapperRule!.body, 'border')).toBe('none');
   });
 
+  it('lets each list marker take its item font (docs/LIST_TOGGLE.md §3.9)', () => {
+    const find = (selector: string) =>
+      rules.find((rule) =>
+        rule.selector
+          .split(',')
+          .some((part) => normalizeSelector(part) === selector),
+      );
+    const item = find('.print-content-root li');
+    expect(item?.body).toMatch(/--ddoc-marker-font-size:\s*initial/);
+    expect(item?.body).toMatch(/--ddoc-marker-font-family:\s*initial/);
+
+    // A consumer's global counters can draw nested numbers with ::before.
+    [
+      '.print-content-root li::marker',
+      '.print-content-root li > ol > li::before',
+    ].forEach((selector) => {
+      const marker = find(selector);
+      expect(marker?.body, selector).toMatch(
+        /font-size:\s*var\(--ddoc-marker-font-size\)/,
+      );
+      expect(marker?.body, selector).toMatch(
+        /font-family:\s*var\(--ddoc-marker-font-family\)/,
+      );
+    });
+  });
+
   it.each([
     ['start', 'margin-left'],
     ['left', 'margin-left'],
