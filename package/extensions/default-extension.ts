@@ -22,6 +22,7 @@ import { EmbeddedTweet } from './twitter-embed';
 import { createDBlockExtension } from './d-block';
 import { FlatHeadingCollapse } from './d-block/dblock-collapse';
 import { FlatMediaConversion } from './d-block/dblock-media-plugin';
+import { PasteAs } from './paste-as/paste-as-candidate';
 import { BlockId } from './block-id';
 import { ListNormalization } from './list-normalization';
 import { TabIndent } from './tab-indent';
@@ -432,6 +433,8 @@ export const defaultExtensions = ({
   TabIndent,
   // Both schemas: caret comfort band while typing near the bottom (TEC-2948).
   CaretScrollBand,
+  // Both schemas: arms the "Paste as" menu for one paste (TEC-2758).
+  PasteAs,
   // Schema fork. v1: every block wrapped in a dBlock (TrailingNode's position
   // math assumes the wrapper, so it is v1-only until re-homed in M2).
   // v2: flat top node, stock Tiptap structure.
@@ -441,7 +444,7 @@ export const defaultExtensions = ({
         // Supplies the read-only-preview heading chrome that v1 renders from
         // its node view (flat blocks have none).
         FlatHeadingCollapse.configure({ onCopyHeadingLink }),
-        // Pasted image/video URLs convert to media in v1 through a plugin
+        // Pasted video URLs convert to embeds in v1 through a plugin
         // registered inside the dBlock extension; re-registered here for v2.
         FlatMediaConversion.configure({
           getRuntimeState: dBlockRuntimeStateRef

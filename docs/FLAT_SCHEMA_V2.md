@@ -98,8 +98,8 @@ The version is read before extensions are built. Extensions are assembled per ta
 
 As built, the v2 branch also registers what the dBlock extension used to
 supply on its own: `FlatDocument`, `FlatHeadingCollapse` (the collapse plugin
-plus the read-only preview heading chrome), `FlatMediaConversion` (URL to
-media), `BlockId`, and `AiWriterSpaceTrigger`. Anything registered *inside*
+plus the read-only preview heading chrome), `FlatMediaConversion` (video URL to
+embed), `BlockId`, and `AiWriterSpaceTrigger`. Anything registered *inside*
 `createDBlockExtension` needs an equivalent here — that is the failure mode
 this list exists to prevent.
 
