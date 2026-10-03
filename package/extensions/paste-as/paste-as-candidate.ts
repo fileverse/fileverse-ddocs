@@ -1,5 +1,11 @@
 import { Extension, getMarkRange, type Editor } from '@tiptap/core';
-import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  type EditorState,
+} from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TWITTER_REGEX } from '../../constants/twitter';
 
 export type PasteAsCandidate =
@@ -89,7 +95,10 @@ export const getPasteAsCandidate = (
   return findBareLinkCandidate(state);
 };
 
-/** Replace the link under the caret with the candidate's embed node. */
+/**
+ * Replace the link under the caret with the candidate's embed node and
+ * select that node, so the caret does not fall into a neighbouring block.
+ */
 export const embedPasteAsCandidate = (
   editor: Editor,
   candidate: PasteAsCandidate,
@@ -99,8 +108,39 @@ export const embedPasteAsCandidate = (
     .focus()
     .extendMarkRange('link')
     .deleteSelection();
-  if (candidate.kind === 'tweet') {
-    return chain.setTweetEmbed({ tweetId: candidate.tweetId }).run();
-  }
-  return chain.setMedia({ src: candidate.href, 'media-type': 'img' }).run();
+  const isEmbed =
+    candidate.kind === 'tweet'
+      ? (node: ProseMirrorNode) =>
+          node.type.name === 'embeddedTweet' &&
+          node.attrs.tweetId === candidate.tweetId
+      : (node: ProseMirrorNode) =>
+          node.type.name === 'resizableMedia' &&
+          node.attrs.src === candidate.href;
+
+  return (
+    candidate.kind === 'tweet'
+      ? chain.setTweetEmbed({ tweetId: candidate.tweetId })
+      : chain.setMedia({ src: candidate.href, 'media-type': 'img' })
+  )
+    .command(({ tr, dispatch }) => {
+      // Same transaction as the insert: the match nearest the caret is
+      // the node just inserted, whatever the schema wraps it in.
+      const near = tr.selection.from;
+      let embedPos: number | null = null;
+      tr.doc.descendants((node, pos) => {
+        if (!isEmbed(node)) return true;
+        if (
+          embedPos === null ||
+          Math.abs(pos - near) < Math.abs(embedPos - near)
+        ) {
+          embedPos = pos;
+        }
+        return false;
+      });
+      if (embedPos !== null && dispatch) {
+        tr.setSelection(NodeSelection.create(tr.doc, embedPos));
+      }
+      return true;
+    })
+    .run();
 };

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
-import { Selection } from '@tiptap/pm/state';
+import { NodeSelection, Selection } from '@tiptap/pm/state';
 import { makeEditor } from '../../utils/make-editor';
 import { defaultExtensions } from '../default-extension';
 import { PageBreak } from '../page-break';
@@ -182,6 +182,51 @@ describe('embedPasteAsCandidate', () => {
     expect(media?.type.name).toBe('resizableMedia');
     expect(media?.attrs.src).toBe(IMG);
     expect(editor.getHTML()).not.toContain('<a ');
+  });
+
+  // The embed becomes the selection, so the caret does not fall into
+  // whichever block happens to sit next to it.
+  it.each([
+    ['v1', () => makeEditor('<p>before</p><p></p><p>after</p>')],
+    [
+      'v2',
+      () => {
+        const v2 = makeV2Editor();
+        v2.commands.setContent('<p>before</p><p></p><p>after</p>');
+        return v2;
+      },
+    ],
+  ])('selects the embedded image (%s)', (_name, make) => {
+    editor = make();
+    let emptyPos = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.content.size === 0) {
+        emptyPos = pos + 1;
+      }
+    });
+    editor.commands.setTextSelection(emptyPos);
+    editor.view.dispatch(
+      editor.state.tr
+        .insertText(IMG)
+        .setMeta('paste', true)
+        .setMeta('uiEvent', 'paste'),
+    );
+
+    embedPasteAsCandidate(editor, getPasteAsCandidate(editor.state)!);
+
+    const { selection } = editor.state;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('resizableMedia');
+    expect((selection as NodeSelection).node.attrs.src).toBe(IMG);
+  });
+
+  it('selects the embedded tweet', () => {
+    editor = makeEditor('<p></p>');
+    pasteText(editor, TWEET);
+    embedPasteAsCandidate(editor, getPasteAsCandidate(editor.state)!);
+    const { selection } = editor.state;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe('embeddedTweet');
   });
 
   it('replaces the tweet link with a tweet embed', () => {

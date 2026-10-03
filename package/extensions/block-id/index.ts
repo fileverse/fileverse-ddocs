@@ -200,12 +200,9 @@ export const BlockId = Extension.create({
             const newId = uuidv4();
             seenIds.add(newId);
             modified = true;
-            tr.setNodeMarkup(
-              pos,
-              undefined,
-              { ...node.attrs, [BLOCK_ID_ATTR]: newId },
-              node.marks,
-            );
+            // An attr step, not setNodeMarkup: that replaces a leaf node
+            // and drops a NodeSelection sitting on it (TEC-2758).
+            tr.setNodeAttribute(pos, BLOCK_ID_ATTR, newId);
           });
 
           // Keep this repair in the same undo action as the user's edit.
