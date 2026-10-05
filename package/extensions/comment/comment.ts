@@ -9,7 +9,13 @@ import {
 import { Mark as PMMark } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { isChangeOrigin } from '@tiptap/extension-collaboration';
+import * as Y from 'yjs';
 import { SuggestionType } from '../../types';
+import {
+  createCommentAnchorFromEditor,
+  resolveCommentAnchorRangeInState,
+} from './comment-decoration-plugin';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -86,6 +92,8 @@ export interface DraftCommentRange {
   draftId: string;
   from: number;
   to: number;
+  anchorFrom?: Y.RelativePosition;
+  anchorTo?: Y.RelativePosition;
 }
 
 interface DraftCommentPluginState {
@@ -98,6 +106,8 @@ interface DraftCommentMeta {
   draftId?: string;
   from?: number;
   to?: number;
+  anchorFrom?: Y.RelativePosition;
+  anchorTo?: Y.RelativePosition;
 }
 
 export const draftCommentPluginKey = new PluginKey<DraftCommentPluginState>(
@@ -146,6 +156,25 @@ const mapDraftRange = (
     from,
     to,
   };
+};
+
+const resolveDraftRange = (
+  draft: DraftCommentRange,
+  state: EditorState,
+): DraftCommentRange | null => {
+  if (!draft.anchorFrom || !draft.anchorTo) {
+    return null;
+  }
+
+  const range = resolveCommentAnchorRangeInState(
+    {
+      anchorFrom: draft.anchorFrom,
+      anchorTo: draft.anchorTo,
+    },
+    state,
+  );
+
+  return range ? { ...draft, ...range } : null;
 };
 
 export const getDraftCommentState = (state: EditorState) =>
@@ -503,7 +532,7 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
             decorations: DecorationSet.empty,
             drafts: new Map<string, DraftCommentRange>(),
           }),
-          apply: (tr, pluginState) => {
+          apply: (tr, pluginState, _oldState, newState) => {
             const meta = tr.getMeta(
               draftCommentPluginKey,
             ) as DraftCommentMeta | null;
@@ -513,11 +542,21 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
             }
 
             const drafts = new Map<string, DraftCommentRange>();
+            const isRemoteCollaborationChange =
+              tr.docChanged && isChangeOrigin(tr);
 
             pluginState.drafts.forEach((draft, draftId) => {
-              const mappedDraft = tr.docChanged
-                ? mapDraftRange(draft, tr.mapping)
-                : draft;
+              // Yjs changes arrive as a whole-document ReplaceStep, whose mapping
+              // collapses every local draft range. Relative positions preserve the
+              // intended range across that replacement; local edits keep the
+              // cheaper ProseMirror mapping path and its existing boundary rules.
+              const mappedDraft = !tr.docChanged
+                ? draft
+                : isRemoteCollaborationChange &&
+                    draft.anchorFrom &&
+                    draft.anchorTo
+                  ? resolveDraftRange(draft, newState)
+                  : mapDraftRange(draft, tr.mapping);
 
               if (mappedDraft) {
                 drafts.set(draftId, mappedDraft);
@@ -535,6 +574,8 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
                   draftId: meta.draftId,
                   from: meta.from,
                   to: meta.to,
+                  anchorFrom: meta.anchorFrom,
+                  anchorTo: meta.anchorTo,
                 });
               }
             }
@@ -707,11 +748,18 @@ export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
 
           if (from >= to) return false;
 
+          const relativeRange = createCommentAnchorFromEditor(
+            this.editor,
+            from,
+            to,
+          );
+
           tr.setMeta(draftCommentPluginKey, {
             type: 'add',
             draftId,
             from,
             to,
+            ...relativeRange,
           } satisfies DraftCommentMeta);
 
           dispatch?.(tr);
