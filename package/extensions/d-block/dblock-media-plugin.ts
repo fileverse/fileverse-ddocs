@@ -6,19 +6,14 @@ import { getDBlockRuntimeState } from './dblock-runtime';
 
 const DBLOCK_MEDIA_CONVERSION_META = 'dblock-media-conversion';
 
-type MediaCandidate =
-  | {
-      type: 'img';
-      src: string;
-      from: number;
-      to: number;
-    }
-  | {
-      type: 'iframe';
-      src: string;
-      from: number;
-      to: number;
-    };
+// Image URLs are deliberately not candidates (TEC-2758): a pasted image
+// link stays a link, and the paste-as menu is the only way to embed it.
+interface MediaCandidate {
+  type: 'iframe';
+  src: string;
+  from: number;
+  to: number;
+}
 
 interface MediaPluginState {
   version: number;
@@ -79,16 +74,9 @@ export const getDBlockMediaCandidate = (
   }
 
   const from = isWrapper ? position + 1 : position;
-  const to = isWrapper ? position + node.nodeSize - 1 : position + node.nodeSize;
-
-  if (/\.(jpeg|jpg|gif|png)$/i.test(urlSrc)) {
-    return {
-      type: 'img',
-      src: urlSrc,
-      from,
-      to,
-    };
-  }
+  const to = isWrapper
+    ? position + node.nodeSize - 1
+    : position + node.nodeSize;
 
   if (textContent.includes('<iframe')) {
     return {
@@ -212,17 +200,11 @@ export const createDBlockMediaConversionPlugin = (
               deferred = true;
               return;
             }
-            const node =
-              candidate.type === 'img'
-                ? view.state.schema.nodes.resizableMedia?.create({
-                    src: candidate.src,
-                    'media-type': 'img',
-                  })
-                : view.state.schema.nodes.iframe?.create({
-                    src: candidate.src,
-                    width: 640,
-                    height: 360,
-                  });
+            const node = view.state.schema.nodes.iframe?.create({
+              src: candidate.src,
+              width: 640,
+              height: 360,
+            });
 
             if (node) {
               tr.replaceWith(candidate.from, candidate.to, node);
@@ -266,12 +248,14 @@ export interface FlatMediaConversionOptions {
   getRuntimeState?: () => DBlockRuntimeState;
 }
 
-export const FlatMediaConversion = Extension.create<FlatMediaConversionOptions>({
-  name: 'flatMediaConversion',
-  addOptions() {
-    return { getRuntimeState: undefined };
+export const FlatMediaConversion = Extension.create<FlatMediaConversionOptions>(
+  {
+    name: 'flatMediaConversion',
+    addOptions() {
+      return { getRuntimeState: undefined };
+    },
+    addProseMirrorPlugins() {
+      return [createDBlockMediaConversionPlugin(this.options.getRuntimeState)];
+    },
   },
-  addProseMirrorPlugins() {
-    return [createDBlockMediaConversionPlugin(this.options.getRuntimeState)];
-  },
-});
+);

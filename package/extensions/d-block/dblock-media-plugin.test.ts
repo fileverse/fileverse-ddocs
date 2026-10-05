@@ -4,6 +4,16 @@ import { makeEditor } from '../../utils/make-editor';
 
 const YT = 'https://youtu.be/abc12345';
 const LINK_PARAGRAPH = `<p><a href="${YT}">${YT}</a></p>`;
+const IMG = 'https://example.com/pic.png';
+const IMG_PARAGRAPH = `<p><a href="${IMG}">${IMG}</a></p>`;
+
+const hasMedia = (editor: Editor) => {
+  let found = false;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'resizableMedia') found = true;
+  });
+  return found;
+};
 
 const hasIframe = (editor: Editor) => {
   let found = false;
@@ -60,7 +70,9 @@ describe('dblock media conversion plugin', () => {
       .chain()
       .insertContentAt(editor.state.doc.content.size, {
         type: 'dBlock',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }],
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'x' }] },
+        ],
       })
       .run();
     editor.commands.setTextSelection(editor.state.doc.content.size - 2);
@@ -68,5 +80,17 @@ describe('dblock media conversion plugin', () => {
     vi.advanceTimersByTime(1500);
 
     expect(hasIframe(editor)).toBe(true);
+  });
+
+  // TEC-2758: an image URL stays a link; the paste-as menu is the only way
+  // to turn it into an image.
+  it('never converts an image link, even after the caret leaves', () => {
+    editor = makeEditor(`${IMG_PARAGRAPH}<p>elsewhere</p>`);
+    editor.commands.setTextSelection(editor.state.doc.content.size - 3);
+
+    vi.advanceTimersByTime(1500);
+
+    expect(hasMedia(editor)).toBe(false);
+    expect(editor.getHTML()).toContain(`href="${IMG}"`);
   });
 });
