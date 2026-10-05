@@ -125,6 +125,23 @@ describe('getPasteAsCandidate', () => {
     expect(getPasteAsCandidate(editor.state)).toMatchObject({ kind: 'image' });
   });
 
+  // The candidate must be what was pasted, not a link the paste landed next to.
+  it('ignores an existing link that unrelated text is pasted in front of', () => {
+    editor = makeEditor(`<p>Source: <a href="${IMG}">${IMG}</a></p>`);
+    const linkStart = Selection.atEnd(editor.state.doc).from - IMG.length;
+    editor.commands.setTextSelection(linkStart);
+    editor.view.dispatch(
+      editor.state.tr
+        .insertText('more ')
+        .setMeta('paste', true)
+        .setMeta('uiEvent', 'paste'),
+    );
+    expect(findBareLinkCandidate(editor.state)).toMatchObject({
+      kind: 'image',
+    });
+    expect(getPasteAsCandidate(editor.state)).toBeNull();
+  });
+
   it('disarms once the caret moves', () => {
     editor = makeEditor('<p></p>');
     pasteText(editor, IMG);

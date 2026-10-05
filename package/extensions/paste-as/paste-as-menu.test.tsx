@@ -108,6 +108,62 @@ describe('PasteAsMenu', () => {
     expect(menuVisible()).toBe('visible');
   });
 
+  // The menu listens in the capture phase and stops a key it takes, so
+  // "reached the editor" tells whether the menu left the key alone.
+  const pressOnEditor = (init: KeyboardEventInit) => {
+    let reachedEditor = false;
+    const onKey = () => {
+      reachedEditor = true;
+    };
+    editor.view.dom.addEventListener('keydown', onKey);
+    act(() => {
+      editor.view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          ...init,
+        }),
+      );
+    });
+    editor.view.dom.removeEventListener('keydown', onKey);
+    return { reachedEditor };
+  };
+  const hasMedia = () =>
+    JSON.stringify(editor.getJSON()).includes('resizableMedia');
+
+  it('Enter embeds the image', () => {
+    paste();
+    expect(pressOnEditor({ key: 'Enter' }).reachedEditor).toBe(false);
+    expect(hasMedia()).toBe(true);
+  });
+
+  it('leaves modified Enter to the editor', () => {
+    paste();
+    const { reachedEditor } = pressOnEditor({ key: 'Enter', shiftKey: true });
+    expect(reachedEditor).toBe(true);
+    expect(hasMedia()).toBe(false);
+  });
+
+  // BubbleMenu debounces hiding for a range selection by 250ms, so the key
+  // listener outlives the candidate; it must not act or swallow keys then.
+  it('does nothing once the selection has moved on, even before it hides', () => {
+    paste();
+    act(() => {
+      editor.commands.setTextSelection({ from: 2, to: 6 });
+    });
+    const before = editor.getHTML();
+
+    expect(pressOnEditor({ key: 'Escape' }).reachedEditor).toBe(true);
+    act(() => {
+      document.body.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true }),
+      );
+    });
+    expect(editor.getHTML()).toBe(before);
+    expect(pressOnEditor({ key: 'Enter' }).reachedEditor).toBe(true);
+    expect(hasMedia()).toBe(false);
+  });
+
   it('hides once the user types', () => {
     paste();
     act(() => {

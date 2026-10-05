@@ -22,13 +22,18 @@ const isImageUrl = (href: string) => {
   }
 };
 
-export const pasteAsPluginKey = new PluginKey<number | null>('pasteAs');
+interface PastedRange {
+  from: number;
+  to: number;
+}
+
+export const pasteAsPluginKey = new PluginKey<PastedRange | null>('pasteAs');
 
 /**
- * Remembers where the last paste left the caret. The paste stays live while
- * the selection still ends at that spot (mapped through later changes);
- * typing, clicking or arrowing away ends it. Judged on state, not on which
- * transaction did what: the editor's own paste colour clean-up
+ * Remembers the range the last paste filled. The paste stays live while the
+ * selection still ends at the end of that range (mapped through later
+ * changes); typing, clicking or arrowing away ends it. Judged on state, not
+ * on which transaction did what: the editor's own paste colour clean-up
  * (use-tab-editor) selects the pasted range, re-marks it and puts the caret
  * back a tick later, and that must not dismiss the menu.
  */
@@ -36,20 +41,25 @@ export const PasteAs = Extension.create({
   name: 'pasteAs',
   addProseMirrorPlugins() {
     return [
-      new Plugin<number | null>({
+      new Plugin<PastedRange | null>({
         key: pasteAsPluginKey,
         state: {
           init: () => null,
-          apply: (tr, anchor, _old, newState) => {
+          apply: (tr, pasted, oldState, newState) => {
             const { selection } = newState;
             if (tr.getMeta('uiEvent') === 'paste' || tr.getMeta('paste')) {
-              return selection.empty ? selection.from : null;
+              if (!selection.empty) return null;
+              return {
+                from: tr.mapping.map(oldState.selection.from, -1),
+                to: selection.from,
+              };
             }
-            if (anchor === null) return null;
-            // assoc -1: text typed at the anchor lands after it, so the
+            if (pasted === null) return null;
+            // assoc -1 on the end: text typed there lands after it, so the
             // caret moves on and the menu goes.
-            const mapped = tr.mapping.map(anchor, -1);
-            return selection.to === mapped ? mapped : null;
+            const to = tr.mapping.map(pasted.to, -1);
+            if (selection.to !== to) return null;
+            return { from: tr.mapping.map(pasted.from, 1), to };
           },
         },
       }),
@@ -66,9 +76,7 @@ export const PasteAs = Extension.create({
  * the caret sits at the end of the link with stored marks already stamped
  * (caret-marks), so `isActive` is false there even though the link is.
  */
-export const findBareLinkCandidate = (
-  state: EditorState,
-): PasteAsCandidate | null => {
+const findBareLink = (state: EditorState) => {
   const linkType = state.schema.marks.link;
   if (!linkType) return null;
   const range = getMarkRange(state.selection.$from, linkType);
@@ -81,18 +89,32 @@ export const findBareLinkCandidate = (
   if (state.doc.textBetween(range.from, range.to) !== href) return null;
 
   const tweetId = href.match(TWITTER_REGEX)?.[2];
-  if (tweetId) return { kind: 'tweet', href, tweetId };
-  if (isImageUrl(href)) return { kind: 'image', href };
-  return null;
+  const candidate: PasteAsCandidate | null = tweetId
+    ? { kind: 'tweet', href, tweetId }
+    : isImageUrl(href)
+      ? { kind: 'image', href }
+      : null;
+  return candidate && { candidate, range };
 };
 
-/** The paste-as menu's candidate: a bare embeddable link the user just pasted. */
+export const findBareLinkCandidate = (
+  state: EditorState,
+): PasteAsCandidate | null => findBareLink(state)?.candidate ?? null;
+
+/**
+ * The paste-as menu's candidate: a bare embeddable link the user just
+ * pasted. The link has to lie inside the pasted range, or a paste that
+ * merely ends next to an older link would offer to convert that one.
+ */
 export const getPasteAsCandidate = (
   state: EditorState,
 ): PasteAsCandidate | null => {
-  if (pasteAsPluginKey.getState(state) === null) return null;
-  if (!state.selection.empty) return null;
-  return findBareLinkCandidate(state);
+  const pasted = pasteAsPluginKey.getState(state);
+  if (!pasted || !state.selection.empty) return null;
+  const found = findBareLink(state);
+  if (!found) return null;
+  const { range, candidate } = found;
+  return range.from >= pasted.from && range.to <= pasted.to ? candidate : null;
 };
 
 /**

@@ -43,7 +43,10 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
   const shouldShow = ({ editor }: { editor: Editor }) =>
     editor.isEditable && getPasteAsCandidate(editor.state) !== null;
 
+  // Every action re-checks the candidate: BubbleMenu debounces hiding for a
+  // range selection, so these handlers can outlive the paste by ~250ms.
   const handleKeepAsUrl = useCallback(() => {
+    if (!getPasteAsCandidate(editor.state)) return;
     const endPos = editor.state.selection.to;
     const href = editor.getAttributes('link').href;
     editor.commands.extendMarkRange('link', { href });
@@ -80,7 +83,12 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
         (btn) => btn === document.activeElement,
       );
 
+      if (!getPasteAsCandidate(editor.state)) return;
+      const modified = e.shiftKey || e.metaKey || e.ctrlKey || e.altKey;
+
       if (key === 'Enter' && currentIndex === -1) {
+        // Shift+Enter and friends, and IME confirmation, stay the editor's.
+        if (modified || e.isComposing) return;
         e.preventDefault();
         e.stopPropagation();
         handleEmbed();
@@ -103,7 +111,7 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
         btnRefs.current[nextIndex]?.focus();
       }
     },
-    [handleEmbed, handleKeepAsUrl],
+    [editor, handleEmbed, handleKeepAsUrl],
   );
 
   const option = EMBED_OPTION[kind ?? 'image'];
