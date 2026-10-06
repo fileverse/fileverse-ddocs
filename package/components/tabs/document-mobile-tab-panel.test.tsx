@@ -80,6 +80,18 @@ describe('DocumentMobileTabPanel all-tabs view', () => {
     expect(renameTab).toHaveBeenCalledWith('b', { newName: 'Renamed' });
   });
 
+  it('renames the active tab from the collapsed bar menu in a modal', () => {
+    const { renameTab } = renderPanel();
+    fireEvent.click(screen.getByTestId('mobile-tab-close'));
+    fireEvent.click(screen.getByTestId('tab-context-menu-trigger'));
+    fireEvent.click(screen.getByTestId('tab-menu-rename'));
+    const input = screen.getByTestId('tab-rename-modal-input');
+    expect((input as HTMLInputElement).value).toBe('First');
+    fireEvent.change(input, { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(renameTab).toHaveBeenCalledWith('a', { newName: 'Renamed' });
+  });
+
   it('cancelling the rename modal changes nothing', () => {
     const { renameTab } = renderPanel();
     openMenu('b');
