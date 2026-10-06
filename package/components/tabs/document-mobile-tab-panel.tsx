@@ -9,7 +9,7 @@ import {
 import { LucideIcon, TextField } from '@fileverse/ui';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
-import { TabContextMenu, TabItem } from './tab-item';
+import { TabContextMenu, TabItem, type TabItemProps } from './tab-item';
 import { ConfirmDeleteModal } from './confirm-delete-modal';
 import { TabEmojiPicker } from './tab-emoji-picker';
 import { Tab } from './utils/tab-utils';
@@ -29,6 +29,7 @@ export interface DocumentMobileTabPanelProps {
   ) => void;
   createTab: () => void;
   duplicateTab: (tabId: string) => void;
+  orderTab: DocumentOutlineProps['orderTab'];
   deleteTab?: (tabId: string) => void;
   tabCommentCounts: Record<string, number>;
   isPreviewMode: boolean;
@@ -37,6 +38,16 @@ export interface DocumentMobileTabPanelProps {
   isConnected?: boolean;
   isFocusMode?: boolean;
 }
+
+// Each row owns its rename state, like SortableTabItem does on desktop.
+const MobileTabItem = (
+  props: Omit<TabItemProps, 'isEditing' | 'setIsEditing'>,
+) => {
+  const [isEditing, setIsEditing] = useState(false);
+  return (
+    <TabItem isEditing={isEditing} setIsEditing={setIsEditing} {...props} />
+  );
+};
 
 export const DocumentMobileTabPanel = ({
   tabs,
@@ -49,6 +60,7 @@ export const DocumentMobileTabPanel = ({
   renameTab,
   createTab,
   duplicateTab,
+  orderTab,
   deleteTab,
   tabCommentCounts,
   isPreviewMode,
@@ -250,14 +262,16 @@ export const DocumentMobileTabPanel = ({
                 'transition-opacity duration-300',
               )}
             >
-              {tabs.map((tab) => (
+              {tabs.map((tab, tabIndex) => (
                 <div
                   key={tab.id}
                   className="w-full flex mt-[8px] flex-col gap-[8px]"
                 >
-                  <TabItem
+                  <MobileTabItem
                     tabId={tab.id}
-                    hideContentMenu={true}
+                    alwaysShowMenu
+                    hideContentMenu={isPreviewMode && !tabConfig?.onCopyTabLink}
+                    menuPopoverClassName="z-[1000]"
                     name={tab.name}
                     emoji={tab.emoji || ''}
                     onNameChange={(nextName: string, nextEmoji?: string) =>
@@ -272,6 +286,15 @@ export const DocumentMobileTabPanel = ({
                     commentCount={tabCommentCounts[tab.id] || 0}
                     isPreviewMode={isPreviewMode}
                     onCopyLink={() => tabConfig?.onCopyTabLink?.(tab.id)}
+                    onDelete={
+                      deleteTab && canDeleteTab
+                        ? () => setPendingDeleteTab(tab)
+                        : undefined
+                    }
+                    canMoveUp={tabIndex > 0}
+                    canMoveDown={tabIndex < tabs.length - 1}
+                    onMoveUp={() => orderTab(tabs[tabIndex - 1].id, tab.id)}
+                    onMoveDown={() => orderTab(tabs[tabIndex + 1].id, tab.id)}
                     isConnected={isConnected}
                   />
                   <div

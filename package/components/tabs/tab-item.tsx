@@ -35,6 +35,8 @@ export interface TabItemProps {
   onDuplicate?: (id: string) => void;
   dragHandleProps?: HTMLAttributes<HTMLDivElement>;
   hideContentMenu?: boolean;
+  alwaysShowMenu?: boolean;
+  menuPopoverClassName?: string;
   showOutline?: boolean;
   handleShowOutline?: (value: boolean) => void;
   canMoveUp?: boolean;
@@ -127,6 +129,8 @@ export const TabItem = ({
   onDuplicate,
   dragHandleProps,
   hideContentMenu = false,
+  alwaysShowMenu = false,
+  menuPopoverClassName,
   showOutline,
   handleShowOutline,
   canMoveUp = false,
@@ -222,6 +226,7 @@ export const TabItem = ({
         label: showOutline ? 'Hide outline' : 'Show outline',
         icon: 'List',
         onSelect: () => handleShowOutline?.(!showOutline),
+        visible: Boolean(handleShowOutline),
       },
     ],
     [
@@ -266,12 +271,13 @@ export const TabItem = ({
         label: showOutline ? 'Hide outline' : 'Show outline',
         icon: 'List',
         onSelect: () => handleShowOutline?.(!showOutline),
+        visible: Boolean(handleShowOutline),
       },
     ],
   ];
 
   const menuSections = isPreviewMode ? previewModeMenu : editMenuSections;
-  const shouldShowContextMenu = isActive || isHovered;
+  const shouldShowContextMenu = alwaysShowMenu || isActive || isHovered;
 
   return (
     <div
@@ -361,7 +367,10 @@ export const TabItem = ({
               className="w-[24px] h-[24px] shrink-0"
             >
               {shouldShowContextMenu && (
-                <TabContextMenu sections={menuSections} />
+                <TabContextMenu
+                  sections={menuSections}
+                  popoverClassName={menuPopoverClassName}
+                />
               )}
             </div>
           )}
