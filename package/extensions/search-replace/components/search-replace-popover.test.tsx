@@ -42,6 +42,22 @@ describe('find and replace shortcut', () => {
     expect(state().showReplace).toBe(true);
   });
 
+  it('does not toggle highlight on the same chord', () => {
+    editor.commands.setContent('<p>hello</p>');
+    editor.commands.selectAll();
+    const event = new KeyboardEvent('keydown', {
+      key: 'H',
+      code: 'KeyH',
+      keyCode: 72,
+      // jsdom is not a Mac, so Mod resolves to Ctrl
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    editor.view.someProp('handleKeyDown', (f) => f(editor.view, event));
+    expect(editor.isActive('highlight')).toBe(false);
+    expect(editor.can().toggleHighlight()).toBe(true);
+  });
+
   it('leaves Ctrl+H and Cmd+H alone on Mac', () => {
     setPlatform('MacIntel');
     render(<SearchReplace editor={editor} />);
