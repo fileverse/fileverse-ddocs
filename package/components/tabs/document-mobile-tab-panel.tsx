@@ -1,16 +1,11 @@
 import cn from 'classnames';
-import {
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
-import { LucideIcon, TextField } from '@fileverse/ui';
+import { useState, type Dispatch, type SetStateAction } from 'react';
+import { LucideIcon } from '@fileverse/ui';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
 import { TabContextMenu, TabItem } from './tab-item';
 import { ConfirmDeleteModal } from './confirm-delete-modal';
+import { RenameTabModal } from './rename-tab-modal';
 import { TabEmojiPicker } from './tab-emoji-picker';
 import { Tab } from './utils/tab-utils';
 
@@ -29,6 +24,7 @@ export interface DocumentMobileTabPanelProps {
   ) => void;
   createTab: () => void;
   duplicateTab: (tabId: string) => void;
+  orderTab: DocumentOutlineProps['orderTab'];
   deleteTab?: (tabId: string) => void;
   tabCommentCounts: Record<string, number>;
   isPreviewMode: boolean;
@@ -49,6 +45,7 @@ export const DocumentMobileTabPanel = ({
   renameTab,
   createTab,
   duplicateTab,
+  orderTab,
   deleteTab,
   tabCommentCounts,
   isPreviewMode,
@@ -59,34 +56,13 @@ export const DocumentMobileTabPanel = ({
 }: DocumentMobileTabPanelProps) => {
   const [showContent, setShowContent] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState<Tab | null>(null);
-  const [isEditingActiveTab, setIsEditingActiveTab] = useState(false);
-  const [activeTabTitle, setActiveTabTitle] = useState('');
-  const originalActiveTabTitleRef = useRef('');
-  const isEditingActiveTabRef = useRef(false);
-  const activeTabInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const canDeleteTab = tabs.length > 1;
   const canNavigatePrev = activeTabIndex > 0;
   const canNavigateNext =
     activeTabIndex >= 0 && activeTabIndex < tabs.length - 1;
-
-  useEffect(() => {
-    isEditingActiveTabRef.current = isEditingActiveTab;
-  }, [isEditingActiveTab]);
-
-  useEffect(() => {
-    if (isEditingActiveTabRef.current) return;
-    const nextTitle = activeTab?.name ?? '';
-    setActiveTabTitle(nextTitle);
-    originalActiveTabTitleRef.current = nextTitle;
-  }, [activeTab?.id, activeTab?.name]);
-
-  useEffect(() => {
-    if (isEditingActiveTab && activeTabInputRef.current) {
-      activeTabInputRef.current.select();
-    }
-  }, [isEditingActiveTab]);
 
   const handleNameChange = (
     tabId: string,
@@ -117,33 +93,6 @@ export const DocumentMobileTabPanel = ({
     setActiveTabId(nextTab.id);
   };
 
-  const startEditingActiveTab = () => {
-    if (!activeTab || isPreviewMode || isVersionHistoryMode) return;
-    const currentTitle = activeTab.name;
-    originalActiveTabTitleRef.current = currentTitle;
-    setActiveTabTitle(currentTitle);
-    setIsEditingActiveTab(true);
-  };
-
-  const stopEditingActiveTab = (nextTitleFromInput?: string) => {
-    if (!activeTab) {
-      setIsEditingActiveTab(false);
-      return;
-    }
-
-    const nextTitle =
-      (nextTitleFromInput ?? activeTabTitle).trim() ||
-      originalActiveTabTitleRef.current;
-    setActiveTabTitle(nextTitle);
-    handleNameChange(activeTab.id, nextTitle);
-    setIsEditingActiveTab(false);
-  };
-
-  const cancelEditingActiveTab = () => {
-    setActiveTabTitle(originalActiveTabTitleRef.current);
-    setIsEditingActiveTab(false);
-  };
-
   const menuSections = [
     [
       {
@@ -158,7 +107,9 @@ export const DocumentMobileTabPanel = ({
         id: 'rename',
         label: 'Rename',
         icon: 'SquarePen' as const,
-        onSelect: startEditingActiveTab,
+        onSelect: () => {
+          if (activeTab) setPendingRenameTab(activeTab);
+        },
         visible: Boolean(activeTab),
       },
       {
@@ -250,14 +201,17 @@ export const DocumentMobileTabPanel = ({
                 'transition-opacity duration-300',
               )}
             >
-              {tabs.map((tab) => (
+              {tabs.map((tab, tabIndex) => (
                 <div
                   key={tab.id}
                   className="w-full flex mt-[8px] flex-col gap-[8px]"
                 >
                   <TabItem
                     tabId={tab.id}
-                    hideContentMenu={true}
+                    alwaysShowMenu
+                    onRename={() => setPendingRenameTab(tab)}
+                    hideContentMenu={isPreviewMode && !tabConfig?.onCopyTabLink}
+                    menuPopoverClassName="z-[1000]"
                     name={tab.name}
                     emoji={tab.emoji || ''}
                     onNameChange={(nextName: string, nextEmoji?: string) =>
@@ -272,6 +226,15 @@ export const DocumentMobileTabPanel = ({
                     commentCount={tabCommentCounts[tab.id] || 0}
                     isPreviewMode={isPreviewMode}
                     onCopyLink={() => tabConfig?.onCopyTabLink?.(tab.id)}
+                    onDelete={
+                      deleteTab && canDeleteTab
+                        ? () => setPendingDeleteTab(tab)
+                        : undefined
+                    }
+                    canMoveUp={tabIndex > 0}
+                    canMoveDown={tabIndex < tabs.length - 1}
+                    onMoveUp={() => orderTab(tabs[tabIndex - 1].id, tab.id)}
+                    onMoveDown={() => orderTab(tabs[tabIndex + 1].id, tab.id)}
                     isConnected={isConnected}
                   />
                   <div
@@ -368,7 +331,6 @@ export const DocumentMobileTabPanel = ({
           >
             <div
               onClick={() => {
-                if (isEditingActiveTab) return;
                 if (!isVersionHistoryMode) setShowContent(true);
               }}
               className="flex flex-grow flex-col px-[12px] cursor-pointer transition-opacity duration-200 hover:opacity-80"
@@ -384,34 +346,15 @@ export const DocumentMobileTabPanel = ({
                     disableEmoji={Boolean(
                       isPreviewMode || isVersionHistoryMode,
                     )}
-                    isEditing={isEditingActiveTab}
+                    isEditing={false}
                   />
                 </div>
-                {!isEditingActiveTab ? (
-                  <p
-                    data-testid="mobile-tab-active-name"
-                    className="text-heading-xsm max-w-[200px] truncate"
-                  >
-                    {activeTabTitle || 'Tab name'}
-                  </p>
-                ) : (
-                  <TextField
-                    data-testid="mobile-tab-rename-input"
-                    ref={activeTabInputRef}
-                    autoFocus
-                    value={activeTabTitle}
-                    onChange={(e) => setActiveTabTitle(e.target.value)}
-                    onBlur={(e) => stopEditingActiveTab(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        stopEditingActiveTab(e.currentTarget.value);
-                      }
-                      if (e.key === 'Escape') cancelEditingActiveTab();
-                    }}
-                    className="h-[24px] max-w-[200px] px-[6px] py-0 rounded-[6px] text-heading-xsm border-transparent focus-visible:ring-2 focus-visible:ring-[hsl(var(--color-border-focused))]"
-                  />
-                )}
+                <p
+                  data-testid="mobile-tab-active-name"
+                  className="text-heading-xsm max-w-[200px] truncate"
+                >
+                  {activeTab?.name || 'Tab name'}
+                </p>
               </div>
               <div className="h-[16px] flex items-center">
                 <span className="text-helper-text-sm color-text-secondary">
@@ -447,6 +390,15 @@ export const DocumentMobileTabPanel = ({
         documentTitle={pendingDeleteTab?.name || ''}
         isLoading={false}
         primaryLabel="Delete tab"
+      />
+      <RenameTabModal
+        key={pendingRenameTab?.id}
+        isOpen={Boolean(pendingRenameTab)}
+        initialName={pendingRenameTab?.name ?? ''}
+        onClose={() => setPendingRenameTab(null)}
+        onConfirm={(nextName) => {
+          if (pendingRenameTab) handleNameChange(pendingRenameTab.id, nextName);
+        }}
       />
     </div>
   );

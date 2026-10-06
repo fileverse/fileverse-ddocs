@@ -87,6 +87,7 @@ export const DocumentOutline = ({
       renameTab={renameTab}
       createTab={createTab}
       duplicateTab={duplicateTab}
+      orderTab={orderTab}
       deleteTab={deleteTab}
       tabCommentCounts={tabCommentCounts}
       isPreviewMode={isPreviewMode}
