@@ -37,6 +37,8 @@ export interface TabItemProps {
   hideContentMenu?: boolean;
   alwaysShowMenu?: boolean;
   menuPopoverClassName?: string;
+  // Replaces in-place editing, e.g. with a rename modal on mobile.
+  onRename?: () => void;
   showOutline?: boolean;
   handleShowOutline?: (value: boolean) => void;
   canMoveUp?: boolean;
@@ -131,6 +133,7 @@ export const TabItem = ({
   hideContentMenu = false,
   alwaysShowMenu = false,
   menuPopoverClassName,
+  onRename,
   showOutline,
   handleShowOutline,
   canMoveUp = false,
@@ -165,6 +168,10 @@ export const TabItem = ({
   }, [isEditing]);
 
   const startEditing = () => {
+    if (onRename) {
+      onRename();
+      return;
+    }
     originalTitleRef.current = title;
     setIsEditing?.(true);
   };
@@ -286,7 +293,7 @@ export const TabItem = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onDoubleClick={() => {
-        if (isPreviewMode) return;
+        if (isPreviewMode || onRename) return;
         startEditing();
       }}
       onClick={onClick}

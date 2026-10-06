@@ -9,8 +9,9 @@ import {
 import { LucideIcon, TextField } from '@fileverse/ui';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
-import { TabContextMenu, TabItem, type TabItemProps } from './tab-item';
+import { TabContextMenu, TabItem } from './tab-item';
 import { ConfirmDeleteModal } from './confirm-delete-modal';
+import { RenameTabModal } from './rename-tab-modal';
 import { TabEmojiPicker } from './tab-emoji-picker';
 import { Tab } from './utils/tab-utils';
 
@@ -39,16 +40,6 @@ export interface DocumentMobileTabPanelProps {
   isFocusMode?: boolean;
 }
 
-// Each row owns its rename state, like SortableTabItem does on desktop.
-const MobileTabItem = (
-  props: Omit<TabItemProps, 'isEditing' | 'setIsEditing'>,
-) => {
-  const [isEditing, setIsEditing] = useState(false);
-  return (
-    <TabItem isEditing={isEditing} setIsEditing={setIsEditing} {...props} />
-  );
-};
-
 export const DocumentMobileTabPanel = ({
   tabs,
   activeTabId,
@@ -71,6 +62,7 @@ export const DocumentMobileTabPanel = ({
 }: DocumentMobileTabPanelProps) => {
   const [showContent, setShowContent] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState<Tab | null>(null);
+  const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const [isEditingActiveTab, setIsEditingActiveTab] = useState(false);
   const [activeTabTitle, setActiveTabTitle] = useState('');
   const originalActiveTabTitleRef = useRef('');
@@ -267,9 +259,10 @@ export const DocumentMobileTabPanel = ({
                   key={tab.id}
                   className="w-full flex mt-[8px] flex-col gap-[8px]"
                 >
-                  <MobileTabItem
+                  <TabItem
                     tabId={tab.id}
                     alwaysShowMenu
+                    onRename={() => setPendingRenameTab(tab)}
                     hideContentMenu={isPreviewMode && !tabConfig?.onCopyTabLink}
                     menuPopoverClassName="z-[1000]"
                     name={tab.name}
@@ -470,6 +463,15 @@ export const DocumentMobileTabPanel = ({
         documentTitle={pendingDeleteTab?.name || ''}
         isLoading={false}
         primaryLabel="Delete tab"
+      />
+      <RenameTabModal
+        key={pendingRenameTab?.id}
+        isOpen={Boolean(pendingRenameTab)}
+        initialName={pendingRenameTab?.name ?? ''}
+        onClose={() => setPendingRenameTab(null)}
+        onConfirm={(nextName) => {
+          if (pendingRenameTab) handleNameChange(pendingRenameTab.id, nextName);
+        }}
       />
     </div>
   );

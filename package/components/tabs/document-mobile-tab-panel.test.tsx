@@ -67,14 +67,29 @@ describe('DocumentMobileTabPanel all-tabs view', () => {
     expect(screen.getByTestId('tab-menu-move-down')).toBeTruthy();
   });
 
-  it('renames the tapped row', () => {
+  it('renames the tapped row from a modal', () => {
     const { renameTab } = renderPanel();
     openMenu('b');
     fireEvent.click(screen.getByTestId('tab-menu-rename'));
-    const input = screen.getByTestId('tab-rename-input');
+    expect(screen.queryByTestId('tab-rename-input')).toBeNull();
+    expect(screen.getByText('Rename tab')).toBeTruthy();
+    const input = screen.getByTestId('tab-rename-modal-input');
+    expect((input as HTMLInputElement).value).toBe('Second');
     fireEvent.change(input, { target: { value: 'Renamed' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(renameTab).toHaveBeenCalledWith('b', { newName: 'Renamed' });
+  });
+
+  it('cancelling the rename modal changes nothing', () => {
+    const { renameTab } = renderPanel();
+    openMenu('b');
+    fireEvent.click(screen.getByTestId('tab-menu-rename'));
+    fireEvent.change(screen.getByTestId('tab-rename-modal-input'), {
+      target: { value: 'Renamed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(renameTab).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('tab-rename-modal-input')).toBeNull();
   });
 
   it('confirms before deleting the tapped row', () => {
