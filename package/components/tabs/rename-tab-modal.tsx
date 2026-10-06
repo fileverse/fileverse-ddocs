@@ -41,7 +41,7 @@ export const RenameTabModal = ({
     >
       <DialogContent
         data-testid="tab-rename-modal"
-        className="!max-w-[25rem] rounded-2xl gap-4"
+        className="!w-[92.5vw] !max-w-[25rem] rounded-2xl gap-4"
       >
         <DialogClose asChild>
           <IconButton
