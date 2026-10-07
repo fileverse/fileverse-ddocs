@@ -93,6 +93,7 @@ Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fix
 - `width: 100%` is the canvas's content width, which excludes a classic scrollbar. The drawer therefore sits just inside the scrollbar with no measurement.
 - `CommentDrawer` renders inside the anchor. `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`, `top` and `right` margins from the anchor, and `pointer-events: auto`.
 - Zero height keeps the anchor out of the flow, so opening the drawer does not shift the page.
+- The anchor has `overflow-x: clip`. `DynamicDrawerV2` is always mounted and closes with `translate-x-full`; unclipped, the closed drawer hangs past the right edge and widens the canvas's scrollable area (measured: 640px to 960px). `clip` on one axis leaves the other visible and does not make the anchor a scroll container. `pointer-events: none` is inherited, so the anchor's children are reset to `auto`; the mobile comment sheet renders through the same component.
 - Measured in headless Chrome (640px canvas offset by 32px, 1400×3000px content, 336px drawer, `right: 16px`): the drawer's right edge stayed 16px inside the visible content edge at scroll (0, 0), (240, 160), (380, 1000) and the maximum, with overlay and with classic scrollbars, in a block and in a flex-column canvas; content stayed at the canvas top. This is geometry only; the real drawer still needs the §10 check.
 - Height: `calc(var(--ddoc-canvas-h) - <margins>)`. The comment section inside keeps scrolling its own list, with its height from the same variable minus the drawer header and filter row.
 - Presentation mode keeps its current viewport-level drawer branch.
@@ -110,7 +111,7 @@ Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fix
 
 - The root `height: calc(100dvh - …)` and the `--navbar` / `--toolbar` custom properties.
 - The canvas top margins that reserved room for the fixed bars.
-- `bottomInset`, `footerInset`, `mobileTabPanelInset`, `focusHeight`, and the `minHeight: calc(100dvh - …)` on `.editor-main-lane` (replaced by `min-h-full`).
+- `bottomInset`, `footerInset`, `mobileTabPanelInset`, `focusHeight`, and the `minHeight: calc(100dvh - …)` on `.editor-main-lane` (replaced by `min-height: var(--ddoc-canvas-h)`; a percentage does not resolve through the auto-height wrappers above it).
 - `h-[100dvh]` on the unsupported-schema screen (becomes `h-full`).
 
 Stays viewport-level: presentation mode, fullscreen toolbar, mobile comment sheet, comment bubble card (floating-ui `fixed`, anchored to a selection), popovers, dialogs, emoji and colour pickers, print.
@@ -233,7 +234,8 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - `sticky` binds to the nearest ancestor with any non-visible overflow, on either axis. The left rail sits inside the inner content wrapper, which is why that wrapper is `overflow-visible` in normal mode (§2.2). Do not put overflow back on any element between the rail and the canvas.
 - A sticky element occupies flow space, unlike `fixed`. The drawer anchor is zero-height for that reason.
 - A sticky inset does not align an element to an edge, and sticky stops at the containing block. Both shaped the drawer anchor (§2.5); do not shrink it to zero width or wrap it.
-- The drawer anchor spans the canvas above the content. Without `pointer-events: none` it is harmless at zero height, but any height or padding added to it would swallow clicks.
+- The drawer anchor spans the canvas above the content: keep it zero-height and `pointer-events: none`, with its children reset to `auto`.
+- Anything absolutely positioned inside the canvas that hangs past its right or bottom edge adds scrollable area. The closed drawer does; the anchor's `overflow-x: clip` is what contains it (§2.5).
 - `handleFocusModeMouseDown` is on `#editor-canvas`. With the navbar and toolbars above the canvas it no longer sees their clicks. Both are hidden in focus mode, so nothing depends on it.
 - A portalled navbar's events bubble by React ancestry to the root, not to the DOM element it is mounted in.
 - TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the canvas ends above the tab-panel slot instead of using an inset.
