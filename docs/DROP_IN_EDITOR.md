@@ -41,10 +41,10 @@ Compatibility: the prop surface is additive, so existing consumer code compiles 
 root  .ddoc-editor-root   h-full w-full flex flex-col overflow-hidden
 ├─ nav#Navbar             shrink-0, in flow, or createPortal → navbarContainer (§3)
 ├─ #toolbar / mobile      shrink-0, in flow
-├─ #editor-canvas         flex-1 min-h-0 overflow-auto, [data-editor-scroll-container]
-│  ├─ drawer anchor       sticky top-0 right-0, zero size (§2.5)
-│  │  └─ CommentDrawer    absolute inside the anchor
-│  └─ content wrapper     does not scroll
+├─ #editor-canvas         flex-1 min-h-0 flex flex-col overflow-auto, [data-editor-scroll-container]
+│  ├─ drawer anchor       sticky top-0 left-0, full width, zero height (§2.5)
+│  │  └─ CommentDrawer    absolute, at the anchor's right edge
+│  └─ content wrapper     overflow-visible, does not scroll
 │     ├─ left rail        sticky top-0 → tabs sidebar / TOC
 │     ├─ page
 │     └─ right rail
@@ -59,10 +59,11 @@ Today the navbar, both toolbars and the comment drawer are rendered inside `#edi
 
 - **Decided: in normal mode `#editor-canvas` is the one document scroller.** The reason is the scrollbar: it must sit at the outer edge of the editor, spanning the full width under the toolbar, not beside the page.
 - Rejected: making the inner `data-editor-scroll-container` wrapper the scroller and the canvas a non-scrolling box. The attribute sits on that wrapper today, which makes it look like the scroller, and it would allow an `absolute` drawer; but it moves the scrollbar inward. Do not reopen this from the attribute's current position.
-- `data-editor-scroll-container` and `editorScrollContainerRef` move from the inner content wrapper onto `#editor-canvas`. `getEditorScrollContainer` returns the attributed element first without checking that it scrolls, so the attribute must be on the element whose `scrollTop` changes. Tab position restore, the caret scroll band, heading and comment navigation, and the floating comment layout all follow it.
-- The inner content wrapper keeps no vertical scrolling. If it stays `overflow-auto` for horizontal overflow it is still a scroll container for `sticky` purposes (§8).
-- **Split View: unchanged.** The right-pane wrapper scrolls, and the degraded scroll restore documented in `TAB_SCROLL_POSITION.md` is preserved, not fixed.
-- Not yet measured: whether the inner wrapper scrolls on any axis today. This does not affect the decision above, only how much has to change to reach it: check in the browser first, and remove any vertical scrolling the wrapper turns out to have.
+- In normal mode `data-editor-scroll-container` and `editorScrollContainerRef` move from the inner content wrapper onto `#editor-canvas`. `getEditorScrollContainer` returns the attributed element first without checking that it scrolls, so the attribute must be on the element whose `scrollTop` changes. Tab position restore, the caret scroll band, heading and comment navigation, and the floating comment layout all follow it.
+- The canvas scrolls on both axes. In normal mode the inner content wrapper becomes `overflow-visible` (it is `overflow-auto` today). Any non-visible overflow on it, even horizontal only, would make it the scroll container that the sticky left rail binds to, and the rail would stop holding position (§8).
+- **Split View: unchanged.** The canvas stays `overflow-hidden`, the right-pane wrapper scrolls, and the attribute and ref stay on the inner content wrapper, where they are today. That wrapper does not scroll, so scroll writes through the resolver remain a no-op: the degraded restore documented in `TAB_SCROLL_POSITION.md` is preserved, not fixed. The attribute must not sit on the canvas in this mode; an `overflow-hidden` box still accepts `scrollTop` writes, which would be a new behaviour, not the documented no-op.
+- Only one element carries the attribute and the ref at a time; they switch with `isSplitViewActive`. Neither element remounts.
+- Not yet measured: whether the inner wrapper is the element that scrolls today. This does not affect the decision above, only how much visibly changes.
 
 ### 2.3 Measured size instead of viewport units
 
@@ -70,7 +71,9 @@ A `ResizeObserver` on `#editor-canvas` publishes `--ddoc-canvas-h` and `--ddoc-c
 
 - Tabs sidebar `max-height` and the landscape clamp `calc((100vw - 1190px) / 2)`.
 - Comment drawer and comment section heights.
-- `shouldHideRight`, which compares the scaled page width with `window.innerWidth`, reads the observed canvas width from state.
+- The two width decisions that read `window.innerWidth` today: `shouldHideRight` (`scaledWidth + 296 > width`, hides the right rail in focus mode) and `shouldScroll` (`scaledWidth > width - leftWidth`, switches the main lane from centred to start-aligned). Both compare against the observed canvas `clientWidth`.
+
+The observer writes the custom properties straight onto the root and keeps the last width in a ref. React state holds only the pair `{ shouldHideRight, shouldScroll }`, and is set only when one of the two changes. The pair is recomputed from the ref in two places: the observer callback, and a layout effect keyed on the other inputs (`scaledWidth`, which covers zoom and orientation, and `leftWidth`, which covers outline visibility). The first measurement runs in that layout effect, so the first paint is already correct.
 
 This gives the drawer and comment section a definite height without a height chain through the unsized wrappers inside `@fileverse/ui`'s `DynamicDrawerV2`.
 
@@ -84,9 +87,13 @@ Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fix
 
 ### 2.5 Comment drawer
 
-- The canvas has a drawer anchor: an editor-owned element, `sticky top-0 right-0`, zero width and height. Sticky keeps it in place while the canvas scrolls in either direction; zero size keeps it out of the flow so the page does not shift.
-- `CommentDrawer` renders inside the anchor. `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`, positioned from the anchor.
-- The drawer floats just inside the canvas scrollbar, which runs the full canvas height.
+- The canvas has a drawer anchor: an editor-owned element, `sticky top-0 left-0`, `width: 100%`, zero height, `flex: none`, `pointer-events: none`. It is a direct child of the canvas and comes first. The canvas is a flex column in normal mode so the anchor gets its own line.
+- Why this shape: a sticky inset only offsets an element from where it sits in the flow; it does not align it to an edge. A zero-width anchor with `right-0` therefore stays at the canvas's left edge and scrolls away horizontally (measured). A full-width anchor pinned at the top left always covers the visible width, so its right edge is the visible right edge.
+- It must be a direct child of the canvas. Sticky is confined to the containing block; when that is the scroller itself the limit is the whole scrollable area, so the anchor holds at any scroll offset. Inside a wrapper it would stop at the wrapper's box.
+- `width: 100%` is the canvas's content width, which excludes a classic scrollbar. The drawer therefore sits just inside the scrollbar with no measurement.
+- `CommentDrawer` renders inside the anchor. `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`, `top` and `right` margins from the anchor, and `pointer-events: auto`.
+- Zero height keeps the anchor out of the flow, so opening the drawer does not shift the page.
+- Measured in headless Chrome (640px canvas offset by 32px, 1400×3000px content, 336px drawer, `right: 16px`): the drawer's right edge stayed 16px inside the visible content edge at scroll (0, 0), (240, 160), (380, 1000) and the maximum, with overlay and with classic scrollbars, in a block and in a flex-column canvas; content stayed at the canvas top. This is geometry only; the real drawer still needs the §10 check.
 - Height: `calc(var(--ddoc-canvas-h) - <margins>)`. The comment section inside keeps scrolling its own list, with its height from the same variable minus the drawer header and filter row.
 - Presentation mode keeps its current viewport-level drawer branch.
 
@@ -140,11 +147,21 @@ Stays viewport-level: presentation mode, fullscreen toolbar, mobile comment shee
 `useControllableState(value, defaultValue, onChange, legacySetter)` returns `[current, set]`.
 
 - Controlled when `value !== undefined`; internal state otherwise.
-- `set` accepts a value or an updater. The next value is computed from a ref holding the latest value, so several `set(prev => …)` calls before a render compose.
-- `set` is a no-op when the next value equals the current one.
-- Notifications run in `set` itself, never inside a React state updater (Strict Mode invokes updaters twice). Each real change calls `onChange(next)` once and the legacy setter once.
-- A controlled prop changing from outside updates the ref and notifies nobody.
-- A prop going from defined to `undefined` switches to internal state seeded with the last controlled value.
+- `set` accepts a value or an updater. Notifications run in `set` itself, never inside a React state updater (Strict Mode invokes updaters twice). Each real change calls `onChange(next)` once and the legacy setter once, both with the plain value.
+
+Uncontrolled:
+
+- A ref holds the latest internal value. `set` computes from it, writes it, and sets state, so several `set(prev => …)` calls before a render compose. It is a no-op when the next value equals the ref.
+
+Controlled: the prop is the only accepted value. A request the host has not accepted is never treated as current.
+
+- Two values are kept apart: the committed value (the prop, as last rendered) and a pending request (the last value asked for in the current batch, or none).
+- `set` computes from the pending request if there is one, otherwise from the committed value. If the result equals that basis it is a no-op. Otherwise it becomes the pending request and the host is notified.
+- A batch is one synchronous task. The pending request is cleared in a microtask queued by the first `set` of the batch, and on every commit of the component, whichever comes first. So several functional updates in one handler compose, and a later, separate action always starts from the prop.
+- Host declines (no re-render, or a re-render with the same value): the request is dropped at the end of the task. The next toggle computes from the prop and asks again.
+- Host accepts later: the prop changes, nobody is notified. A toggle made in between computed from the old prop and asked for the same value again.
+- Controlled with neither callback: the value is fixed; `set` notifies nobody.
+- A prop going from defined to `undefined` switches to internal state seeded with the last committed prop value, never a pending request.
 
 ### 4.2 States
 
@@ -213,12 +230,14 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 ## 8. Gotchas
 
 - `DynamicDrawerV2` exposes classes for its outer, header and content elements only. Anything deeper must be reached from an editor-owned selector in the package stylesheet. Confirm in the browser that `!absolute` wins over its `fixed`.
-- `sticky` binds to the nearest ancestor with any non-visible overflow, on either axis. The left rail sits inside the inner content wrapper, which is `overflow-auto` today. If that wrapper is the nearer scroll container the rail sticks to it and not to the canvas. The sidebar must hold position while the canvas scrolls; if the wrapper's overflow prevents that, move horizontal overflow to the canvas.
-- A sticky element occupies flow space, unlike `fixed`. The drawer anchor is zero-size for that reason.
+- `sticky` binds to the nearest ancestor with any non-visible overflow, on either axis. The left rail sits inside the inner content wrapper, which is why that wrapper is `overflow-visible` in normal mode (§2.2). Do not put overflow back on any element between the rail and the canvas.
+- A sticky element occupies flow space, unlike `fixed`. The drawer anchor is zero-height for that reason.
+- A sticky inset does not align an element to an edge, and sticky stops at the containing block. Both shaped the drawer anchor (§2.5); do not shrink it to zero width or wrap it.
+- The drawer anchor spans the canvas above the content. Without `pointer-events: none` it is harmless at zero height, but any height or padding added to it would swallow clicks.
 - `handleFocusModeMouseDown` is on `#editor-canvas`. With the navbar and toolbars above the canvas it no longer sees their clicks. Both are hidden in focus mode, so nothing depends on it.
 - A portalled navbar's events bubble by React ancestry to the root, not to the DOM element it is mounted in.
 - TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the canvas ends above the tab-panel slot instead of using an inset.
-- The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the `shouldHideRight` boolean in state.
+- The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the two width decisions in state (§2.3).
 - `package/styles/css-ownership.test.ts` must still pass; new layout rules belong on editor-owned selectors.
 
 ## 9. Documentation
@@ -246,12 +265,12 @@ The lasting record of this revamp is the README and `AGENTS.md`, updated in the 
 | Parent sizing | A short, offset host; host-only resize; content overflow confined to the canvas; no viewport fallback. |
 | Navbar | Omitted renderer, inline renderer, `null` portal target, attached target, target replacement, visibility toggle, Escape focus return. |
 | Modes | Normal, preview through `DdocEditor`, focus, presentation and Split View; toolbar visibility rules and mounted editor / node-view identity preserved across mode switches. |
-| Width | A canvas-only resize updates the rail decision and the landscape clamp without a window resize. |
+| Width | A canvas-only resize updates the rail decision and the landscape clamp without a window resize. Shrink and grow the canvas across the page-fit threshold while staying on one side of the rail threshold: alignment switches between centred and start. Repeat after changing zoom and outline visibility. |
 | Bottom chrome | Editor bottom edge equals the footer's top edge in ddocs.new and the demo, including a non-zero safe-area inset and larger text; hiding the footer in focus mode returns the space; collapsed and expanded tab panel; caret visibility; native drag autoscroll near the canvas bottom with the panel collapsed, expanded, and collapsed again. |
-| Scroll | Tab restore, heading and comment navigation, caret navigation and floating comments all act on the element whose `scrollTop` changes; Split View scrolls only its right pane. |
-| Comment drawer | In a short host with long threads the header, filters, list and input stay reachable; scrolling the document does not move or resize the drawer; opening it does not shift the page; repeat in Split View and presentation mode. |
+| Scroll | Normal mode: tab restore, heading and comment navigation, caret navigation and floating comments all act on the element whose `scrollTop` changes. Split View: only the right pane scrolls; tab scroll restore is exempt (degraded as before, §2.2) and the canvas `scrollTop` stays 0. |
+| Comment drawer | In a short host with long threads the header, filters, list and input stay reachable; scrolling the document does not move or resize the drawer; opening it does not shift the page; with a wide or zoomed page the drawer stays just inside the canvas's visible right edge and scrollbar at `scrollLeft` 0, midway and maximum, and after a host-only resize; repeat in Split View and presentation mode. |
 | Shared components | Preview and version history keep tab access, the desktop tab portal, and the mobile `--version-sheet-bottom` offset. |
-| State | For every row in §4.2: omitted props, controlled `false`, new callback alone, legacy setter alone, both, functional updates, controlled-to-uncontrolled handoff; one notification per change under Strict Mode; focus-mode shortcuts and `onFocusMode` retained. |
+| State | For every row in §4.2: omitted props, controlled `false`, new callback alone, legacy setter alone, both, several functional updates in one handler, controlled-to-uncontrolled handoff; a host that declines a request (with and without a re-render) and a later toggle still derived from the prop; delayed acceptance; handoff after a declined request; controlled with no callback; one notification per change under Strict Mode; focus-mode shortcuts and `onFocusMode` retained. |
 | Stats | With only `onStatsChange`, all four fields update on load, selection, edits and tab changes; a late page result from a previous tab or an unmounted editor cannot overwrite the snapshot; an inline callback causes no render loop. |
 | Integration | At 200% zoom the canvas stays inside the editor's allocation; after dSheet-to-dDoc navigation exactly the intended toolbar shows on each side of 960px. |
 | Package | Type check and build; state and scroll tests; `package/styles/css-ownership.test.ts`; browser QA for layout and scrolling. |
