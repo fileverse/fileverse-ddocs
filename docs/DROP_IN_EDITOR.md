@@ -220,3 +220,38 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the canvas ends above the tab-panel slot instead of using an inset.
 - The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the `shouldHideRight` boolean in state.
 - `package/styles/css-ownership.test.ts` must still pass; new layout rules belong on editor-owned selectors.
+
+## 9. Documentation
+
+The lasting record of this revamp is the README and `AGENTS.md`, updated in the same release. This spec is a working document.
+
+**README**
+
+- Usage: the editor fills its parent, and the parent needs a definite height. A minimal mount with a sized wrapper, navbar and footer.
+- A "Migrating from 5.x" section beside "Migrating from 4.x": the sized parent, the footer in flow, `footerHeight` no longer used, CSS that targeted `#editor-canvas` as a toolbar ancestor.
+- UI/UX Props: `navbarContainer` with the callback-ref example from §3; the `onXChange` callbacks and `onStatsChange`; the `setX` and `set*Count` props marked deprecated; `zoomLevel`, `isNavbarVisible` and `isPreviewMode` shown as optional with their defaults.
+- Known limits from §7: one editor per page, window-based breakpoints.
+
+**AGENTS.md**
+
+- Architecture: the layout contract (root fills the parent; navbar and toolbar rows; `#editor-canvas` is the scroller and carries `data-editor-scroll-container`; drawer anchor; tab-panel slot) and the rule that editor chrome uses no viewport units or `fixed`.
+- The internal `layout` prop on the shared tab components, and that preview and version history stay on `'viewport'`.
+- `useControllableState` as the way to add any new UI state prop.
+- The ddocs.new section: the sized column, the in-flow footer variant, `.ddoc-editor-root`.
+
+## 10. Acceptance
+
+| Area | Required evidence |
+|---|---|
+| Parent sizing | A short, offset host; host-only resize; content overflow confined to the canvas; no viewport fallback. |
+| Navbar | Omitted renderer, inline renderer, `null` portal target, attached target, target replacement, visibility toggle, Escape focus return. |
+| Modes | Normal, preview through `DdocEditor`, focus, presentation and Split View; toolbar visibility rules and mounted editor / node-view identity preserved across mode switches. |
+| Width | A canvas-only resize updates the rail decision and the landscape clamp without a window resize. |
+| Bottom chrome | Editor bottom edge equals the footer's top edge in ddocs.new and the demo, including a non-zero safe-area inset and larger text; hiding the footer in focus mode returns the space; collapsed and expanded tab panel; caret visibility; native drag autoscroll near the canvas bottom with the panel collapsed, expanded, and collapsed again. |
+| Scroll | Tab restore, heading and comment navigation, caret navigation and floating comments all act on the element whose `scrollTop` changes; Split View scrolls only its right pane. |
+| Comment drawer | In a short host with long threads the header, filters, list and input stay reachable; scrolling the document does not move or resize the drawer; opening it does not shift the page; repeat in Split View and presentation mode. |
+| Shared components | Preview and version history keep tab access, the desktop tab portal, and the mobile `--version-sheet-bottom` offset. |
+| State | For every row in §4.2: omitted props, controlled `false`, new callback alone, legacy setter alone, both, functional updates, controlled-to-uncontrolled handoff; one notification per change under Strict Mode; focus-mode shortcuts and `onFocusMode` retained. |
+| Stats | With only `onStatsChange`, all four fields update on load, selection, edits and tab changes; a late page result from a previous tab or an unmounted editor cannot overwrite the snapshot; an inline callback causes no render loop. |
+| Integration | At 200% zoom the canvas stays inside the editor's allocation; after dSheet-to-dDoc navigation exactly the intended toolbar shows on each side of 960px. |
+| Package | Type check and build; state and scroll tests; `package/styles/css-ownership.test.ts`; browser QA for layout and scrolling. |
