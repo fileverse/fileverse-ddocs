@@ -237,7 +237,7 @@ Required, in the same release as the major bump.
 - `Footer` (`components/footer/footer.tsx`) is `absolute bottom-0` and is shared with the version-history screen. It needs an in-flow variant for the editor page, keeping its content-driven height and safe-area padding; version history keeps the absolute one. Wrapping it without this leaves it overlapping the editor.
 - Remove `footerHeight`.
 - Remove the zoom override `editorCanvasClassNames = '!h-[calc(100vh-24px)]'` at zoom `'2'`; it defeats the parent-height contract.
-- `app/ddoc-editor-styles.css` scopes its `mobile:flex` / `mobile:hidden` corrections under `#editor-canvas`. The toolbars are no longer inside the canvas; retarget to `.ddoc-editor-root`. Update the fixture in `tests/e2e/unauth/dsheet-toolbar-order.spec.ts` to the new tree.
+- `app/ddoc-editor-styles.css` scopes `mobile:flex` / `mobile:hidden` corrections under `#editor-canvas`, to undo dSheet's redefinition of those classes. The toolbars are no longer inside the canvas and their classes are now `ddoc-mobile:*` (§2.9), which dSheet does not define. Update the fixture in `tests/e2e/unauth/dsheet-toolbar-order.spec.ts` to the new tree and class names; delete the override if the spec passes without it, otherwise retarget it to `.ddoc-editor-root .ddoc-mobile\:*`.
 - The navbar keeps working through `renderNavbar` with no change.
 
 **Demo** (`demo/src/App.tsx`): the same column; `DemoFooter` is `fixed bottom-0` and becomes an in-flow row.
