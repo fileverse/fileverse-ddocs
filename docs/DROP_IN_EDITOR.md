@@ -21,14 +21,34 @@ Compatibility: the prop surface is additive, so existing consumer code compiles 
 ### 2.1 Structure
 
 ```
-root  .ddoc-editor-root            h-full w-full flex flex-col relative overflow-hidden
-├─ navbar row   <nav id="Navbar">   in flow, shrink-0   (§3; absent when portalled or no renderNavbar)
-├─ toolbar row  #toolbar / mobile   in flow, shrink-0
-└─ #editor-canvas                   flex-1 min-h-0 relative flex flex-col overflow-hidden   (does not scroll)
-   ├─ scroller  [data-editor-scroll-container]   flex-1 min-h-0 overflow-auto
-   │    └─ left rail (sticky, tabs sidebar) · page · right rail
-   ├─ tab-panel slot                shrink-0, below 1280px only (§2.4)
-   └─ comment drawer                absolute, right side (§2.5)
+┌─ host parent (host decides width × height) ───────────────────┐
+│ ┌─ root · 100% × 100% · flex column · no scroll ────────────┐ │
+│ │ NAVBAR row     renderNavbar()  (or portalled to the host) │ │
+│ │ TOOLBAR row                                               │ │
+│ │ ┌─ #editor-canvas · takes the rest · overflow: auto ──┬─┐ │ │
+│ │ │ ┌sticky─┐  ┌───── page ─────┐  ┌sticky────────┐     │▲│ │ │
+│ │ │ │ tabs/ │  │ content        │  │ comment      │     │█│ │ │
+│ │ │ │ TOC   │  │ (scrolls)      │  │ drawer       │     │ │ │ │
+│ │ │ └───────┘  │                │  └──────────────┘     │▼│ │ │
+│ │ └─────────────────────────────────────────────────────┴─┘ │ │
+│ │ TAB PANEL row  (below 1280px only)                        │ │
+│ └───────────────────────────────────────────────────────────┘ │
+│ host footer                                                   │
+└───────────────────────────────────────────────────────────────┘
+```
+
+```
+root  .ddoc-editor-root   h-full w-full flex flex-col overflow-hidden
+├─ nav#Navbar             shrink-0, in flow, or createPortal → navbarContainer (§3)
+├─ #toolbar / mobile      shrink-0, in flow
+├─ #editor-canvas         flex-1 min-h-0 overflow-auto, [data-editor-scroll-container]
+│  ├─ drawer anchor       sticky top-0 right-0, zero size (§2.5)
+│  │  └─ CommentDrawer    absolute inside the anchor
+│  └─ content wrapper     does not scroll
+│     ├─ left rail        sticky top-0 → tabs sidebar / TOC
+│     ├─ page
+│     └─ right rail
+└─ tab-panel slot         shrink-0, below 1280px (§2.4)
 ```
 
 Today the navbar, both toolbars and the comment drawer are rendered inside `#editor-canvas` as `fixed` elements, and the canvas reserves their space with `mt-[calc(var(--navbar)+var(--toolbar))]`. The navbar and toolbars move above the canvas. `CommentStoreProvider` is hoisted to wrap the root's children so all of them stay inside it.
@@ -37,10 +57,11 @@ Today the navbar, both toolbars and the comment drawer are rendered inside `#edi
 
 ### 2.2 Scroll owner
 
-- **Normal mode: the element carrying `data-editor-scroll-container` is the one document scroller.** It already holds `editorScrollContainerRef`, is what `getEditorScrollContainer` returns first, and is what tab position restore, the caret scroll band, heading and comment navigation, and the floating comment layout read. It becomes height-bounded (`flex-1 min-h-0`), so the resolver's answer is the element whose `scrollTop` changes. No resolver or ref changes.
-- `#editor-canvas` stops scrolling (`overflow-hidden`). It is the positioning context for the drawer and the tab-panel slot.
-- **Split View: unchanged.** The right-pane wrapper scrolls, the attributed element is `overflow-visible`, and the degraded scroll restore documented in `TAB_SCROLL_POSITION.md` is preserved, not fixed.
-- Unverified: which of the two nested `overflow-auto` elements scrolls vertically today. Confirm in the browser before implementing; the target above holds either way.
+- **Normal mode: `#editor-canvas` is the one document scroller.** Its scrollbar sits at the outer edge of the editor, under the toolbar.
+- `data-editor-scroll-container` and `editorScrollContainerRef` move from the inner content wrapper onto `#editor-canvas`. `getEditorScrollContainer` returns the attributed element first without checking that it scrolls, so the attribute must be on the element whose `scrollTop` changes. Tab position restore, the caret scroll band, heading and comment navigation, and the floating comment layout all follow it.
+- The inner content wrapper keeps no vertical scrolling. If it stays `overflow-auto` for horizontal overflow it is still a scroll container for `sticky` purposes (§8).
+- **Split View: unchanged.** The right-pane wrapper scrolls, and the degraded scroll restore documented in `TAB_SCROLL_POSITION.md` is preserved, not fixed.
+- First implementation step: confirm in the browser which element scrolls today, since the attribute currently sits on the inner wrapper.
 
 ### 2.3 Measured size instead of viewport units
 
@@ -56,14 +77,15 @@ This gives the drawer and comment section a definite height without a height cha
 
 Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fixed drag autoscroll by ending the scroller above it (`bottomInset`), because the browser's autoscroll belt is the scroller's physical bottom edge; `scroll-padding` does not shorten the box and is not a substitute.
 
-- The canvas renders a tab-panel slot as a `shrink-0` row under the scroller. `DocumentMobileTabPanel` portals into it. The slot's in-flow height is the collapsed panel's height, so the scroller ends above the panel by construction.
-- Expanded, the panel content is `absolute bottom-0` inside the slot and grows upward over the scroller. The reserved height does not change.
+- The root renders a tab-panel slot as a full-width `shrink-0` row under `#editor-canvas`. `DocumentMobileTabPanel` portals into it. The slot's in-flow height is the collapsed panel's height, so the canvas ends above the panel by construction.
+- Expanded, the panel content is `absolute bottom-0` inside the slot and grows upward over the canvas. The reserved height does not change.
 - No `bottom` offset: the host footer is outside the box. The `env(safe-area-inset-bottom)` term moves to the host footer (§6).
 
 ### 2.5 Comment drawer
 
-- Rendered as a child of `#editor-canvas`, sibling of the scroller, `position: absolute` with a top and right offset. The canvas does not scroll, so the drawer stays put without `sticky` and takes no flow space.
-- `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`.
+- The canvas has a drawer anchor: an editor-owned element, `sticky top-0 right-0`, zero width and height. Sticky keeps it in place while the canvas scrolls in either direction; zero size keeps it out of the flow so the page does not shift.
+- `CommentDrawer` renders inside the anchor. `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`, positioned from the anchor.
+- The drawer floats just inside the canvas scrollbar, which runs the full canvas height.
 - Height: `calc(var(--ddoc-canvas-h) - <margins>)`. The comment section inside keeps scrolling its own list, with its height from the same variable minus the drawer header and filter row.
 - Presentation mode keeps its current viewport-level drawer branch.
 
@@ -88,7 +110,7 @@ Stays viewport-level: presentation mode, fullscreen toolbar, mobile comment shee
 ### 2.8 Invariants
 
 - Under the root, in `'contained'` layout, nothing uses `vh`, `dvh`, `vw`, `w-screen` or `h-screen`, and no chrome is `position: fixed`, except the viewport-level overlays in §2.7.
-- One document scroller in normal mode (§2.2).
+- One document scroller in normal mode, `#editor-canvas`, carrying `data-editor-scroll-container` (§2.2).
 - `id="editor-canvas"`, `id="toolbar"` and `id="Navbar"` are kept.
 
 ## 3. Navbar
@@ -190,9 +212,10 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 ## 8. Gotchas
 
 - `DynamicDrawerV2` exposes classes for its outer, header and content elements only. Anything deeper must be reached from an editor-owned selector in the package stylesheet. Confirm in the browser that `!absolute` wins over its `fixed`.
-- The left rail's `sticky top-0` resolves against the nearest scrolling ancestor, which is the scroller in §2.2. If the canvas were left as `overflow-auto` as well, sticky would bind to whichever is nearer and the sidebar offsets would be wrong.
+- `sticky` binds to the nearest ancestor with any non-visible overflow, on either axis. The left rail sits inside the inner content wrapper, which is `overflow-auto` today. If that wrapper is the nearer scroll container the rail sticks to it and not to the canvas. The sidebar must hold position while the canvas scrolls; if the wrapper's overflow prevents that, move horizontal overflow to the canvas.
+- A sticky element occupies flow space, unlike `fixed`. The drawer anchor is zero-size for that reason.
 - `handleFocusModeMouseDown` is on `#editor-canvas`. With the navbar and toolbars above the canvas it no longer sees their clicks. Both are hidden in focus mode, so nothing depends on it.
 - A portalled navbar's events bubble by React ancestry to the root, not to the DOM element it is mounted in.
-- TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the edge sits above the tab-panel slot instead of an inset.
+- TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the canvas ends above the tab-panel slot instead of using an inset.
 - The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the `shouldHideRight` boolean in state.
 - `package/styles/css-ownership.test.ts` must still pass; new layout rules belong on editor-owned selectors.
