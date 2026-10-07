@@ -7,10 +7,11 @@ Makes `DdocEditor` usable without owning the page: the parent decides its size, 
 In:
 
 - §2 The editor fills its parent. No viewport arithmetic.
+- §2.9 Responsive behaviour follows the editor's width, not the window's.
 - §3 `renderNavbar` stays, rendered in flow or portalled into a host element.
 - §4 Every UI-state prop is optional, with plain-value change callbacks.
 
-Out: collaboration config, separately exported pieces (toolbar, tabs, drawer as components), container-based responsive breakpoints, more than one editor per page (§7).
+Out: collaboration config, separately exported pieces (toolbar, tabs, drawer as components), more than one editor per page (§7).
 
 Compatibility: the prop surface is additive, so existing consumer code compiles unchanged. The layout change in §2 is breaking at runtime and ships as a major version with the consumer change in §6.
 
@@ -122,6 +123,29 @@ Stays viewport-level: presentation mode, fullscreen toolbar, mobile comment shee
 - One document scroller in normal mode, `#editor-canvas`, carrying `data-editor-scroll-container` (§2.2).
 - `id="editor-canvas"`, `id="toolbar"` and `id="Navbar"` are kept.
 
+### 2.9 Responsive behaviour follows the editor
+
+**Rule: inside the root, every breakpoint is evaluated against the root's width.** An editor in a 500px panel on a wide screen lays out as it would in a 500px window. Without this the fill-parent contract only works for full-width embeds.
+
+Today three things read the window: `useMediaQuery` (23 calls in 16 files, thresholds from 480px to 1560px), `useResponsive` (12 files), and Tailwind screen variants in class names (`sm:` `md:` `lg:` `xl:` `mobile:` and their `max-` forms, about 70 uses in 16 files), plus about ten width `@media` rules in the package stylesheets.
+
+**Mechanism: one width source, two readers.**
+
+- The observer from §2.3 also watches the root's width and keeps it in a small store (subscribe / get), provided through context from the root.
+- JS reader: `useEditorMediaQuery('(max-width: 1280px)')` takes the same query strings as `useMediaQuery`, supports `min-width` and `max-width` in px, and compares against the store. It re-renders only when its own result flips. `useResponsive` is built on it, so its 12 callers follow with no edit; the direct `useMediaQuery` calls inside the root change their import.
+- CSS reader: the root carries `data-ddoc-bp`, a space-separated list of the breakpoints its width has reached (`sm md mobile lg xl`: 640, 768, 960, 1024, 1280px). It is written straight to the DOM by the observer, like the custom properties. The Tailwind preset (`@fileverse-dev/ddoc/tailwind`) adds variants `ddoc-sm:` `ddoc-md:` `ddoc-mobile:` `ddoc-lg:` `ddoc-xl:` and `ddoc-max-*:` that match on it. Class names inside the root move from the screen variants to these. Consumers already use the preset, so they change nothing.
+- Width `@media` rules in the package stylesheets that style editor chrome become `[data-ddoc-bp~="…"]` selectors. `(hover: none)` and print rules are not width rules and stay.
+
+**Outside a root, everything falls back to the window.** The hook without a provider uses `matchMedia`. Each `ddoc-*` variant has a second form, the same `@media` query scoped to elements with no `[data-ddoc-bp]` ancestor. So `PreviewDdocEditor`, version history and anything portalled to `<body>` behave exactly as today, and shared components need no `layout` branch for this.
+
+**Viewport-level pieces keep the window** (§2.7): presentation mode and its preview panel, dialogs and modals (`utils-modal`, `confirm-delete-modal`), popovers. Their `useMediaQuery` calls and screen variants are left alone.
+
+- Decided: data attribute, not CSS container queries. `container-type` applied layout containment in earlier browser versions, which turns the root into the containing block for `position: fixed` descendants and would trap presentation mode and the mobile sheets inside the editor box. Current Chrome does not (measured, 154), but the package cannot choose its users' browsers. The attribute also gives CSS and JS the same answer from the same measurement, where a container query and a JS width check can disagree for a frame.
+- Thresholds keep today's exact values and inclusivity (`max-width: 1280px` is true at 1280).
+- At full-window width nothing changes: the root's width is the window's.
+- `isNativeMobile` also reads the OS (`platform`); that part is not width and is unchanged.
+- The narrow-width comment UI is a `fixed inset-0` sheet. In a narrow editor on a wide screen it covers the viewport, not the editor box. It stays viewport-level in v1 (§7).
+
 ## 3. Navbar
 
 - `renderNavbar` is unchanged: same signature, still called by the package, still inside `CommentStoreProvider`.
@@ -223,7 +247,8 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 ## 7. Gaps
 
 - One editor per page. The preserved global ids and the `document.querySelector` fallbacks in `getEditorScrollContainer` are not instance-scoped. "Drop-in" does not mean instance isolation.
-- Responsive breakpoints (`mobile` 960px, the 1280px tab-panel switch, `useResponsive`, `useMediaQuery`) read the window. An editor in a narrow container on a wide screen lays out as desktop.
+- Breakpoints inside `@fileverse/ui` components still read the window; only the package's own classes and hooks follow the editor (§2.9).
+- A narrow editor on a wide screen uses the mobile comment sheet, which is `fixed` to the viewport (§2.9). Containing it in the editor box is not in v1.
 - The mobile keyboard handling (`isKeyboardVisible`, `scrollIntoView` on resize) assumes the editor spans the visual viewport.
 - Split View scroll restore stays degraded (§2.2).
 - Print (`handle-print.ts`) builds its own document and is unaffected.
@@ -241,6 +266,8 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - TEC-2948 (caret scroll band) measures against the scroller's bottom edge; re-check the band now that the canvas ends above the tab-panel slot instead of using an inset.
 - The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the two width decisions in state (§2.3).
 - `package/styles/css-ownership.test.ts` must still pass; new layout rules belong on editor-owned selectors.
+- A new responsive class inside the root must use a `ddoc-*:` variant, and a new width check must use `useEditorMediaQuery`. A plain `md:` or `useMediaQuery` there silently follows the window again (§2.9).
+- `data-ddoc-bp` must be set before first paint (the same layout effect as §2.3), or the editor flashes its narrowest layout.
 
 ## 9. Documentation
 
@@ -251,13 +278,15 @@ The lasting record of this revamp is the README and `AGENTS.md`, updated in the 
 - Usage: the editor fills its parent, and the parent needs a definite height. A minimal mount with a sized wrapper, navbar and footer.
 - A "Migrating from 5.x" section beside "Migrating from 4.x": the sized parent, the footer in flow, `footerHeight` no longer used, CSS that targeted `#editor-canvas` as a toolbar ancestor.
 - UI/UX Props: `navbarContainer` with the callback-ref example from §3; the `onXChange` callbacks and `onStatsChange`; the `setX` and `set*Count` props marked deprecated; `zoomLevel`, `isNavbarVisible` and `isPreviewMode` shown as optional with their defaults.
-- Known limits from §7: one editor per page, window-based breakpoints.
+- Sizing: the layout follows the editor's width (§2.9); nothing to configure.
+- Known limits from §7: one editor per page, the viewport-level mobile comment sheet.
 
 **AGENTS.md**
 
 - Architecture: the layout contract (root fills the parent; navbar and toolbar rows; `#editor-canvas` is the scroller and carries `data-editor-scroll-container`; drawer anchor; tab-panel slot) and the rule that editor chrome uses no viewport units or `fixed`.
 - The internal `layout` prop on the shared tab components, and that preview and version history stay on `'viewport'`.
 - `useControllableState` as the way to add any new UI state prop.
+- Responsive rules: `ddoc-*:` variants and `useEditorMediaQuery` inside the root, screen variants and `useMediaQuery` only for viewport-level overlays.
 - The ddocs.new section: the sized column, the in-flow footer variant, `.ddoc-editor-root`.
 
 ## 10. Acceptance
@@ -268,6 +297,7 @@ The lasting record of this revamp is the README and `AGENTS.md`, updated in the 
 | Navbar | Omitted renderer, inline renderer, `null` portal target, attached target, target replacement, visibility toggle, Escape focus return. |
 | Modes | Normal, preview through `DdocEditor`, focus, presentation and Split View; toolbar visibility rules and mounted editor / node-view identity preserved across mode switches. |
 | Width | A canvas-only resize updates the rail decision and the landscape clamp without a window resize. Shrink and grow the canvas across the page-fit threshold while staying on one side of the rail threshold: alignment switches between centred and start. Repeat after changing zoom and outline visibility. |
+| Responsive | With the window at 1600px, narrow the host from 1400px to 400px: the tab sidebar becomes the tab panel at 1280px, the desktop toolbar becomes the mobile toolbar at 960px, the comment UI and block chrome switch at their thresholds, each exactly where a window of that width switches today. Widen again: all reverse. At full-window width every breakpoint matches `main`. Preview, version history, presentation mode and dialogs still follow the window. No narrow-layout flash on load. |
 | Bottom chrome | Editor bottom edge equals the footer's top edge in ddocs.new and the demo, including a non-zero safe-area inset and larger text; hiding the footer in focus mode returns the space; collapsed and expanded tab panel; caret visibility; native drag autoscroll near the canvas bottom with the panel collapsed, expanded, and collapsed again. |
 | Scroll | Normal mode: tab restore, heading and comment navigation, caret navigation and floating comments all act on the element whose `scrollTop` changes. Split View: only the right pane scrolls; tab scroll restore is exempt (degraded as before, §2.2) and the canvas `scrollTop` stays 0. |
 | Comment drawer | In a short host with long threads the header, filters, list and input stay reachable; scrolling the document does not move or resize the drawer; opening it does not shift the page; with a wide or zoomed page the drawer stays just inside the canvas's visible right edge and scrollbar at `scrollLeft` 0, midway and maximum, and after a host-only resize; repeat in Split View and presentation mode. |
