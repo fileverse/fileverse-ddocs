@@ -57,11 +57,12 @@ Today the navbar, both toolbars and the comment drawer are rendered inside `#edi
 
 ### 2.2 Scroll owner
 
-- **Normal mode: `#editor-canvas` is the one document scroller.** Its scrollbar sits at the outer edge of the editor, under the toolbar.
+- **Decided: in normal mode `#editor-canvas` is the one document scroller.** The reason is the scrollbar: it must sit at the outer edge of the editor, spanning the full width under the toolbar, not beside the page.
+- Rejected: making the inner `data-editor-scroll-container` wrapper the scroller and the canvas a non-scrolling box. The attribute sits on that wrapper today, which makes it look like the scroller, and it would allow an `absolute` drawer; but it moves the scrollbar inward. Do not reopen this from the attribute's current position.
 - `data-editor-scroll-container` and `editorScrollContainerRef` move from the inner content wrapper onto `#editor-canvas`. `getEditorScrollContainer` returns the attributed element first without checking that it scrolls, so the attribute must be on the element whose `scrollTop` changes. Tab position restore, the caret scroll band, heading and comment navigation, and the floating comment layout all follow it.
 - The inner content wrapper keeps no vertical scrolling. If it stays `overflow-auto` for horizontal overflow it is still a scroll container for `sticky` purposes (§8).
 - **Split View: unchanged.** The right-pane wrapper scrolls, and the degraded scroll restore documented in `TAB_SCROLL_POSITION.md` is preserved, not fixed.
-- First implementation step: confirm in the browser which element scrolls today, since the attribute currently sits on the inner wrapper.
+- Not yet measured: whether the inner wrapper scrolls on any axis today. This does not affect the decision above, only how much has to change to reach it: check in the browser first, and remove any vertical scrolling the wrapper turns out to have.
 
 ### 2.3 Measured size instead of viewport units
 
