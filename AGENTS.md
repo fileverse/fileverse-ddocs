@@ -13,7 +13,7 @@ npm i                         # root deps (CI uses Node 22)
 npm run build                 # tsc type-check + vite lib build -> dist/
 npx tsc                       # type-check only (noEmit; covers package + entries, not tests or demo)
 npm run lint                  # eslint --fix, zero warnings allowed; prettier runs through eslint
-npm test                      # vitest run (jsdom); 99 files / ~1131 tests (2 skipped) in ~24s
+npm test                      # vitest run (jsdom); 117 files / 1512 tests in ~24s
 npx vitest run package/extensions/paragraph-spacing.test.ts   # one file
 npx vitest run -t "treats 0 as an explicit value"             # one test by name
 npx vitest package/extensions/docx                            # watch a directory
@@ -34,6 +34,18 @@ Release: `.github/workflows/release.yml` builds, tags `v<version>` and publishes
   - `hooks/use-tab-manager.ts`: tab CRUD over the `ddocTabs` Y.Map. One `Y.XmlFragment` per tab, tab id == fragment name, `'default'` is the first/legacy tab. See `docs/TABS_SPEC.md`.
   - `hooks/use-doc-schema-version.ts`: resolves v1/v2 and stamps new docs. Must stay after `useTabManager` in hook order because it reads the marker that `useTabManager` decoded synchronously during render.
   - `hooks/use-tab-editor.tsx`: builds one Tiptap `Editor` per tab via `buildExtensionsForTab`, keeps the 4 most recent warm (`use-tab-editor-cache.ts`), and handles hydration, ToC, page count and print.
+
+### Layout contract
+
+Read `docs/DROP_IN_EDITOR.md` before touching layout, scrolling or UI-state props.
+
+- `DdocEditor` is `h-full w-full` of its parent and never reads the viewport. The root (`.ddoc-editor-root`) is a flex column: navbar row (`components/editor-navbar.tsx`, in flow or portalled into `navbarContainer`; no `renderNavbar` means no navbar element, and its height comes from its content), toolbar row, `#editor-canvas`, tab-panel slot.
+- `#editor-canvas` is the one document scroller and carries `data-editor-scroll-container`. Do not move scrolling to an inner wrapper, and do not put `overflow` on anything between the sticky left rail and the canvas. Split View is the exception: the canvas is `overflow-hidden`, the right pane scrolls, and the attribute stays on the inner wrapper. `editorScrollContainerRef` is `isSplitViewActive ? contentWrapperRef : canvasRef`, so an effect keyed on the ref object re-binds when Split View toggles.
+- Editor chrome uses no `vh` / `dvh` / `vw` and no `position: fixed` (`layout-contract.test.ts` checks `ddoc-editor.tsx`). Sizes come from `--ddoc-canvas-w` / `--ddoc-canvas-h`, published by `hooks/use-canvas-metrics.ts`. Presentation mode, the mobile comment sheet, popovers and dialogs stay viewport-level. Presentation mode's overlay (`.ddoc-presentation-overlay`) is its own `ddoc-editor` container, so its content follows the window, and it gets a null `EditorWidthContext`.
+- The comment drawer hangs from `.ddoc-drawer-anchor`, a zero-height, full-width sticky line that must stay the canvas's direct child. It also holds `SearchReplace`, whose popover anchor must stay at the visible canvas's top-right, and gets `ddoc-drawer-anchor--presenting` in presentation mode so the drawer paints above the overlay.
+- `DocumentOutline`, `DocumentTabsSidebar` and `DocumentMobileTabPanel` take an internal `layout` prop. `PreviewDdocEditor` and version history use the default `'viewport'`; only `DdocEditor` passes `'contained'`.
+- Breakpoints inside the root follow the root's width (spec §2.9): use the `ddoc-*:` Tailwind variants and `useEditorMediaQuery` / `useResponsive`. The preset (`tailwind.preset.cjs`, tested in `tailwind-preset.test.ts`) defines `ddoc-sm/md/mobile/lg/xl`, `ddoc-max-*` and the arbitrary `ddoc-min-[Npx]:` / `ddoc-max-[Npx]:`. Each emits a container-query form, active only when the root has `ddoc-editor-cq` (decided by `utils/container-query-support.ts`), plus a window `@media` fallback for elements outside a `.ddoc-editor-cq` root. So in `PreviewDdocEditor`, in browsers that fail the safety check and in elements portalled to `<body>` they behave like the screen variants. Screen variants (`md:`) and `useMediaQuery` are only for viewport-level overlays. On the same element and property a screen variant always overrides a `ddoc-*` variant, so never mix the two for one property. `DdocEditor` itself sits above the provider and passes `editorWidthStore` to those hooks directly.
+- UI state (`zoomLevel`, `isNavbarVisible`, `showTOC`, `commentDrawerOpen`, `isPresentationMode`, `isSplitView`, `isFocusMode`) goes through `hooks/use-controllable-state.ts`. Add any new UI-state prop the same way: value, `onXChange`, internal default. Never give such a prop a default in the destructuring.
 
 ### Yjs is the source of truth
 
@@ -77,7 +89,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 
 - Branch names and PR titles are Linear ticket ids (`TEC-1234`).
 - Prettier through eslint: single quotes, trailing commas, semicolons, 2-space indent.
-- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`). Read the relevant one before changing that area.
+- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`, `DROP_IN_EDITOR.md`). Read the relevant one before changing that area.
 
 ## Consumer repo: ddocs.new
 
@@ -85,3 +97,4 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 - It installs the published package pinned to an exact version; there is no `npm link` workflow. `yjs` is pinned to one copy through its `overrides`, which is why `yjs` must stay external in this package's build.
 - Its integration surface: `DdocEditor` (mounted in `components/ddoc-editor/ddoc-editor.tsx`), `PreviewDdocEditor` (viewer and version history), `useHeadlessEditor` (nine call sites: templates, imports, duplication, bulk upload), `useExportHeadlessEditorContent` with `DdocExportModal`, `handleContentPrint`, `mergeTabAwareYjsUpdates`, `buildVersionDiffSnapshot`, `useEditorCommands`, and the `@fileverse-dev/ddoc/types` entry. Styles come from `@fileverse-dev/ddoc/styles` (imported by its `app/ddoc-editor-styles.css` after `katex/dist/katex.min.css`, with `@fileverse/ui/styles/base` in the root layout), and its `tailwind.config.ts` uses `./tailwind` and scans `dist/**/*.{js,mjs}`. Changing the name or shape of any of these breaks the app.
 - `preferredSchemaVersion` there is driven by `flatSchemaEnabled` in `utils/feature-flags.ts` (`NEXT_PUBLIC_FLAT_SCHEMA`, inlined at build time).
+- It mounts `DdocEditor` in a `h-dvh flex flex-col` column with the editor in a `flex-1 min-h-0` child and the footer as an in-flow row after it; its CSS overrides for the toolbars are scoped to `.ddoc-editor-root`.
