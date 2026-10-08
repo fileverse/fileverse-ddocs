@@ -163,6 +163,14 @@ export interface DocumentStyling {
    */
   customCSS?: string;
 }
+export type DdocStats = {
+  words: number;
+  characters: number;
+  selectedWords: number;
+  /** null until the active tab has been measured. */
+  pages: number | null;
+};
+
 export interface DdocProps extends CommentAccountProps {
   /**
    * Optional catalog of fonts available to the editor in addition to the
@@ -285,9 +293,15 @@ export interface DdocProps extends CommentAccountProps {
    */
   enableFanficTemplate?: boolean;
   onError?: (error: string) => void;
+  /** Active-tab stats. Fires with all four fields whenever one changes. */
+  onStatsChange?: (stats: DdocStats) => void;
+  /** @deprecated Use onStatsChange. */
   setCharacterCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setWordCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setSelectedWordCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setPageCount?: React.Dispatch<SetStateAction<number>>;
   tags?: Array<{ name: string; color: string }>;
   className?: string;
