@@ -61,4 +61,7 @@ export interface DocumentOutlineProps {
   deleteTab?: (tabId: string) => void;
   isConnected?: boolean;
   isFocusMode?: boolean;
+  /** 'contained': sized from the editor canvas. Only DdocEditor passes it. */
+  layout?: 'viewport' | 'contained';
+  tabPanelSlot?: HTMLElement | null;
 }

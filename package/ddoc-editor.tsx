@@ -308,7 +308,6 @@ const DdocEditor = forwardRef(
     const [tabPanelSlot, setTabPanelSlot] = useState<HTMLDivElement | null>(
       null,
     );
-    void tabPanelSlot;
     const editorWrapperRef = useRef<HTMLDivElement | null>(null);
     const { isBelow1280px, isNativeMobile } = useResponsive();
 
@@ -1035,6 +1034,8 @@ const DdocEditor = forwardRef(
                     tabConfig={tabConfig}
                     isConnected={isConnected}
                     isFocusMode={isFocusMode}
+                    layout="contained"
+                    tabPanelSlot={tabPanelSlot}
                   />
                 )}
               </div>
@@ -1731,6 +1732,8 @@ const DdocEditor = forwardRef(
                           tabConfig={tabConfig}
                           isConnected={isConnected}
                           isFocusMode={isFocusMode}
+                          layout="contained"
+                          tabPanelSlot={tabPanelSlot}
                         />
                       </div>
                     )}

@@ -29,6 +29,8 @@ export const DocumentOutline = ({
   deleteTab,
   isConnected,
   isFocusMode,
+  layout = 'viewport',
+  tabPanelSlot,
 }: DocumentOutlineProps) => {
   const isMediaMax1280px = useMediaQuery('(max-width:1280px)');
 
@@ -73,6 +75,7 @@ export const DocumentOutline = ({
       tabConfig={tabConfig}
       isConnected={isConnected}
       isFocusMode={isFocusMode}
+      layout={layout}
     />
   ) : (
     <DocumentMobileTabPanel
@@ -94,6 +97,8 @@ export const DocumentOutline = ({
       isVersionHistoryMode={!!isVersionHistoryMode}
       isConnected={isConnected}
       isFocusMode={isFocusMode}
+      layout={layout}
+      tabPanelSlot={tabPanelSlot}
     />
   );
 };
