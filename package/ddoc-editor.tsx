@@ -78,6 +78,7 @@ import { useSplitResize } from './hooks/use-split-resize';
 import { applyTabbedTemplate } from './utils/apply-tabbed-template';
 import type { TabbedJSONContent } from './hooks/use-headless-editor';
 import { useTabPositionMemory } from './hooks/use-tab-position-memory';
+import { useControllableState } from './hooks/use-controllable-state';
 
 const DdocEditor = forwardRef(
   (
@@ -114,14 +115,18 @@ const DdocEditor = forwardRef(
       inlineCommentData,
       enableIndexeddbSync,
       ddocId,
-      zoomLevel,
-      setZoomLevel,
-      isPresentationMode,
-      setIsPresentationMode,
-      isSplitView = false,
-      setIsSplitView,
-      isNavbarVisible,
-      setIsNavbarVisible,
+      zoomLevel: zoomLevelProp,
+      setZoomLevel: setZoomLevelProp,
+      onZoomLevelChange,
+      isPresentationMode: isPresentationModeProp,
+      setIsPresentationMode: setIsPresentationModeProp,
+      onPresentationModeChange,
+      isSplitView: isSplitViewProp,
+      setIsSplitView: setIsSplitViewProp,
+      onSplitViewChange,
+      isNavbarVisible: isNavbarVisibleProp,
+      setIsNavbarVisible: setIsNavbarVisibleProp,
+      onNavbarVisibleChange,
       onComment,
       onInlineComment,
       onFocusMode,
@@ -139,8 +144,9 @@ const DdocEditor = forwardRef(
       documentName,
       onInvalidContentError,
       ignoreCorruptedData,
-      commentDrawerOpen,
-      setCommentDrawerOpen,
+      commentDrawerOpen: commentDrawerOpenProp,
+      setCommentDrawerOpen: setCommentDrawerOpenProp,
+      onCommentDrawerOpenChange,
       initialComments = [],
       initialCommentAnchors,
       onNewComment,
@@ -154,8 +160,9 @@ const DdocEditor = forwardRef(
       onDeleteComment,
       onDeleteReply,
       theme,
-      showTOC,
-      setShowTOC,
+      showTOC: showTOCProp,
+      setShowTOC: setShowTOCProp,
+      onShowTOCChange,
       isConnected,
       connectViaWallet,
       isLoading,
@@ -182,6 +189,42 @@ const DdocEditor = forwardRef(
     }: DdocProps,
     ref,
   ) => {
+    const [zoomLevel, setZoomLevel] = useControllableState(
+      zoomLevelProp,
+      '1',
+      onZoomLevelChange,
+      setZoomLevelProp,
+    );
+    const [isNavbarVisible, setIsNavbarVisible] = useControllableState(
+      isNavbarVisibleProp,
+      true,
+      onNavbarVisibleChange,
+      setIsNavbarVisibleProp,
+    );
+    const [showTOC, setShowTOC] = useControllableState(
+      showTOCProp,
+      false,
+      onShowTOCChange,
+      setShowTOCProp,
+    );
+    const [commentDrawerOpen, setCommentDrawerOpen] = useControllableState(
+      commentDrawerOpenProp,
+      false,
+      onCommentDrawerOpenChange,
+      setCommentDrawerOpenProp,
+    );
+    const [isPresentationMode, setIsPresentationMode] = useControllableState(
+      isPresentationModeProp,
+      false,
+      onPresentationModeChange,
+      setIsPresentationModeProp,
+    );
+    const [isSplitView, setIsSplitView] = useControllableState(
+      isSplitViewProp,
+      false,
+      onSplitViewChange,
+      setIsSplitViewProp,
+    );
     const { isFocusMode, toggleFocusMode } = useFocusMode({
       isFocusMode: isFocusModeProp,
       onFocusModeChange,
@@ -813,7 +856,7 @@ const DdocEditor = forwardRef(
               isSplitView={isSplitView}
               onToggleSplitView={
                 // Hidden during collaboration — Split View is solo-only in v1.
-                setIsSplitView && !isCollabEnabled
+                !isCollabEnabled
                   ? () => setIsSplitView((open) => !open)
                   : undefined
               }

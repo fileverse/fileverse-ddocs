@@ -190,6 +190,8 @@ export interface DdocProps extends CommentAccountProps {
   disableInlineComment?: boolean;
   //Comments V2 Props
   commentDrawerOpen?: boolean;
+  onCommentDrawerOpenChange?: (open: boolean) => void;
+  /** @deprecated Use onCommentDrawerOpenChange. */
   setCommentDrawerOpen?: React.Dispatch<SetStateAction<boolean>>;
   initialComments?: IComment[];
   initialCommentAnchors?: SerializedCommentAnchor[];
@@ -217,6 +219,8 @@ export interface DdocProps extends CommentAccountProps {
   onDeleteReply?: (activeCommentId: string, replyId: string) => void;
   //Comments V2 Props
   showTOC?: boolean;
+  onShowTOCChange?: (show: boolean) => void;
+  /** @deprecated Use onShowTOCChange. */
   setShowTOC?: React.Dispatch<SetStateAction<boolean>>;
   extensions?: Record<string, Extension | any>;
   selectedTags?: TagType[];
@@ -228,13 +232,19 @@ export interface DdocProps extends CommentAccountProps {
     React.SetStateAction<InlineCommentData>
   >;
   theme?: ThemeKey;
-  zoomLevel: string;
-  setZoomLevel: React.Dispatch<SetStateAction<string>>;
-  isNavbarVisible: boolean;
-  setIsNavbarVisible: React.Dispatch<SetStateAction<boolean>>;
+  /** Defaults to '1' when omitted. */
+  zoomLevel?: string;
+  onZoomLevelChange?: (zoomLevel: string) => void;
+  /** @deprecated Use onZoomLevelChange. */
+  setZoomLevel?: React.Dispatch<SetStateAction<string>>;
+  /** Defaults to true when omitted. */
+  isNavbarVisible?: boolean;
+  onNavbarVisibleChange?: (visible: boolean) => void;
+  /** @deprecated Use onNavbarVisibleChange. */
+  setIsNavbarVisible?: React.Dispatch<SetStateAction<boolean>>;
   editorCanvasClassNames?: string;
   isCommentSectionOpen?: boolean;
-  isPreviewMode: boolean;
+  isPreviewMode?: boolean;
   viewerMode?: 'suggest' | 'view-only';
   ensResolutionUrl?: string;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
@@ -283,12 +293,17 @@ export interface DdocProps extends CommentAccountProps {
   className?: string;
   unFocused?: boolean;
   isPresentationMode?: boolean;
+  onPresentationModeChange?: (active: boolean) => void;
+  /** @deprecated Use onPresentationModeChange. */
   setIsPresentationMode?: React.Dispatch<SetStateAction<boolean>>;
   /** Split View: edit markdown on the left, see the read-only ddoc render on the right. */
   isSplitView?: boolean;
+  onSplitViewChange?: (active: boolean) => void;
+  /** @deprecated Use onSplitViewChange. */
   setIsSplitView?: React.Dispatch<SetStateAction<boolean>>;
   onComment?: () => void;
   onInlineComment?: () => void;
+  /** @deprecated Use onFocusModeChange. Still fires on every change. */
   onFocusMode?: (isFocusMode: boolean) => void;
   /** Controlled focus mode (D6). Omit for the legacy internal-state behavior. */
   isFocusMode?: boolean;
@@ -314,6 +329,7 @@ export interface DdocProps extends CommentAccountProps {
   renderToolbarLeading?: () => React.ReactNode;
   metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
+  /** @deprecated No effect. The host footer sits outside the editor. */
   footerHeight?: string;
   activeModel?: CustomModel;
   maxTokens?: number;
