@@ -268,6 +268,11 @@ export interface DdocProps extends CommentAccountProps {
   walletAddress?: string | null;
   username?: string | null;
   setUsername?: React.Dispatch<SetStateAction<string>>;
+  /**
+   * Host element to render the navbar into. Omit to render it as the editor's
+   * first row. Pass null while the element is not attached yet.
+   */
+  navbarContainer?: HTMLElement | null;
   renderNavbar?: ({
     editor,
     liveEditor,
