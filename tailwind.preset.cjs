@@ -22,14 +22,19 @@ module.exports = {
   },
   plugins: [
     plugin(({ addVariant, matchVariant }) => {
-      for (const [name, px] of Object.entries(DDOC_BREAKPOINTS)) {
-        addVariant(`ddoc-${name}`, [
-          `@container ddoc-editor (min-width: ${px}px)`,
-          `@media (min-width: ${px}px) { &:where(:not(.ddoc-editor-cq *)) }`,
-        ]);
+      const breakpoints = Object.entries(DDOC_BREAKPOINTS);
+      // Registration order is CSS order. Like Tailwind's screens: max variants
+      // first, widest first, so the narrower one wins; then min, ascending.
+      for (const [name, px] of [...breakpoints].reverse()) {
         addVariant(`ddoc-max-${name}`, [
           `@container ddoc-editor (max-width: ${px - 0.02}px)`,
           `@media (max-width: ${px - 0.02}px) { &:where(:not(.ddoc-editor-cq *)) }`,
+        ]);
+      }
+      for (const [name, px] of breakpoints) {
+        addVariant(`ddoc-${name}`, [
+          `@container ddoc-editor (min-width: ${px}px)`,
+          `@media (min-width: ${px}px) { &:where(:not(.ddoc-editor-cq *)) }`,
         ]);
       }
       // One-off widths: ddoc-min-[1410px]: and ddoc-max-[1280px]: (inclusive).

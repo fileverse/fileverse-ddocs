@@ -609,3 +609,10 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   container-type: inline-size;
   container-name: ddoc-editor;
 }
+
+/* Presentation mode covers the window, so its content answers to the overlay's
+   width, not the root's. Nearest ddoc-editor container wins. */
+.ddoc-editor-cq .ddoc-presentation-overlay {
+  container-type: inline-size;
+  container-name: ddoc-editor;
+}

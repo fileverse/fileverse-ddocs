@@ -39,6 +39,18 @@ describe('ddoc tailwind preset', () => {
     expect(css).toContain('.ddoc-md\\:flex:where(:not(.ddoc-editor-cq *))');
   });
 
+  it('orders max variants so the narrower one wins', async () => {
+    const css = await build(
+      'ddoc-max-sm:flex ddoc-max-lg:hidden ddoc-md:block',
+    );
+    const lg = css.indexOf('@container ddoc-editor (max-width: 1023.98px)');
+    const sm = css.indexOf('@container ddoc-editor (max-width: 639.98px)');
+    const md = css.indexOf('@container ddoc-editor (min-width: 768px)');
+    expect(lg).toBeGreaterThan(-1);
+    expect(sm).toBeGreaterThan(lg);
+    expect(md).toBeGreaterThan(sm);
+  });
+
   it('keeps the mobile screen for viewport-level code', async () => {
     const css = await build('mobile:flex');
     expect(css).toContain('@media (min-width: 960px)');

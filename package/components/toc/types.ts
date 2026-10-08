@@ -26,6 +26,10 @@ export type ToCItemProps = {
   onItemRemove: (e: React.MouseEvent, id: string) => void;
   index: number;
   orientation?: 'portrait' | 'landscape';
+  /** At or below 1280px: the item is in the mobile list. */
+  isMobile?: boolean;
+  /** At or above 1280px: the item takes the rail's width caps. */
+  isWide?: boolean;
 };
 
 export interface DocumentOutlineProps {

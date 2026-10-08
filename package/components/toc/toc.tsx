@@ -22,6 +22,8 @@ export const ToCItem = memo(
     onItemClick,
     index,
     orientation,
+    isMobile,
+    isWide,
     // onItemRemove,
   }: ToCItemProps) => {
     // Memoize the click handler to prevent recreating it on every render
@@ -101,16 +103,24 @@ export const ToCItem = memo(
       //   - 1750px+: 240px TOC (safe centered: (1750-1190)/2 = 280px > 240px)
       const widthClasses =
         orientation === 'landscape'
-          ? 'ddoc-xl:!max-w-[160px] ddoc-min-[1750px]:!max-w-[240px]'
-          : 'ddoc-xl:!max-w-[160px] ddoc-min-[1410px]:!max-w-[240px] ddoc-min-[1600px]:!max-w-[320px]';
+          ? '!max-w-[160px] ddoc-min-[1750px]:!max-w-[240px]'
+          : '!max-w-[160px] ddoc-min-[1410px]:!max-w-[240px] ddoc-min-[1600px]:!max-w-[320px]';
 
+      // The mobile list can sit in a drawer portalled to <body>, where a CSS
+      // breakpoint would read the window; the 1280px split comes from JS.
       return cn(
-        `flex items-center transition-all text-body-sm-bold ddoc-max-[1280px]:h-[32px] ddoc-max-[1280px]:px-2 ddoc-max-[1280px]:py-1 h-5 ddoc-max-[1280px]:max-w-full ${widthClasses} ddoc-xl:border-l-2`,
+        'flex items-center transition-all text-body-sm-bold',
+        isMobile ? 'h-[32px] px-2 py-1 max-w-full' : 'h-5',
+        isWide && `${widthClasses} border-l-2`,
         item.isActive
-          ? 'color-border-active color-text-default ddoc-max-[1280px]:border-none ddoc-max-[1280px]:bg-[#F8F9FA] ddoc-max-[1280px]:rounded ddoc-max-[1280px]:text-[#363B3F]'
+          ? [
+              'color-border-active color-text-default',
+              // [color:…], not text-[…]: cn would drop text-body-sm-bold.
+              isMobile && 'border-none bg-[#F8F9FA] rounded [color:#363B3F]',
+            ]
           : 'color-text-secondary border-transparent ddoc-lg:hover:!brightness-90',
       );
-    }, [item.isActive, orientation]);
+    }, [item.isActive, orientation, isMobile, isWide]);
 
     return (
       <div
@@ -137,9 +147,7 @@ export const ToCItem = memo(
               variant="ghost"
               className={cn(
                 '!bg-transparent group-hover/toc-item:opacity-100 opacity-0 transition-all color-text-secondary active:scale-75',
-                item.isActive
-                  ? 'ddoc-max-[1280px]:visible'
-                  : 'ddoc-max-[1280px]:invisible',
+                isMobile && (item.isActive ? 'visible' : 'invisible'),
               )}
               onClick={(ev) => handleCopyToClipboard(ev, href)}
             />
@@ -166,6 +174,7 @@ export const ToC = memo(
   ({ items = [], editor, setItems, orientation }: ToCProps) => {
     const [activeId, setActiveId] = useState<string | null>(null);
     const isMobile = useEditorMediaQuery('(max-width: 1280px)');
+    const isWide = useEditorMediaQuery('(min-width: 1280px)');
 
     // Add refs for the cache
     const headingsCacheRef = useRef<Map<string, HTMLElement> | null>(null);
@@ -447,7 +456,12 @@ export const ToC = memo(
     }
 
     return (
-      <div className="flex flex-col ddoc-max-[1280px]:gap-2 gap-4 pl-[35px] mb-3">
+      <div
+        className={cn(
+          'flex flex-col pl-[35px] mb-3',
+          isMobile ? 'gap-2' : 'gap-4',
+        )}
+      >
         {processedItems.map((item, i) => (
           <ToCItem
             onItemClick={onItemClick}
@@ -460,6 +474,8 @@ export const ToC = memo(
             item={item}
             index={i + 1}
             orientation={orientation}
+            isMobile={isMobile}
+            isWide={isWide}
           />
         ))}
       </div>

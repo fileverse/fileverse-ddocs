@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
+import { useMediaQuery } from 'usehooks-ts';
 
 export interface LinkPreviewData {
   image: string;
@@ -18,7 +18,7 @@ export const LinkPreviewCard = ({
   metadataProxyUrl: string;
   hoverEvent: EventTarget;
 }) => {
-  const isMediaMax768px = useEditorMediaQuery('(max-width:768px)');
+  const isMediaMax768px = useMediaQuery('(max-width:768px)');
   const [previewData, setPreviewData] = useState<LinkPreviewData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
