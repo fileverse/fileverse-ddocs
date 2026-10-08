@@ -36,6 +36,8 @@ export type DdocContentSnapshot = {
 export type DdocContentMergeResult = DdocContentSnapshot & {
   /** True when the merge wrote something the database did not have. */
   changed: boolean;
+  /** True when the database did not exist and this merge created it. */
+  created: boolean;
 };
 
 export type DdocContentDeleteResult = {
@@ -250,6 +252,7 @@ export const mergeDdocContent = (
   ): DdocContentMergeResult => ({
     ...unavailableSnapshot(ddocId, status, error),
     changed: false,
+    created: false,
   });
 
   const incoming = new Y.Doc();
@@ -273,6 +276,7 @@ export const mergeDdocContent = (
     let transaction: IDBTransaction | null = null;
     let settled = false;
     let changed = false;
+    let created = false;
     let failure: {
       status: Exclude<DdocContentStatus, 'available' | 'empty'>;
       error: unknown;
@@ -310,6 +314,7 @@ export const mergeDdocContent = (
     // A merge may create the database. Use exactly y-indexeddb's schema so
     // the editor's IndexeddbPersistence opens it as its own.
     openRequest.onupgradeneeded = () => {
+      created = true;
       const upgradeDb = openRequest.result;
       if (!upgradeDb.objectStoreNames.contains(UPDATES_STORE)) {
         upgradeDb.createObjectStore(UPDATES_STORE, { autoIncrement: true });
@@ -381,7 +386,7 @@ export const mergeDdocContent = (
         };
 
         tx.oncomplete = () =>
-          finish({ ...snapshotDocument(ddocId, existing), changed });
+          finish({ ...snapshotDocument(ddocId, existing), changed, created });
         tx.onabort = () =>
           finish(
             notMerged(

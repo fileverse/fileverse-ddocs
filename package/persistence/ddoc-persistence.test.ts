@@ -194,7 +194,11 @@ describe('readDdocContent', () => {
 describe('mergeDdocContent', () => {
   it('creates a missing database the editor then opens as its own', async () => {
     const result = await mergeDdocContent(ID, encode(docWithText('seeded')));
-    expect(result).toMatchObject({ status: 'available', changed: true });
+    expect(result).toMatchObject({
+      status: 'available',
+      changed: true,
+      created: true,
+    });
 
     const editor = await openEditor(ID);
     expect(editor.doc.getText('body').toString()).toBe('seeded');
@@ -207,7 +211,11 @@ describe('mergeDdocContent', () => {
     const before = (await rows(ID)).length;
 
     const again = await mergeDdocContent(ID, encode(source));
-    expect(again).toMatchObject({ status: 'available', changed: false });
+    expect(again).toMatchObject({
+      status: 'available',
+      changed: false,
+      created: false,
+    });
     expect((await rows(ID)).length).toBe(before);
   });
 
@@ -220,7 +228,7 @@ describe('mergeDdocContent', () => {
     const result = await mergeDdocContent(ID, encode(source));
     const stored = (await rows(ID)) as Uint8Array[];
 
-    expect(result.changed).toBe(true);
+    expect(result).toMatchObject({ changed: true, created: false });
     expect(stored).toHaveLength(2);
     expect(stored[1].byteLength).toBeLessThan(fullSize / 10);
     expect(decodeText(result.encodedState)).toBe(
