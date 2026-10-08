@@ -42,7 +42,7 @@ Compatibility: the prop surface is additive, so existing consumer code compiles 
 root  .ddoc-editor-root   h-full w-full flex flex-col overflow-hidden
 ├─ nav#Navbar             shrink-0, in flow, or createPortal → navbarContainer (§3)
 ├─ #toolbar / mobile      shrink-0, in flow
-├─ #editor-canvas         flex-1 min-h-0 flex flex-col overflow-auto, [data-editor-scroll-container]
+├─ #editor-canvas         flex: 1 1 0px, min-h-0, flex flex-col overflow-auto, [data-editor-scroll-container]
 │  ├─ drawer anchor       sticky top-0 left-0, full width, zero height (§2.5)
 │  │  └─ CommentDrawer    absolute, at the anchor's right edge
 │  └─ content wrapper     overflow-visible, does not scroll
@@ -94,7 +94,7 @@ Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fix
 - `width: 100%` is the canvas's content width, which excludes a classic scrollbar. The drawer therefore sits just inside the scrollbar with no measurement.
 - `CommentDrawer` renders inside the anchor. `DynamicDrawerV2` sets `fixed` internally; the override goes through its `className` with `!absolute`, `top` and `right` margins from the anchor, and `pointer-events: auto`.
 - Zero height keeps the anchor out of the flow, so opening the drawer does not shift the page.
-- The anchor has `overflow-x: clip`. `DynamicDrawerV2` is always mounted and closes with `translate-x-full`; unclipped, the closed drawer hangs past the right edge and widens the canvas's scrollable area (measured: 640px to 960px). `clip` on one axis leaves the other visible and does not make the anchor a scroll container. `pointer-events: none` is inherited, so the anchor's children are reset to `auto`; the mobile comment sheet renders through the same component.
+- The anchor has `overflow-x: clip`. `DynamicDrawerV2` is always mounted and closes with `translate-x-full`, so the `right` margin is applied only while it is open; unclipped, the closed drawer hangs past the right edge and widens the canvas's scrollable area (measured: 640px to 960px). `clip` on one axis leaves the other visible and does not make the anchor a scroll container. `pointer-events: none` is inherited, so the anchor's children are reset to `auto`; the mobile comment sheet renders through the same component.
 - Measured in headless Chrome (640px canvas offset by 32px, 1400×3000px content, 336px drawer, `right: 16px`): the drawer's right edge stayed 16px inside the visible content edge at scroll (0, 0), (240, 160), (380, 1000) and the maximum, with overlay and with classic scrollbars, in a block and in a flex-column canvas; content stayed at the canvas top. This is geometry only; the real drawer still needs the §10 check.
 - Height: `calc(var(--ddoc-canvas-h) - <margins>)`. The comment section inside keeps scrolling its own list, with its height from the same variable minus the drawer header and filter row.
 - Presentation mode keeps its current viewport-level drawer branch. The anchor is sticky, so it is a stacking context and the drawer's own `z-60` is scoped inside it; in presentation mode the anchor gets `ddoc-drawer-anchor--presenting` (`z-index: 60`) so the drawer paints above the presentation overlay (`z-50`).
@@ -145,7 +145,7 @@ Today three things read the window: `useMediaQuery` (23 calls in 16 files, thres
 
 - **Decided: CSS container queries**, on their browser support (above 95% on caniuse). Rejected: a `data-ddoc-bp` attribute written by the observer with attribute-selector variants.
 - Risk with that decision: early container-query implementations applied layout containment, which makes the container the containing block for `position: fixed` descendants. Presentation mode, the fullscreen toolbar and the mobile sheets are fixed descendants of the root, so in such a browser they would be trapped inside the editor box (in ddocs.new too: presentation mode would leave the footer showing). Chrome 154 does not trap them (measured); which Safari and Firefox versions do is not established.
-- **Safety check, so the worst case is today's behaviour.** Once per page, before the first paint, the package appends a hidden test element to `<body>`: a small offset box with `container-type: inline-size` holding a `position: fixed; left: 0; top: 0` child. If the child sits at the viewport origin, fixed descendants escape and the root gets `ddoc-editor-cq`. If it sits at the box's origin, or `CSS.supports('container-type: inline-size')` is false, the root does not get the class: nothing is a container, the `@media` form of every variant applies, the width store stays empty and the JS hook answers from the window. That browser then behaves exactly as it does today, breakpoints following the window. The result is cached for the page.
+- **Safety check, so the worst case is today's behaviour.** Once per page, before the first paint, the package appends a hidden test element to `<body>`: a small offset box with `container-type: inline-size` holding a `position: fixed; left: 0; top: 0` child. The child's rect is compared with the box's, so page scroll does not matter. If the child is away from the box's origin, fixed descendants escape and the root gets `ddoc-editor-cq`. If it sits at the box's origin, or `CSS.supports('container-type: inline-size')` is false, the root does not get the class: nothing is a container, the `@media` form of every variant applies, the width store stays empty and the JS hook answers from the window. That browser then behaves exactly as it does today, breakpoints following the window. The result is cached for the page.
 - The check uses a throwaway element, not the root, because a root that starts at the viewport origin cannot tell "trapped" from "escaped".
 - Rejected for v1: portalling the fixed overlays to `<body>` so no ancestor can trap them. It also covers a host `transform` on an ancestor, but styles scoped under the root stop reaching the overlays. Revisit if the check fails on a current browser.
 - A container cannot be queried by itself: `ddoc-*` variants work on the root's descendants, not on the root element.
@@ -263,6 +263,7 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - Print (`handle-print.ts`) builds its own document and is unaffected.
 - The tab-panel slot's height is a fixed 50px (§2.4), not measured; a taller collapsed panel would overlap the canvas's bottom edge.
 - The width store holds the integer `clientWidth` while container queries use the fractional width, so a JS check and a CSS variant can disagree within 1px at a fractional editor width.
+- `zoomService` reads the editor's width only when zoom is applied, not on resize, so the template-button offset at zoom 2 can be stale after the editor crosses 1280px (as it was for a window resize).
 
 ## 8. Gotchas
 
@@ -278,6 +279,9 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - The ResizeObserver in §2.3 must not write state on every frame of a resize drag; set the custom properties directly on the root and keep only the two width decisions in state (§2.3).
 - `package/styles/css-ownership.test.ts` must still pass; new layout rules belong on editor-owned selectors.
 - A new responsive class inside the root must use a `ddoc-*:` variant, and a new width check must use `useEditorMediaQuery`. A plain `md:` or `useMediaQuery` there silently follows the window again (§2.9).
+- A direct `window.matchMedia` or `window.innerWidth` call inside the root is a window check too and needs the same treatment. Non-React code reads the width of `closest('.ddoc-editor-cq')` and falls back to the window without one (`zoom-service.ts`); a check that only guards an element rendered from a JS breakpoint can be dropped (`getMobileCommentDrawerSheetRect`).
+- The canvas's flex basis is `0px`, not `flex-1`'s `0%`. In a parent with no definite height a percentage basis is content-sized, and `--ddoc-canvas-h` feeds `.editor-main-lane`'s `min-height`, so the canvas would grow on every observer cycle instead of collapsing.
+- The closed comment drawer must be at `right: 0` of the anchor: it closes by translating its own width, so any `right` offset leaves that much of it inside the anchor's clip (§2.5).
 - The width store must be filled before first paint (the same layout effect as §2.3), or JS-driven branches flash their narrowest layout.
 - The window fallback keys off `ddoc-editor-cq`, not `ddoc-editor-root`: a root that failed the safety check must still get the `@media` form. Do not set `container-type` on `.ddoc-editor-root` directly.
 - On one element and property a screen variant always overrides a `ddoc-*` variant (plugin variants sort first). Do not mix the two for one property; convert both.
