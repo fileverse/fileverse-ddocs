@@ -9,6 +9,11 @@ import {
   CollabCallbacks,
 } from '../sync-local/types';
 import { DdocProps } from '../types';
+import { compactDdocPersistence } from '../persistence/compaction';
+import {
+  waitForIndexeddbSync,
+  watchIndexeddbConnection,
+} from '../persistence/provider-lifecycle';
 
 interface UseYjsSetupArgs {
   onChange?: DdocProps['onChange'];
@@ -40,6 +45,12 @@ export const useYjsSetup = ({
     : undefined;
 
   const yjsIndexeddbProviderRef = useRef<IndexeddbPersistence | null>(null);
+  const stopWatchingIndexeddbRef = useRef<(() => void) | null>(null);
+  // Connection listeners outlive renders; read the latest callback.
+  const onIndexedDbErrorRef = useRef(onIndexedDbError);
+  useEffect(() => {
+    onIndexedDbErrorRef.current = onIndexedDbError;
+  }, [onIndexedDbError]);
 
   const {
     connect,
@@ -60,24 +71,52 @@ export const useYjsSetup = ({
   });
 
   const initialiseYjsIndexedDbProvider = useCallback(async () => {
+    stopWatchingIndexeddbRef.current?.();
+    stopWatchingIndexeddbRef.current = null;
     const provider = yjsIndexeddbProviderRef.current;
     if (provider) {
       await provider.destroy();
     }
     if (enableIndexeddbSync && ddocId) {
       setIsIndexeddbSynced(false);
+      let newYjsIndexeddbProvider: IndexeddbPersistence | null = null;
       try {
-        const newYjsIndexeddbProvider = new IndexeddbPersistence(ddocId, ydoc);
+        newYjsIndexeddbProvider = new IndexeddbPersistence(ddocId, ydoc);
         // Capture the provider before sync resolves so origin checks can detect IndexedDB replay.
         yjsIndexeddbProviderRef.current = newYjsIndexeddbProvider;
-        // Wait for the database to be ready and synced
-        await newYjsIndexeddbProvider.whenSynced;
+        // Wait for the database to be ready and synced. Rejects if the
+        // database cannot be opened (plain whenSynced would hang).
+        await waitForIndexeddbSync(newYjsIndexeddbProvider);
+        const syncedProvider = newYjsIndexeddbProvider;
+        stopWatchingIndexeddbRef.current = watchIndexeddbConnection(
+          syncedProvider,
+          {
+            onError: (error) => {
+              console.error('IndexedDB persistence failed:', error);
+              onIndexedDbErrorRef.current?.(error);
+            },
+            onDetached: () => {
+              if (yjsIndexeddbProviderRef.current === syncedProvider) {
+                yjsIndexeddbProviderRef.current = null;
+                stopWatchingIndexeddbRef.current = null;
+              }
+            },
+          },
+        );
         setIsIndexeddbSynced(true);
+        // Collapse rows already replayed into the doc (the full copy each
+        // open stores, previous sessions' edits) into one, in the background.
+        void compactDdocPersistence(syncedProvider).catch((error: unknown) => {
+          console.warn('IndexedDB compaction failed:', error);
+        });
       } catch (error) {
         console.error('IndexedDB initialization failed:', error);
-        yjsIndexeddbProviderRef.current = null;
+        if (yjsIndexeddbProviderRef.current === newYjsIndexeddbProvider) {
+          yjsIndexeddbProviderRef.current = null;
+        }
+        void newYjsIndexeddbProvider?.destroy().catch(() => {});
         setIsIndexeddbSynced(true);
-        onIndexedDbError?.(
+        onIndexedDbErrorRef.current?.(
           error instanceof Error ? error : new Error(String(error)),
         );
         // Don't rethrow - allow editor to continue without persistence
@@ -85,7 +124,7 @@ export const useYjsSetup = ({
     } else {
       setIsIndexeddbSynced(true);
     }
-  }, [enableIndexeddbSync, ddocId, ydoc, onIndexedDbError]);
+  }, [enableIndexeddbSync, ddocId, ydoc]);
 
   const onChangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,

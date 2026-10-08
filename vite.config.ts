@@ -20,6 +20,7 @@ export default defineConfig({
           __dirname,
           './headless-editor-utils.ts',
         ),
+        persistence: path.resolve(__dirname, './persistence.ts'),
       },
       formats: ['es'],
       //A function that generates the output file
