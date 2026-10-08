@@ -20,6 +20,15 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain(token);
   });
 
+  // Effects keyed on the ref (floating comments' scroll listener) re-bind
+  // only if the ref object changes with the scroller (§2.2).
+  it('switches the scroll container ref object with Split View', () => {
+    expect(source.replace(/\s+/g, ' ')).toContain(
+      'const editorScrollContainerRef = isSplitViewActive ? contentWrapperRef : canvasRef;',
+    );
+    expect(source).not.toContain('editorScrollContainerRef.current =');
+  });
+
   it('marks the root and keeps the preserved ids', () => {
     expect(source).toContain('ddoc-editor-root');
     expect(source).toContain('id="editor-canvas"');

@@ -302,7 +302,7 @@ const DdocEditor = forwardRef(
     const getBackgroundStyle = () => mergedStyles.background;
 
     const btn_ref = useRef(null);
-    const editorScrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const contentWrapperRef = useRef<HTMLDivElement | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const [tabPanelSlot, setTabPanelSlot] = useState<HTMLDivElement | null>(
@@ -769,20 +769,17 @@ const DdocEditor = forwardRef(
     });
 
     // The scroller is the canvas, except in Split View where it stays on the
-    // inner wrapper as before (docs/DROP_IN_EDITOR.md §2.2).
-    const setCanvasNode = useCallback(
-      (node: HTMLDivElement | null) => {
-        canvasRef.current = node;
-        if (!isSplitViewActive) editorScrollContainerRef.current = node;
-      },
-      [isSplitViewActive],
-    );
-    const setContentWrapperNode = useCallback(
-      (node: HTMLDivElement | null) => {
-        if (isSplitViewActive) editorScrollContainerRef.current = node;
-      },
-      [isSplitViewActive],
-    );
+    // inner wrapper as before (docs/DROP_IN_EDITOR.md §2.2). The ref object
+    // itself switches, so effects keyed on it re-bind to the new element.
+    const editorScrollContainerRef = isSplitViewActive
+      ? contentWrapperRef
+      : canvasRef;
+    const setCanvasNode = useCallback((node: HTMLDivElement | null) => {
+      canvasRef.current = node;
+    }, []);
+    const setContentWrapperNode = useCallback((node: HTMLDivElement | null) => {
+      contentWrapperRef.current = node;
+    }, []);
     const editorContentRef = useRef<HTMLDivElement | null>(null);
     const setActiveEditorContentRef = useCallback(
       (node: HTMLDivElement | null, isActive: boolean) => {
@@ -984,7 +981,10 @@ const DdocEditor = forwardRef(
                 isSplitViewActive ? 'true' : undefined
               }
               className={cn(
-                'flex w-full flex-none overflow-visible',
+                'flex flex-none overflow-visible',
+                // Landscape in the canvas column: stretch sizes it, so the
+                // margins do not add horizontal overflow.
+                (!isLandscapeMode || isSplitViewActive) && 'w-full',
                 isLandscapeMode && 'mx-[24px]',
               )}
             >
