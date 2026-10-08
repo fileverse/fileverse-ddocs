@@ -97,7 +97,8 @@ Below 1280px the collapsed panel covers the bottom of the scroller. TEC-2947 fix
 - The anchor has `overflow-x: clip`. `DynamicDrawerV2` is always mounted and closes with `translate-x-full`; unclipped, the closed drawer hangs past the right edge and widens the canvas's scrollable area (measured: 640px to 960px). `clip` on one axis leaves the other visible and does not make the anchor a scroll container. `pointer-events: none` is inherited, so the anchor's children are reset to `auto`; the mobile comment sheet renders through the same component.
 - Measured in headless Chrome (640px canvas offset by 32px, 1400×3000px content, 336px drawer, `right: 16px`): the drawer's right edge stayed 16px inside the visible content edge at scroll (0, 0), (240, 160), (380, 1000) and the maximum, with overlay and with classic scrollbars, in a block and in a flex-column canvas; content stayed at the canvas top. This is geometry only; the real drawer still needs the §10 check.
 - Height: `calc(var(--ddoc-canvas-h) - <margins>)`. The comment section inside keeps scrolling its own list, with its height from the same variable minus the drawer header and filter row.
-- Presentation mode keeps its current viewport-level drawer branch.
+- Presentation mode keeps its current viewport-level drawer branch. The anchor is sticky, so it is a stacking context and the drawer's own `z-60` is scoped inside it; in presentation mode the anchor gets `ddoc-drawer-anchor--presenting` (`z-index: 60`) so the drawer paints above the presentation overlay (`z-50`).
+- `SearchReplace` also renders inside the anchor. Its popover anchor is `absolute right-0`; as a plain child of the canvas it would scroll away with the document now that the canvas scrolls. The popover content is portalled to the canvas, so the anchor's `pointer-events: none` and clip do not reach it.
 
 ### 2.6 Shared components: preview and version history
 
@@ -131,13 +132,16 @@ Today three things read the window: `useMediaQuery` (23 calls in 16 files, thres
 
 **Mechanism: CSS container queries for class names, the observed width for JS.**
 
-- CSS: the root is a named query container (`container-type: inline-size; container-name: ddoc-editor`, set by the class `ddoc-editor-cq`, which the root gets only after the safety check below passes). The Tailwind preset (`@fileverse-dev/ddoc/tailwind`) adds variants `ddoc-sm:` `ddoc-md:` `ddoc-mobile:` `ddoc-lg:` `ddoc-xl:` (640, 768, 960, 1024, 1280px) and `ddoc-max-*:`, each an `@container ddoc-editor (…)` rule. Class names inside the root move from the screen variants to these. The variants are defined by the preset itself, with no extra Tailwind plugin, and consumers already use the preset, so they change nothing.
+- CSS: the root is a named query container (`container-type: inline-size; container-name: ddoc-editor`, set by the class `ddoc-editor-cq`, which the root gets only after the safety check below passes). The Tailwind preset (`@fileverse-dev/ddoc/tailwind`) adds variants `ddoc-sm:` `ddoc-md:` `ddoc-mobile:` `ddoc-lg:` `ddoc-xl:` (640, 768, 960, 1024, 1280px) and `ddoc-max-*:`, each an `@container ddoc-editor (…)` rule, plus arbitrary-value `ddoc-min-[Npx]:` and `ddoc-max-[Npx]:` for the one-off thresholds (`toc.tsx`). The named `ddoc-max-*` variants are registered widest first so the narrower one wins, as with Tailwind's own `max-*`. Class names inside the root move from the screen variants to these. The variants are defined by the preset itself, with no extra Tailwind plugin, and consumers already use the preset, so they change nothing.
 - JS: the observer from §2.3 also watches the root's width and keeps it in a small store (subscribe / get), provided through context from the root. `useEditorMediaQuery('(max-width: 1280px)')` takes the same query strings as `useMediaQuery`, supports `min-width` and `max-width` in px, and compares against the store. It re-renders only when its own result flips. `useResponsive` is built on it, so its 12 callers follow with no edit; the direct `useMediaQuery` calls inside the root change their import.
-- Width `@media` rules in the package stylesheets that style editor chrome or content get an `@container ddoc-editor (…)` twin, and the original is scoped to `:not(.ddoc-editor-cq *)`. `(hover: none)` and print rules are not width rules and stay.
+- Width `@media` rules in the package stylesheets that style editor chrome or content get an `@container ddoc-editor (…)` twin, and the original is scoped to `:where(:not(.ddoc-editor-cq *))`. `:where()` keeps the fallback at the specificity of the plain screen variant, so the cascade is the same with and without the class; the preset's fallback form uses it too. `(hover: none)` and print rules are not width rules and stay.
 
 **Outside a root, everything falls back to the window.** A container query with no matching container never applies, so each `ddoc-*` variant has a second form: the same `@media` query on elements with no `.ddoc-editor-cq` ancestor. The hook without a provider uses `matchMedia`. So `PreviewDdocEditor`, version history, a portalled navbar and anything portalled to `<body>` behave exactly as today, and shared components need no `layout` branch for this. Both forms were generated with Tailwind 3.4.18 from one `addVariant` call per breakpoint.
 
 **Viewport-level pieces keep the window** (§2.7): presentation mode and its preview panel, dialogs and modals (`utils-modal`, `confirm-delete-modal`), popovers. Their `useMediaQuery` calls and screen variants are left alone.
+
+- Presentation mode's overlay is a DOM descendant of the root, so on its own its content CSS would follow the root's width. Under `.ddoc-editor-cq` the overlay (`.ddoc-presentation-overlay`) is itself a `ddoc-editor` container: it is window-wide and the nearest named container wins. `PresentationMode` is also wrapped in a null `EditorWidthContext` so its hooks read the window.
+- An element portalled to `<body>` cannot see the container, so its `ddoc-*` classes use the window while a JS check made inside the root uses the editor. Where a component can render in such a portal (the no-tabs mobile outline drawer), its mobile/desktop classes are chosen from the JS result, not from a CSS variant.
 
 - **Decided: CSS container queries**, on their browser support (above 95% on caniuse). Rejected: a `data-ddoc-bp` attribute written by the observer with attribute-selector variants.
 - Risk with that decision: early container-query implementations applied layout containment, which makes the container the containing block for `position: fixed` descendants. Presentation mode, the fullscreen toolbar and the mobile sheets are fixed descendants of the root, so in such a browser they would be trapped inside the editor box (in ddocs.new too: presentation mode would leave the footer showing). Chrome 154 does not trap them (measured); which Safari and Firefox versions do is not established.
@@ -257,6 +261,8 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - The mobile keyboard handling (`isKeyboardVisible`, `scrollIntoView` on resize) assumes the editor spans the visual viewport.
 - Split View scroll restore stays degraded (§2.2).
 - Print (`handle-print.ts`) builds its own document and is unaffected.
+- The tab-panel slot's height is a fixed 50px (§2.4), not measured; a taller collapsed panel would overlap the canvas's bottom edge.
+- The width store holds the integer `clientWidth` while container queries use the fractional width, so a JS check and a CSS variant can disagree within 1px at a fractional editor width.
 
 ## 8. Gotchas
 
@@ -274,6 +280,10 @@ Optional, later: pass `navbarContainer`; replace `setX` props with the `onXChang
 - A new responsive class inside the root must use a `ddoc-*:` variant, and a new width check must use `useEditorMediaQuery`. A plain `md:` or `useMediaQuery` there silently follows the window again (§2.9).
 - The width store must be filled before first paint (the same layout effect as §2.3), or JS-driven branches flash their narrowest layout.
 - The window fallback keys off `ddoc-editor-cq`, not `ddoc-editor-root`: a root that failed the safety check must still get the `@media` form. Do not set `container-type` on `.ddoc-editor-root` directly.
+- On one element and property a screen variant always overrides a `ddoc-*` variant (plugin variants sort first). Do not mix the two for one property; convert both.
+- `LinkPreviewCard` is rendered by its own `createRoot` on a `<body>` div: it has no context and follows the window.
+- `editorScrollContainerRef` is `isSplitViewActive ? contentWrapperRef : canvasRef`. The ref object switches with the mode, which is what makes effects keyed on it (the floating comment layout's scroll listener) re-bind; do not go back to one ref whose `.current` is reassigned.
+- In landscape outside Split View the content wrapper has no `w-full`: stretch sizes it inside its 24px margins. `width: 100%` plus the margins would overflow the canvas.
 - `container-type: inline-size` means the root's width cannot depend on its content. It never does (`w-full`); do not make the root shrink-to-fit.
 
 ## 9. Documentation
