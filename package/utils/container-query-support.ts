@@ -21,7 +21,13 @@ export const canUseEditorContainerQueries = (): boolean => {
   child.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px';
   box.appendChild(child);
   document.body.appendChild(box);
-  const escaped = child.getBoundingClientRect().left < 20;
+  // Trapped means the child sits at the box's origin, wherever the page is
+  // scrolled; a box that happens to be at the viewport origin reads as trapped.
+  const boxRect = box.getBoundingClientRect();
+  const childRect = child.getBoundingClientRect();
+  const escaped =
+    Math.abs(childRect.left - boxRect.left) > 1 ||
+    Math.abs(childRect.top - boxRect.top) > 1;
   box.remove();
 
   return (cached = escaped);

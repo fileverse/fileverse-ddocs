@@ -1627,7 +1627,9 @@ const DdocEditor = forwardRef(
                 }
                 onMouseDown={handleFocusModeMouseDown}
                 className={cn(
-                  'flex-1 min-h-0 w-full flex flex-col relative',
+                  // 0px, not 0%: a % basis is content-sized in an auto-height
+                  // parent, and the canvas would then grow without bound.
+                  'flex-[1_1_0px] min-h-0 w-full flex flex-col relative',
                   // Split View: the right-pane wrapper owns the scroll.
                   isSplitViewActive ? 'overflow-hidden' : 'overflow-auto',
                   !isPresentationMode

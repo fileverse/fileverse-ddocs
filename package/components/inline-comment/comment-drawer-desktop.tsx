@@ -81,7 +81,11 @@ export const CommentDrawerDesktop = ({
             '!z-[60] right-0 top-[4rem] h-[calc(100vh-5rem)]',
             isOpen && 'right-2 md:!right-4',
           )
-        : '!absolute !z-40 !bottom-auto top-2 right-2 ddoc-md:!right-4 h-[calc(var(--ddoc-canvas-h)-16px)]',
+        : cn(
+            '!absolute !z-40 !bottom-auto top-2 h-[calc(var(--ddoc-canvas-h)-16px)]',
+            // Closed, it must sit flush so the anchor's clip hides all of it.
+            isOpen ? 'right-2 ddoc-md:!right-4' : 'right-0',
+          ),
     )}
     headerClassName="border-b color-border-default !color-bg-default px-4 pb-[12px] !rounded-t-lg"
     contentClassName="!rounded-lg !px-0 !h-full !pb-5 select-text"

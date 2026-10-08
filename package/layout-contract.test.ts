@@ -29,6 +29,13 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain('editorScrollContainerRef.current =');
   });
 
+  // A % basis is content-sized in an auto-height parent: the canvas would
+  // feed its own measured height back into the content and keep growing.
+  it('gives the canvas a zero-length flex basis', () => {
+    expect(source).toContain("'flex-[1_1_0px] min-h-0 w-full flex flex-col");
+    expect(source).not.toContain("'flex-1 min-h-0 w-full flex flex-col");
+  });
+
   it('marks the root and keeps the preserved ids', () => {
     expect(source).toContain('ddoc-editor-root');
     expect(source).toContain('id="editor-canvas"');
