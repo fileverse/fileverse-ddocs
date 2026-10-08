@@ -225,10 +225,9 @@ export const CommentSection = ({
       className={cn(
         (!isMobile || !showNewCommentInput) && 'flex flex-col',
         !isMobile &&
-          'h-[100dvh] sm:h-[calc(100dvh-40px)] xl:h-[calc(100dvh-292px)]  !rounded-b-lg',
+          'h-[100dvh] sm:h-[calc(100dvh-40px)] xl:h-[calc(var(--ddoc-canvas-h)-150px)]  !rounded-b-lg',
         isMobile && !showNewCommentInput && 'h-full',
         showNewCommentInput ? 'pb-[3rem] sm:pb-0' : 'pb-0',
-        !isNavbarVisible && 'xl:!h-[calc(100dvh-242px)]',
         isPresentationMode && 'xl:!h-[86dvh]',
         isMobile ? 'color-bg-secondary' : 'color-bg-default',
       )}

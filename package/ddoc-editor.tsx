@@ -1599,8 +1599,8 @@ const DdocEditor = forwardRef(
               )}
               style={!isFocusMode ? getBackgroundStyle() : undefined}
             >
-              <SearchReplace editor={editor} viewerMode={viewerMode} />
               <div className="ddoc-drawer-anchor">
+                <SearchReplace editor={editor} viewerMode={viewerMode} />
                 {editor && (
                   <CommentDrawer
                     isOpen={commentDrawerOpen}
