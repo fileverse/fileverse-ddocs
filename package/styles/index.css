@@ -567,3 +567,9 @@ div[data-type='page-break']:hover .remove-page-break-icon {
 .ddoc-drawer-anchor > * {
   pointer-events: auto;
 }
+
+/* The anchor is a stacking context; lift it over the fixed z-50 presentation
+   overlay so the presentation-mode drawer stays usable. */
+.ddoc-drawer-anchor--presenting {
+  z-index: 60;
+}
