@@ -518,7 +518,7 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   line-height: inherit !important;
 }
 
-@media (min-width: 1281px) and (max-width: 1680px) {
+@container ddoc-editor (min-width: 1281px) and (max-width: 1680px) {
   /* Only force left alignment when floating comment is visible AND zoom >= 100% */
   .editor-main-lane:has(
       .comment-floating-comments[data-floating-comment-hidden='false']
@@ -548,6 +548,35 @@ div[data-type='page-break']:hover .remove-page-break-icon {
     max-width: 0;
   }
 }
+@media (min-width: 1281px) and (max-width: 1680px) {
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true']):where(:not(.ddoc-editor-cq *)) {
+    justify-content: flex-start;
+  }
+
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-left-rail.editor-left-rail-has-outline:where(:not(.ddoc-editor-cq *)) {
+    flex: 0 1 182px;
+    min-width: 0;
+    max-width: 182px;
+  }
+
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-left-rail:not(.editor-left-rail-has-outline):where(:not(.ddoc-editor-cq *)),
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-right-rail:where(:not(.ddoc-editor-cq *)) {
+    flex: 0 1 0;
+    min-width: 0;
+    max-width: 0;
+  }
+}
 
 /* Zero-height sticky line the comment drawer hangs from. Full width so its
    right edge is the canvas's visible right edge; clipped on x so the closed
@@ -572,4 +601,11 @@ div[data-type='page-break']:hover .remove-page-break-icon {
    overlay so the presentation-mode drawer stays usable. */
 .ddoc-drawer-anchor--presenting {
   z-index: 60;
+}
+
+/* Breakpoints inside the editor follow its width (ddoc-* variants). The class
+   is added only when fixed overlays are not trapped by the container. */
+.ddoc-editor-cq {
+  container-type: inline-size;
+  container-name: ddoc-editor;
 }

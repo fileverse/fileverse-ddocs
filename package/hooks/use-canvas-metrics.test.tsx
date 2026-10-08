@@ -1,7 +1,10 @@
-// package/hooks/use-canvas-metrics.test.tsx
 import { useRef } from 'react';
 import { act, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createEditorWidthStore,
+  EditorWidthStore,
+} from '../utils/editor-width-store';
 import { computeWidthDecisions, useCanvasMetrics } from './use-canvas-metrics';
 
 describe('computeWidthDecisions', () => {
@@ -34,16 +37,35 @@ let latest = { shouldHideRight: false, shouldScroll: false };
 const Harness = ({
   scaledWidth,
   leftWidth,
+  widthStore,
 }: {
   scaledWidth: number;
   leftWidth: number;
+  widthStore?: EditorWidthStore;
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   renders += 1;
-  latest = useCanvasMetrics({ canvasRef, rootRef, scaledWidth, leftWidth });
+  latest = useCanvasMetrics({
+    canvasRef,
+    rootRef,
+    scaledWidth,
+    leftWidth,
+    widthStore,
+  });
   return (
-    <div ref={rootRef} data-testid="root">
+    <div
+      ref={(node) => {
+        rootRef.current = node;
+        if (node) {
+          Object.defineProperty(node, 'clientWidth', {
+            configurable: true,
+            get: () => size.width,
+          });
+        }
+      }}
+      data-testid="root"
+    >
       <div
         ref={(node) => {
           canvasRef.current = node;
@@ -127,5 +149,15 @@ describe('useCanvasMetrics', () => {
     expect(getByTestId('root').style.getPropertyValue('--ddoc-canvas-w')).toBe(
       '1000px',
     );
+  });
+
+  it('fills the width store before paint and on resize', () => {
+    const resize = installObserver();
+    const store = createEditorWidthStore();
+    render(<Harness scaledWidth={850} leftWidth={0} widthStore={store} />);
+    expect(store.get()).toBe(1000);
+    size = { width: 500, height: 600 };
+    resize();
+    expect(store.get()).toBe(500);
   });
 });

@@ -1,7 +1,7 @@
 import { DocumentTabsSidebar } from '../tabs/document-tabs-sidebar';
 import { DocumentMobileTabPanel } from '../tabs/document-mobile-tab-panel';
 import { DocumentOutlineProps } from './types';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 import { DocumentOutlineTOCPanel } from './document-outline-toc-panel';
 
 export const DocumentOutline = ({
@@ -32,7 +32,7 @@ export const DocumentOutline = ({
   layout = 'viewport',
   tabPanelSlot,
 }: DocumentOutlineProps) => {
-  const isMediaMax1280px = useMediaQuery('(max-width:1280px)');
+  const isMediaMax1280px = useEditorMediaQuery('(max-width:1280px)');
 
   if (!tabs.length) {
     return (

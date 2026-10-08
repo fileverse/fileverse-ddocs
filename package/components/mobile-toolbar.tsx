@@ -185,7 +185,7 @@ const MobileToolbar = ({
 
   return (
     <Drawer>
-      <div className="flex w-full justify-between sm:justify-evenly items-center select-none">
+      <div className="flex w-full justify-between ddoc-sm:justify-evenly items-center select-none">
         {bottomToolbar.map((tool, _index) => {
           if (tool) {
             return (

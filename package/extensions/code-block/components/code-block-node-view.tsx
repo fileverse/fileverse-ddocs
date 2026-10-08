@@ -461,8 +461,10 @@ export default function CodeBlockNodeView({
                 >
                   <SelectTrigger className="w-full text-helper-text-sm h-7 px-2 py-1 color-bg-secondary border-none">
                     <Tooltip text="Tab size">
-                      <span className="!hidden sm:!block">Tab: {tabSize}</span>
-                      <span className="!block sm:!hidden">{tabSize}</span>
+                      <span className="!hidden ddoc-sm:!block">
+                        Tab: {tabSize}
+                      </span>
+                      <span className="!block ddoc-sm:!hidden">{tabSize}</span>
                     </Tooltip>
                   </SelectTrigger>
                   <SelectContent

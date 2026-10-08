@@ -7,7 +7,8 @@ import {
 import { TextSelection } from '@tiptap/pm/state';
 import { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import { ToCProps, ToCItemProps, ToCItemType } from './types';
-import { useCopyToClipboard, useMediaQuery } from 'usehooks-ts';
+import { useCopyToClipboard } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 import { headingToSlug } from '../../utils/heading-to-slug';
 import { getEditorScrollContainer } from '../../utils/get-editor-scroll-container';
 
@@ -100,14 +101,14 @@ export const ToCItem = memo(
       //   - 1750px+: 240px TOC (safe centered: (1750-1190)/2 = 280px > 240px)
       const widthClasses =
         orientation === 'landscape'
-          ? 'xl:!max-w-[160px] min-[1750px]:!max-w-[240px]'
-          : 'xl:!max-w-[160px] min-[1410px]:!max-w-[240px] min-[1600px]:!max-w-[320px]';
+          ? 'ddoc-xl:!max-w-[160px] ddoc-min-[1750px]:!max-w-[240px]'
+          : 'ddoc-xl:!max-w-[160px] ddoc-min-[1410px]:!max-w-[240px] ddoc-min-[1600px]:!max-w-[320px]';
 
       return cn(
-        `flex items-center transition-all text-body-sm-bold max-[1280px]:h-[32px] max-[1280px]:px-2 max-[1280px]:py-1 h-5 max-[1280px]:max-w-full ${widthClasses} xl:border-l-2`,
+        `flex items-center transition-all text-body-sm-bold ddoc-max-[1280px]:h-[32px] ddoc-max-[1280px]:px-2 ddoc-max-[1280px]:py-1 h-5 ddoc-max-[1280px]:max-w-full ${widthClasses} ddoc-xl:border-l-2`,
         item.isActive
-          ? 'color-border-active color-text-default max-[1280px]:border-none max-[1280px]:bg-[#F8F9FA] max-[1280px]:rounded max-[1280px]:text-[#363B3F]'
-          : 'color-text-secondary border-transparent lg:hover:!brightness-90',
+          ? 'color-border-active color-text-default ddoc-max-[1280px]:border-none ddoc-max-[1280px]:bg-[#F8F9FA] ddoc-max-[1280px]:rounded ddoc-max-[1280px]:text-[#363B3F]'
+          : 'color-text-secondary border-transparent ddoc-lg:hover:!brightness-90',
       );
     }, [item.isActive, orientation]);
 
@@ -137,8 +138,8 @@ export const ToCItem = memo(
               className={cn(
                 '!bg-transparent group-hover/toc-item:opacity-100 opacity-0 transition-all color-text-secondary active:scale-75',
                 item.isActive
-                  ? 'max-[1280px]:visible'
-                  : 'max-[1280px]:invisible',
+                  ? 'ddoc-max-[1280px]:visible'
+                  : 'ddoc-max-[1280px]:invisible',
               )}
               onClick={(ev) => handleCopyToClipboard(ev, href)}
             />
@@ -164,7 +165,7 @@ ToCEmptyState.displayName = 'ToCEmptyState';
 export const ToC = memo(
   ({ items = [], editor, setItems, orientation }: ToCProps) => {
     const [activeId, setActiveId] = useState<string | null>(null);
-    const isMobile = useMediaQuery('(max-width: 1280px)');
+    const isMobile = useEditorMediaQuery('(max-width: 1280px)');
 
     // Add refs for the cache
     const headingsCacheRef = useRef<Map<string, HTMLElement> | null>(null);
@@ -446,7 +447,7 @@ export const ToC = memo(
     }
 
     return (
-      <div className="flex flex-col max-[1280px]:gap-2 gap-4 pl-[35px] mb-3">
+      <div className="flex flex-col ddoc-max-[1280px]:gap-2 gap-4 pl-[35px] mb-3">
         {processedItems.map((item, i) => (
           <ToCItem
             onItemClick={onItemClick}

@@ -60,6 +60,7 @@ import { ToCItemType } from '../components/toc/types';
 import { TWITTER_REGEX } from '../constants/twitter';
 import { headingToSlug } from '../utils/heading-to-slug';
 import { useResponsive } from '../utils/responsive';
+import type { EditorWidthStore } from '../utils/editor-width-store';
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { getResponsiveColor } from '../utils/colors';
 import { getEditorScrollContainer } from '../utils/get-editor-scroll-container';
@@ -199,6 +200,7 @@ const hasVisibleFloatingCommentCard = () => {
 
 interface UseTabEditorArgs {
   ydoc: Y.Doc;
+  editorWidthStore?: EditorWidthStore;
   isVersionMode?: boolean;
   hasTabState?: boolean;
   versionId?: string;
@@ -251,6 +253,7 @@ interface UseTabEditorArgs {
 
 export const useTabEditor = ({
   ydoc,
+  editorWidthStore,
   isVersionMode,
   hasTabState,
   versionId,
@@ -1333,7 +1336,7 @@ export const useTabEditor = ({
   const hash = window.location.hash.startsWith('#')
     ? window.location.hash.substring(1)
     : window.location.hash;
-  const { isNativeMobile } = useResponsive();
+  const { isNativeMobile } = useResponsive(editorWidthStore);
 
   const hashParams = new URLSearchParams(hash);
   const heading = hashParams.get('heading');

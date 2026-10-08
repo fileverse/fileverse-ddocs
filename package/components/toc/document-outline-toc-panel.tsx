@@ -1,5 +1,5 @@
 import { BottomDrawer, cn, IconButton, Tooltip } from '@fileverse/ui';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 import { MemorizedToC } from './memorized-toc';
 import { DocumentOutlineProps } from './types';
 
@@ -24,7 +24,7 @@ export const DocumentOutlineTOCPanel = ({
   setShowTOC,
   orientation,
 }: DocumentOutlineTOCPanelProps) => {
-  const isMediaMax1280px = useMediaQuery('(max-width:1280px)');
+  const isMediaMax1280px = useEditorMediaQuery('(max-width:1280px)');
   const shouldHideToC = items.length < 2;
 
   if (!isMediaMax1280px) {

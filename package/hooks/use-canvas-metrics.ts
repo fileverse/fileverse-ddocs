@@ -1,4 +1,3 @@
-// package/hooks/use-canvas-metrics.ts
 import {
   RefObject,
   useCallback,
@@ -7,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import type { EditorWidthStore } from '../utils/editor-width-store';
 
 const RAIL_WIDTH = 148;
 
@@ -26,11 +26,13 @@ export const useCanvasMetrics = ({
   rootRef,
   scaledWidth,
   leftWidth,
+  widthStore,
 }: {
   canvasRef: RefObject<HTMLElement | null>;
   rootRef: RefObject<HTMLElement | null>;
   scaledWidth: number;
   leftWidth: number;
+  widthStore?: EditorWidthStore;
 }): WidthDecisions => {
   const [decisions, setDecisions] = useState<WidthDecisions>(() =>
     computeWidthDecisions(0, scaledWidth, leftWidth),
@@ -45,6 +47,7 @@ export const useCanvasMetrics = ({
     // Written straight to the DOM so a resize drag does not re-render.
     root?.style.setProperty('--ddoc-canvas-w', `${canvas.clientWidth}px`);
     root?.style.setProperty('--ddoc-canvas-h', `${canvas.clientHeight}px`);
+    if (root) widthStore?.set(root.clientWidth);
     const next = computeWidthDecisions(
       canvas.clientWidth,
       inputsRef.current.scaledWidth,
@@ -58,7 +61,7 @@ export const useCanvasMetrics = ({
       return;
     decisionsRef.current = next;
     setDecisions(next);
-  }, [canvasRef, rootRef]);
+  }, [canvasRef, rootRef, widthStore]);
 
   useLayoutEffect(() => {
     inputsRef.current = { scaledWidth, leftWidth };
