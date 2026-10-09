@@ -218,6 +218,7 @@ export class SyncManager {
     updatedDocContent: string,
     updateChunk: string,
   ) => void;
+  private onLocalChange?: () => void;
 
   constructor(
     config: SyncManagerConfig,
@@ -226,6 +227,7 @@ export class SyncManager {
     this.ydoc = config.ydoc;
     this.callbacksRef = config.callbacks;
     this.onLocalUpdate = config.onLocalUpdate;
+    this.onLocalChange = config.onLocalChange;
   }
 
   /** Called by useSyncManager on every render to keep refs fresh */
@@ -233,9 +235,11 @@ export class SyncManager {
     _services: CollabServices | undefined,
     callbacks: CollabCallbacks | undefined,
     onLocalUpdate?: (updatedDocContent: string, updateChunk: string) => void,
+    onLocalChange?: () => void,
   ) {
     this.callbacksRef = callbacks;
     this.onLocalUpdate = onLocalUpdate;
+    this.onLocalChange = onLocalChange;
     // The host turned collaboration off: a dropped session must not come back on its own.
     if (!callbacks) this.resumable = false;
   }
@@ -2143,6 +2147,15 @@ export class SyncManager {
     if (this.ydoc.store.pendingStructs) {
       this.scheduleGapCatchUp();
     }
+    this.notifyHostOfRemoteChange(update);
+  }
+
+  /**
+   * Tell the host that a collaborator's update changed the doc. The full
+   * document is encoded only for a host that asked for it (`onLocalUpdate`);
+   * `onLocalChange` gets the signal without that cost.
+   */
+  private notifyHostOfRemoteChange(update: Uint8Array): void {
     try {
       if (this.onLocalUpdate && typeof this.onLocalUpdate === 'function') {
         this.onLocalUpdate(
@@ -2152,6 +2165,11 @@ export class SyncManager {
       }
     } catch (err) {
       console.error('SyncManager: onLocalUpdate callback threw', err);
+    }
+    try {
+      this.onLocalChange?.();
+    } catch (err) {
+      console.error('SyncManager: onLocalChange callback threw', err);
     }
   }
 
@@ -2193,16 +2211,7 @@ export class SyncManager {
       );
       return;
     }
-    try {
-      if (this.onLocalUpdate && typeof this.onLocalUpdate === 'function') {
-        this.onLocalUpdate(
-          fromUint8Array(Y.encodeStateAsUpdate(this.ydoc)),
-          fromUint8Array(mergedContents),
-        );
-      }
-    } catch (err) {
-      console.error('SyncManager: onLocalUpdate callback threw', err);
-    }
+    this.notifyHostOfRemoteChange(mergedContents);
   }
 
   private async withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {

@@ -18,6 +18,10 @@
       "import": "./dist/headless-editor-utils.es.js",
       "types": "./dist/headless-editor-utils.d.ts"
     },
+    "./persistence": {
+      "import": "./dist/persistence.es.js",
+      "types": "./dist/persistence.d.ts"
+    },
     "./styles": "./dist/style.css",
     "./types": "./dist/package/types.d.ts",
     "./tailwind": "./tailwind.preset.cjs"
@@ -131,7 +135,7 @@
     "vaul": "^0.9.1",
     "vite-plugin-dts": "^3.6.3",
     "ws": "^8.18.0",
-    "y-indexeddb": "^9.0.12",
+    "y-indexeddb": "9.0.12",
     "y-prosemirror": "^1.2.5",
     "y-protocols": "^1.0.6",
     "zustand": "^5.0.12"
@@ -182,6 +186,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
+    "fake-indexeddb": "^6.2.5",
     "husky": "^9.1.7",
     "jsdom": "^25.0.0",
     "lint-staged": "^15.2.10",
