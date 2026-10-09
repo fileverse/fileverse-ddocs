@@ -377,7 +377,12 @@ export const defaultExtensions = ({
     includeChildren: true,
     showOnlyCurrent: true,
   }),
-  Highlight.configure({ multicolor: true }),
+  // No Mod-Shift-h highlight toggle: on Mac that chord opens find and replace.
+  Highlight.extend({
+    addKeyboardShortcuts() {
+      return {};
+    },
+  }).configure({ multicolor: true }),
   ExtendedTextStyle,
   Color,
   TaskList.configure({

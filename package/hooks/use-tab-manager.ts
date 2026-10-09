@@ -50,6 +50,17 @@ export const getNewTabId = () => {
   return fromUint8Array(generateRandomBytes(5), true);
 };
 
+// A deep-linked tab that no longer exists must not become the active tab.
+// An empty list means the tabs are not known yet, so the id is kept.
+const resolveDefaultTabId = (
+  defaultTabId: string | undefined,
+  tabList: Tab[],
+) =>
+  defaultTabId &&
+  (tabList.length === 0 || tabList.some((tab) => tab.id === defaultTabId))
+    ? defaultTabId
+    : undefined;
+
 export const useTabManager = ({
   ydoc,
   initialContent,
@@ -126,11 +137,20 @@ export const useTabManager = ({
     isInitialContentResolved,
   ]);
 
+  const initialDefaultTabId = resolveDefaultTabId(
+    defaultTabId,
+    initialTabState.tabList,
+  );
+  // The deep link is applied once; later tab changes must not pull back to it.
+  const appliedDefaultTabIdRef = useRef(
+    initialTabState.tabList.length > 0 ? initialDefaultTabId : undefined,
+  );
+
   const [activeTabId, _setActiveTabId] = useState(
-    defaultTabId ||
-    (preferFirstTabOnInit
-      ? (initialTabState.tabList[0]?.id ?? initialTabState.activeTabId)
-      : initialTabState.activeTabId),
+    initialDefaultTabId ||
+      (preferFirstTabOnInit
+        ? (initialTabState.tabList[0]?.id ?? initialTabState.activeTabId)
+        : initialTabState.activeTabId),
   );
   const [tabs, setTabs] = useState<Tab[]>(initialTabState.tabList);
   const hasTabState = useMemo(() => tabs.length > 0, [tabs]);
@@ -145,7 +165,12 @@ export const useTabManager = ({
     hasHydratedRef.current = true;
     setTabs(initialTabState.tabList);
     if (shouldSyncActiveTab) {
-      const newActiveId = defaultTabId || initialTabState.activeTabId;
+      const validDefaultTabId = resolveDefaultTabId(
+        defaultTabId,
+        initialTabState.tabList,
+      );
+      appliedDefaultTabIdRef.current = validDefaultTabId;
+      const newActiveId = validDefaultTabId || initialTabState.activeTabId;
       activeTabIdRef.current = newActiveId;
       _setActiveTabId(newActiveId);
     } else if (preferFirstTabOnInit && !defaultTabId) {
@@ -233,7 +258,12 @@ export const useTabManager = ({
         _setActiveTabId((prev) =>
           prev === nextActiveTabId ? prev : nextActiveTabId,
         );
-      } else if (defaultTabId && isDefaultIdValid) {
+      } else if (
+        defaultTabId &&
+        isDefaultIdValid &&
+        appliedDefaultTabIdRef.current !== defaultTabId
+      ) {
+        appliedDefaultTabIdRef.current = defaultTabId;
         _setActiveTabId((prev) =>
           prev === defaultTabId ? prev : defaultTabId,
         );

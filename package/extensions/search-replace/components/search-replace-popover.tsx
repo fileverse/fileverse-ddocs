@@ -106,11 +106,22 @@ const SearchReplace = ({
       if (editor) {
         setShowReplacePopoverWithData(editor);
       }
+      return;
     }
-    return;
+    // Cmd+Shift+H on Mac, Ctrl+H elsewhere: open with the replace row shown.
+    const isReplaceShortcut =
+      ev.code === 'KeyH' &&
+      !ev.altKey &&
+      (navigator.platform.includes('Mac')
+        ? ev.metaKey && ev.shiftKey && !ev.ctrlKey
+        : ev.ctrlKey && !ev.shiftKey && !ev.metaKey);
+    if (isReplaceShortcut && editor && !isNonOwner) {
+      ev.preventDefault();
+      setShowReplacePopoverWithData(editor, { withReplaceOpen: true });
+    }
   };
 
-  //opens popover on cmd+f across the editor
+  //opens popover on cmd+f, or cmd+shift+h / ctrl+h with replace, across the editor
   useEventListener<'keydown'>('keydown', handleSearchReplaceOnKeydown);
 
   function toggleReplace() {

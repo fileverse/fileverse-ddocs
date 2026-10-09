@@ -35,6 +35,10 @@ export interface TabItemProps {
   onDuplicate?: (id: string) => void;
   dragHandleProps?: HTMLAttributes<HTMLDivElement>;
   hideContentMenu?: boolean;
+  alwaysShowMenu?: boolean;
+  menuPopoverClassName?: string;
+  // Replaces in-place editing, e.g. with a rename modal on mobile.
+  onRename?: () => void;
   showOutline?: boolean;
   handleShowOutline?: (value: boolean) => void;
   canMoveUp?: boolean;
@@ -127,6 +131,9 @@ export const TabItem = ({
   onDuplicate,
   dragHandleProps,
   hideContentMenu = false,
+  alwaysShowMenu = false,
+  menuPopoverClassName,
+  onRename,
   showOutline,
   handleShowOutline,
   canMoveUp = false,
@@ -161,6 +168,10 @@ export const TabItem = ({
   }, [isEditing]);
 
   const startEditing = () => {
+    if (onRename) {
+      onRename();
+      return;
+    }
     originalTitleRef.current = title;
     setIsEditing?.(true);
   };
@@ -222,6 +233,7 @@ export const TabItem = ({
         label: showOutline ? 'Hide outline' : 'Show outline',
         icon: 'List',
         onSelect: () => handleShowOutline?.(!showOutline),
+        visible: Boolean(handleShowOutline),
       },
     ],
     [
@@ -266,12 +278,13 @@ export const TabItem = ({
         label: showOutline ? 'Hide outline' : 'Show outline',
         icon: 'List',
         onSelect: () => handleShowOutline?.(!showOutline),
+        visible: Boolean(handleShowOutline),
       },
     ],
   ];
 
   const menuSections = isPreviewMode ? previewModeMenu : editMenuSections;
-  const shouldShowContextMenu = isActive || isHovered;
+  const shouldShowContextMenu = alwaysShowMenu || isActive || isHovered;
 
   return (
     <div
@@ -280,7 +293,7 @@ export const TabItem = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onDoubleClick={() => {
-        if (isPreviewMode) return;
+        if (isPreviewMode || onRename) return;
         startEditing();
       }}
       onClick={onClick}
@@ -361,7 +374,10 @@ export const TabItem = ({
               className="w-[24px] h-[24px] shrink-0"
             >
               {shouldShowContextMenu && (
-                <TabContextMenu sections={menuSections} />
+                <TabContextMenu
+                  sections={menuSections}
+                  popoverClassName={menuPopoverClassName}
+                />
               )}
             </div>
           )}
