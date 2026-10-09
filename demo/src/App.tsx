@@ -166,7 +166,6 @@ function App() {
   const [collabStatus, setCollabStatus] = useState<string>('off');
   const [username, setUsername] = useState('username');
   const isMobile = useMediaQuery('(max-width: 768px)');
-  const isMediaMax1280px = useMediaQuery('(max-width: 1280px)');
   const [selectedTags, setSelectedTags] = useState<TagType[]>([]);
   const [isCommentSectionOpen, setIsCommentSectionOpen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
@@ -542,7 +541,7 @@ function App() {
         )}
         <div className="flex gap-2 items-center">
           <DocSwitcher currentDocId={docId} currentTitle={title} />
-          <div className="relative truncate inline-block xl:!max-w-[300px] !max-w-[108px] color-bg-default text-[14px] font-medium leading-[20px]">
+          <div className="relative truncate inline-block ddoc-xl:!max-w-[300px] !max-w-[108px] color-bg-default text-[14px] font-medium leading-[20px]">
             <span className="invisible whitespace-pre">
               {title || 'Untitled'}
             </span>
@@ -557,12 +556,12 @@ function App() {
           <Tag
             icon="CircleCheck"
             variant="transparent"
-            className="h-6 rounded border color-border-default color-text-secondary text-[12px] font-normal hidden xl:flex"
+            className="h-6 rounded border color-border-default color-text-secondary text-[12px] font-normal hidden ddoc-xl:flex"
             style={{ backgroundColor: 'hsl(var(--color-bg-secondary))' }}
           >
             {lastSavedAt ? 'Saved' : 'Not saved yet'}
           </Tag>
-          <div className="w-6 h-6 rounded color-bg-secondary flex justify-center items-center border color-border-default xl:hidden">
+          <div className="w-6 h-6 rounded color-bg-secondary flex justify-center items-center border color-border-default ddoc-xl:hidden">
             <LucideIcon
               name="BadgeCheck"
               size="sm"
@@ -573,7 +572,7 @@ function App() {
         <div className="flex gap-2">
           <ThemeToggle />
 
-          {isMediaMax1280px ? (
+          <div className="contents ddoc-xl:hidden">
             <DynamicDropdown
               key="navbar-more-actions"
               align="center"
@@ -635,8 +634,8 @@ function App() {
                 </div>
               }
             />
-          ) : (
-            <>
+          </div>
+          <div className="hidden ddoc-xl:contents">
               <IconButton
                 variant={'ghost'}
                 icon={modeIcon}
@@ -647,7 +646,7 @@ function App() {
               <IconButton
                 variant={'ghost'}
                 icon="Share2"
-                className="flex xl:hidden"
+                className="flex ddoc-xl:hidden"
                 size="md"
               />
               <IconButton
@@ -656,8 +655,7 @@ function App() {
                 size="md"
                 onClick={() => setShowStylingControls(!showStylingControls)}
               />
-            </>
-          )}
+          </div>
           <IconButton
             variant={'ghost'}
             icon="MessageSquareText"
@@ -721,13 +719,13 @@ function App() {
             toggleLeftIcon={true}
             leftIcon="Share2"
             variant={'ghost'}
-            className="!min-w-[90px] !px-0 hidden xl:flex"
+            className="!min-w-[90px] !px-0 hidden ddoc-xl:flex"
           >
             Share
           </Button>
           <div className="flex gap-2 px-2 justify-center items-center">
             <LucideIcon name="Farcaster" />
-            <div className="flex-col hidden xl:flex">
+            <div className="flex-col hidden ddoc-xl:flex">
               <p className="text-heading-xsm">@[username]</p>
               <p className="text-helper-text-sm">Farcaster</p>
             </div>
