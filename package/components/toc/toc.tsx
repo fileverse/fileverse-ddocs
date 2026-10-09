@@ -103,8 +103,8 @@ export const ToCItem = memo(
       //   - 1750px+: 240px TOC (safe centered: (1750-1190)/2 = 280px > 240px)
       const widthClasses =
         orientation === 'landscape'
-          ? '!max-w-[160px] ddoc-min-[1750px]:!max-w-[240px]'
-          : '!max-w-[160px] ddoc-min-[1410px]:!max-w-[240px] ddoc-min-[1600px]:!max-w-[320px]';
+          ? 'max-w-[160px] ddoc-min-[1750px]:max-w-[240px]'
+          : 'max-w-[160px] ddoc-min-[1410px]:max-w-[240px] ddoc-min-[1600px]:max-w-[320px]';
 
       // The mobile list can sit in a drawer portalled to <body>, where a CSS
       // breakpoint would read the window; the 1280px split comes from JS.
@@ -118,7 +118,7 @@ export const ToCItem = memo(
               // [color:…], not text-[…]: cn would drop text-body-sm-bold.
               isMobile && 'border-none bg-[#F8F9FA] rounded [color:#363B3F]',
             ]
-          : 'color-text-secondary border-transparent ddoc-lg:hover:!brightness-90',
+          : 'color-text-secondary border-transparent ddoc-lg:hover:brightness-90',
       );
     }, [item.isActive, orientation, isMobile, isWide]);
 

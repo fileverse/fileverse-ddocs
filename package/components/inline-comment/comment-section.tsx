@@ -225,7 +225,7 @@ export const CommentSection = ({
       className={cn(
         (!isMobile || !showNewCommentInput) && 'flex flex-col',
         !isMobile &&
-          'h-[100dvh] ddoc-sm:h-[calc(100dvh-40px)] ddoc-xl:h-[calc(var(--ddoc-canvas-h)-150px)]  !rounded-b-lg',
+          'h-[100dvh] ddoc-sm:h-[calc(100dvh-40px)] ddoc-xl:h-[calc(var(--ddoc-canvas-h)-150px)] rounded-b-lg',
         isMobile && !showNewCommentInput && 'h-full',
         showNewCommentInput ? 'pb-[3rem] sm:pb-0' : 'pb-0',
         isPresentationMode && 'xl:!h-[86dvh]',

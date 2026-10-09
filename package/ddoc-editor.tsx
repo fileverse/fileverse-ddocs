@@ -1030,11 +1030,11 @@ const DdocEditor = forwardRef(
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
-                    '-mt-[1.5rem] ddoc-md:!mt-[0.8rem]',
-                  isPreviewMode && 'ddoc-md:!mt-[1rem]',
-                  { 'ddoc-md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                    '-mt-[1.5rem] ddoc-md:mt-[0.8rem]',
+                  isPreviewMode && 'ddoc-md:mt-[1rem]',
+                  { 'ddoc-md:mt-[0.7rem]': !isPreviewMode && !isFocusMode },
                   {
-                    '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
+                    '-mt-[1.5rem] ddoc-md:mt-[0.7rem]':
                       !isNavbarVisible && !isPreviewMode,
                   },
                   isFocusMode && 'mt-[48px]',
@@ -1092,16 +1092,16 @@ const DdocEditor = forwardRef(
                       !isSplitViewActive &&
                         !isPreviewMode &&
                         !isFocusMode &&
-                        (isNavbarVisible ? 'ddoc-md:!mt-[0.8rem]' : null),
+                        (isNavbarVisible ? 'ddoc-md:mt-[0.8rem]' : null),
                       !isSplitViewActive &&
                         isPreviewMode &&
-                        'ddoc-md:!mt-[1rem]',
+                        'ddoc-md:mt-[1rem]',
                       {
-                        'ddoc-md:!mt-[0.7rem]':
+                        'ddoc-md:mt-[0.7rem]':
                           !isSplitViewActive && !isPreviewMode && !isFocusMode,
                       },
                       {
-                        '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
+                        '-mt-[1.5rem] ddoc-md:mt-[0.7rem]':
                           !isSplitViewActive &&
                           !isNavbarVisible &&
                           !isPreviewMode,
@@ -1279,7 +1279,7 @@ const DdocEditor = forwardRef(
                                       <div
                                         ref={tagsContainerRef}
                                         className={cn(
-                                          'flex flex-wrap px-4 ddoc-md:px-8 ddoc-lg:px-[80px] mb-8 items-center gap-1 mt-4 ddoc-lg:!mt-0',
+                                          'flex flex-wrap px-4 ddoc-md:px-8 ddoc-lg:px-[80px] mb-8 items-center gap-1 mt-4 ddoc-lg:mt-0',
                                           { 'pt-12': isPreviewMode },
                                         )}
                                         {...(!isFocusMode &&
@@ -1480,11 +1480,11 @@ const DdocEditor = forwardRef(
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
-                    '-mt-[1.5rem] ddoc-md:!mt-[0.8rem]',
-                  isPreviewMode && 'ddoc-md:!mt-[1rem]',
-                  { 'ddoc-md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                    '-mt-[1.5rem] ddoc-md:mt-[0.8rem]',
+                  isPreviewMode && 'ddoc-md:mt-[1rem]',
+                  { 'ddoc-md:mt-[0.7rem]': !isPreviewMode && !isFocusMode },
                   {
-                    '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
+                    '-mt-[1.5rem] ddoc-md:mt-[0.7rem]':
                       !isNavbarVisible && !isPreviewMode,
                   },
                   isFocusMode && 'mt-[48px]',

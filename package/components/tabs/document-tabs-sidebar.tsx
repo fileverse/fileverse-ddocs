@@ -202,8 +202,8 @@ export const TabSidebar = ({
               // and grow up to the original 263px when space allows.
               orientation === 'landscape'
                 ? layout === 'contained'
-                  ? '!w-[clamp(182px,calc((var(--ddoc-canvas-w)-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
-                  : '!w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+                  ? 'w-[clamp(182px,calc((var(--ddoc-canvas-w)-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+                  : 'w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
                 : 'max-w-[263px]',
               !hasToC && 'hidden',
               isVersionHistoryMode

@@ -78,13 +78,13 @@ export const CommentDrawerDesktop = ({
       'w-[336px] shadow-elevation-4 rounded-lg border color-border-default',
       isPresentationMode
         ? cn(
-            '!z-[60] right-0 top-[4rem] h-[calc(100vh-5rem)]',
-            isOpen && 'right-2 md:!right-4',
+            'z-[60] right-0 top-[4rem] h-[calc(100vh-5rem)]',
+            isOpen && 'right-2 md:right-4',
           )
         : cn(
-            '!absolute !z-40 !bottom-auto top-2 h-[calc(var(--ddoc-canvas-h)-16px)]',
+            'absolute z-40 bottom-auto top-2 h-[calc(var(--ddoc-canvas-h)-16px)]',
             // Closed, it must sit flush so the anchor's clip hides all of it.
-            isOpen ? 'right-2 ddoc-md:!right-4' : 'right-0',
+            isOpen ? 'right-2 ddoc-md:right-4' : 'right-0',
           ),
     )}
     headerClassName="border-b color-border-default !color-bg-default px-4 pb-[12px] !rounded-t-lg"
