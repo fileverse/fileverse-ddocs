@@ -11,8 +11,8 @@ import { zoomLevels } from '../constants/zoom';
 type FullScreenToolbarProps = {
   dropdownOpen: boolean;
   setDropdownOpen: Dispatch<SetStateAction<boolean>>;
-  zoomLevel: DdocProps['zoomLevel'];
-  setZoomLevel: DdocProps['setZoomLevel'];
+  zoomLevel: string;
+  setZoomLevel: Dispatch<SetStateAction<string>>;
   showTOC: DdocProps['showTOC'];
   setShowTOC: DdocProps['setShowTOC'];
   toggleFocusMode: () => Promise<void>;

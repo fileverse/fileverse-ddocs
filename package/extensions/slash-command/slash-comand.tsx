@@ -7,7 +7,7 @@ import {
   useRef,
   useLayoutEffect,
 } from 'react';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 import { ReactRenderer } from '@tiptap/react';
 import tippy from 'tippy.js';
 import { Editor, Extension } from '@tiptap/core';
@@ -86,7 +86,7 @@ const CommandList = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [items, setItems] = useState<CommandItemProps[]>(initialItems);
-  const isMobile = useMediaQuery('(max-width: 640px)');
+  const isMobile = useEditorMediaQuery('(max-width: 640px)');
 
   const isCalloutBlock = isNodeType(editor, 'callout');
   const isCodeBlock = isNodeType(editor, 'codeBlock');

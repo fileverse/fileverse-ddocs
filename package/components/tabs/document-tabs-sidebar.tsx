@@ -50,6 +50,7 @@ export interface DocumentTabsSidebarProps {
   deleteTab?: (tabId: string) => void;
   isConnected?: boolean;
   isFocusMode?: boolean;
+  layout?: DocumentOutlineProps['layout'];
 }
 
 export const DocumentTabsSidebar = ({
@@ -86,6 +87,7 @@ export const TabSidebar = ({
   deleteTab,
   isConnected,
   isFocusMode,
+  layout = 'viewport',
 }: DocumentTabsSidebarProps) => {
   const handleNameChange = (
     tabId: string,
@@ -199,16 +201,24 @@ export const TabSidebar = ({
               // Keep landscape TOC responsive: it can shrink to 182px on tighter widths
               // and grow up to the original 263px when space allows.
               orientation === 'landscape'
-                ? '!w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+                ? layout === 'contained'
+                  ? '!w-[clamp(182px,calc((var(--ddoc-canvas-w)-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+                  : '!w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
                 : 'max-w-[263px]',
               !hasToC && 'hidden',
               isVersionHistoryMode
                 ? 'top-[16px] max-h-[calc(100vh-32px)]'
-                : isFocusMode
-                  ? 'top-[48px] max-h-[calc(100vh-140px)]'
-                  : isPreviewMode
-                    ? 'top-[70px] max-h-[calc(100vh-86px)]'
-                    : 'top-[124px] max-h-[calc(100vh-140px)]',
+                : layout === 'contained'
+                  ? isFocusMode
+                    ? 'max-h-[calc(var(--ddoc-canvas-h)-140px)]'
+                    : isPreviewMode
+                      ? 'max-h-[calc(var(--ddoc-canvas-h)-22px)]'
+                      : 'max-h-[calc(var(--ddoc-canvas-h)-32px)]'
+                  : isFocusMode
+                    ? 'top-[48px] max-h-[calc(100vh-140px)]'
+                    : isPreviewMode
+                      ? 'top-[70px] max-h-[calc(100vh-86px)]'
+                      : 'top-[124px] max-h-[calc(100vh-140px)]',
             )}
           >
             {(!isFocusMode || showTOC) && (

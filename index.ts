@@ -55,6 +55,10 @@ export {
   seedSession,
 } from './package/sync-local/session-tools';
 
-export type { CommentMutationMeta, SuggestionType } from './package/types';
+export type {
+  CommentMutationMeta,
+  DdocStats,
+  SuggestionType,
+} from './package/types';
 export type { IComment } from './package/extensions/comment/comment.ts';
 export type { FontDescriptor } from './package/types';

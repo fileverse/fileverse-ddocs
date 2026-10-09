@@ -40,7 +40,7 @@ import {
   toast,
   useTheme,
 } from '@fileverse/ui';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
 import { colors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
@@ -1214,7 +1214,7 @@ export const EditorAlignment = ({
         className={cn(
           'rounded w-8 h-8 p-1 flex justify-center items-center cursor-pointer transition',
           editor.isActive({ textAlign: 'left' })
-            ? 'color-bg-brand xl:hover:brightness-90 color-text-on-brand'
+            ? 'color-bg-brand ddoc-xl:hover:brightness-90 color-text-on-brand'
             : 'hover:color-bg-default-hover',
         )}
       >
@@ -1229,7 +1229,7 @@ export const EditorAlignment = ({
         className={cn(
           'rounded w-8 h-8 p-1 flex justify-center items-center cursor-pointer transition',
           editor.isActive({ textAlign: 'center' })
-            ? 'color-bg-brand xl:hover:brightness-90 color-text-on-brand'
+            ? 'color-bg-brand ddoc-xl:hover:brightness-90 color-text-on-brand'
             : 'hover:color-bg-default-hover',
         )}
       >
@@ -1244,7 +1244,7 @@ export const EditorAlignment = ({
         className={cn(
           'rounded w-8 h-8 p-1 flex justify-center items-center cursor-pointer transition',
           editor.isActive({ textAlign: 'right' })
-            ? 'color-bg-brand xl:hover:brightness-90 color-text-on-brand'
+            ? 'color-bg-brand ddoc-xl:hover:brightness-90 color-text-on-brand'
             : 'hover:color-bg-default-hover',
         )}
       >
@@ -1259,7 +1259,7 @@ export const EditorAlignment = ({
         className={cn(
           'rounded w-8 h-8 p-1 flex justify-center items-center cursor-pointer transition',
           editor.isActive({ textAlign: 'justify' })
-            ? 'color-bg-brand xl:hover:brightness-90 color-text-on-brand'
+            ? 'color-bg-brand ddoc-xl:hover:brightness-90 color-text-on-brand'
             : 'hover:color-bg-default-hover',
         )}
       >
@@ -1452,7 +1452,7 @@ export const InlineCommentPopup = ({
   const [comment, setComment] = useState(
     inlineCommentData.inlineCommentText || '',
   );
-  const isMobile = useMediaQuery('(max-width: 1023px)');
+  const isMobile = useEditorMediaQuery('(max-width: 1023px)');
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setComment(value);
@@ -1591,7 +1591,7 @@ export const ScriptsPopup = ({
 
   return (
     <div ref={elementRef} className="z-50 w-48 color-bg-default rounded p-1">
-      <div className="flex flex-col gap-1 justify-center w-fit sm:w-full transition-all">
+      <div className="flex flex-col gap-1 justify-center w-fit ddoc-sm:w-full transition-all">
         {options.map((option) => (
           <Button
             key={option.title}
@@ -1802,7 +1802,7 @@ export const FontSizePicker = ({
           className={cn(
             'flex w-full items-center justify-center rounded px-2 py-1 text-center text-sm color-text-default transition',
             {
-              ['color-bg-brand xl:hover:brightness-90 color-text-on-brand']:
+              ['color-bg-brand ddoc-xl:hover:brightness-90 color-text-on-brand']:
                 currentSize === fontSize.value,
               ['hover:color-bg-default-hover']: currentSize !== fontSize.value,
             },

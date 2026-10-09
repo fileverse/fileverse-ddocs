@@ -25,6 +25,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -38,7 +39,7 @@ import {
   TagInput,
   Skeleton,
 } from '@fileverse/ui';
-import { useMediaQuery, useOnClickOutside } from 'usehooks-ts';
+import { useOnClickOutside } from 'usehooks-ts';
 import { AnimatePresence, motion } from 'framer-motion';
 import * as Y from 'yjs';
 import MobileToolbar from './components/mobile-toolbar';
@@ -78,6 +79,18 @@ import { useSplitResize } from './hooks/use-split-resize';
 import { applyTabbedTemplate } from './utils/apply-tabbed-template';
 import type { TabbedJSONContent } from './hooks/use-headless-editor';
 import { useTabPositionMemory } from './hooks/use-tab-position-memory';
+import { useControllableState } from './hooks/use-controllable-state';
+import { useCanvasMetrics } from './hooks/use-canvas-metrics';
+import {
+  EditorWidthContext,
+  useEditorMediaQuery,
+} from './hooks/use-editor-media-query';
+import {
+  createEditorWidthStore,
+  EditorWidthStore,
+} from './utils/editor-width-store';
+import { canUseEditorContainerQueries } from './utils/container-query-support';
+import { EditorNavbar } from './components/editor-navbar';
 
 const DdocEditor = forwardRef(
   (
@@ -89,6 +102,7 @@ const DdocEditor = forwardRef(
       username,
       setUsername,
       renderNavbar,
+      navbarContainer,
       walletAddress,
       onChange,
       onCollaboratorChange,
@@ -105,6 +119,7 @@ const DdocEditor = forwardRef(
       setWordCount,
       setSelectedWordCount,
       setPageCount,
+      onStatsChange,
       tags,
       selectedTags,
       setSelectedTags,
@@ -114,14 +129,18 @@ const DdocEditor = forwardRef(
       inlineCommentData,
       enableIndexeddbSync,
       ddocId,
-      zoomLevel,
-      setZoomLevel,
-      isPresentationMode,
-      setIsPresentationMode,
-      isSplitView = false,
-      setIsSplitView,
-      isNavbarVisible,
-      setIsNavbarVisible,
+      zoomLevel: zoomLevelProp,
+      setZoomLevel: setZoomLevelProp,
+      onZoomLevelChange,
+      isPresentationMode: isPresentationModeProp,
+      setIsPresentationMode: setIsPresentationModeProp,
+      onPresentationModeChange,
+      isSplitView: isSplitViewProp,
+      setIsSplitView: setIsSplitViewProp,
+      onSplitViewChange,
+      isNavbarVisible: isNavbarVisibleProp,
+      setIsNavbarVisible: setIsNavbarVisibleProp,
+      onNavbarVisibleChange,
       onComment,
       onInlineComment,
       onFocusMode,
@@ -139,8 +158,9 @@ const DdocEditor = forwardRef(
       documentName,
       onInvalidContentError,
       ignoreCorruptedData,
-      commentDrawerOpen,
-      setCommentDrawerOpen,
+      commentDrawerOpen: commentDrawerOpenProp,
+      setCommentDrawerOpen: setCommentDrawerOpenProp,
+      onCommentDrawerOpenChange,
       initialComments = [],
       initialCommentAnchors,
       onNewComment,
@@ -154,8 +174,9 @@ const DdocEditor = forwardRef(
       onDeleteComment,
       onDeleteReply,
       theme,
-      showTOC,
-      setShowTOC,
+      showTOC: showTOCProp,
+      setShowTOC: setShowTOCProp,
+      onShowTOCChange,
       isConnected,
       connectViaWallet,
       isLoading,
@@ -169,7 +190,6 @@ const DdocEditor = forwardRef(
       extensions,
       onCopyHeadingLink,
       tabConfig,
-      footerHeight,
       ipfsImageFetchFn,
       fetchV1ImageFn,
       activeModel,
@@ -182,6 +202,42 @@ const DdocEditor = forwardRef(
     }: DdocProps,
     ref,
   ) => {
+    const [zoomLevel, setZoomLevel] = useControllableState(
+      zoomLevelProp,
+      '1',
+      onZoomLevelChange,
+      setZoomLevelProp,
+    );
+    const [isNavbarVisible, setIsNavbarVisible] = useControllableState(
+      isNavbarVisibleProp,
+      true,
+      onNavbarVisibleChange,
+      setIsNavbarVisibleProp,
+    );
+    const [showTOC, setShowTOC] = useControllableState(
+      showTOCProp,
+      false,
+      onShowTOCChange,
+      setShowTOCProp,
+    );
+    const [commentDrawerOpen, setCommentDrawerOpen] = useControllableState(
+      commentDrawerOpenProp,
+      false,
+      onCommentDrawerOpenChange,
+      setCommentDrawerOpenProp,
+    );
+    const [isPresentationMode, setIsPresentationMode] = useControllableState(
+      isPresentationModeProp,
+      false,
+      onPresentationModeChange,
+      setIsPresentationModeProp,
+    );
+    const [isSplitView, setIsSplitView] = useControllableState(
+      isSplitViewProp,
+      false,
+      onSplitViewChange,
+      setIsSplitViewProp,
+    );
     const { isFocusMode, toggleFocusMode } = useFocusMode({
       isFocusMode: isFocusModeProp,
       onFocusModeChange,
@@ -256,9 +312,24 @@ const DdocEditor = forwardRef(
     const getBackgroundStyle = () => mergedStyles.background;
 
     const btn_ref = useRef(null);
-    const editorScrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const contentWrapperRef = useRef<HTMLDivElement | null>(null);
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const canvasRef = useRef<HTMLDivElement | null>(null);
+    const [tabPanelSlot, setTabPanelSlot] = useState<HTMLDivElement | null>(
+      null,
+    );
     const editorWrapperRef = useRef<HTMLDivElement | null>(null);
-    const { isBelow1280px, isNativeMobile } = useResponsive();
+    const editorWidthStoreRef = useRef<EditorWidthStore | null>(null);
+    if (!editorWidthStoreRef.current) {
+      editorWidthStoreRef.current = createEditorWidthStore();
+    }
+    const editorWidthStore = editorWidthStoreRef.current;
+    // False on the server and on the first render; set before the first paint.
+    const [isContainerQueryRoot, setIsContainerQueryRoot] = useState(false);
+    useLayoutEffect(() => {
+      setIsContainerQueryRoot(canUseEditorContainerQueries());
+    }, []);
+    const { isBelow1280px, isNativeMobile } = useResponsive(editorWidthStore);
 
     const [isHiddenTagsVisible, setIsHiddenTagsVisible] = useState(false);
     const tagsContainerRef = useRef(null);
@@ -312,6 +383,7 @@ const DdocEditor = forwardRef(
       isSchemaUnsupported,
       flushPendingUpdate,
     } = useDdocEditor({
+      editorWidthStore,
       documentStyling,
       ipfsImageFetchFn,
       fetchV1ImageFn,
@@ -333,6 +405,7 @@ const DdocEditor = forwardRef(
       setWordCount,
       setSelectedWordCount,
       setPageCount,
+      onStatsChange,
       ipfsImageUploadFn,
       isCommentSectionOpen,
       setIsCommentSectionOpen,
@@ -405,7 +478,10 @@ const DdocEditor = forwardRef(
     // Disabled during a LIVE collaboration session: the markdown→doc sync is a
     // one-way full-doc replace, so editing the left pane would clobber a
     // collaborator's changes. A durable-only connection (no live peers) is fine.
-    const canUseSplitView = useMediaQuery('(min-width: 960px)');
+    const canUseSplitView = useEditorMediaQuery(
+      '(min-width: 960px)',
+      editorWidthStore,
+    );
     const isCollabEnabled = isLiveCollabSession(collaboration);
     const isSplitViewActive =
       Boolean(isSplitView) &&
@@ -681,7 +757,10 @@ const DdocEditor = forwardRef(
       editor.commands.focus();
     }, [isFocusMode, editor]);
 
-    const isMobile = useMediaQuery('(max-width: 850px)');
+    const isMobile = useEditorMediaQuery(
+      '(max-width: 850px)',
+      editorWidthStore,
+    );
     const tabCommentCounts = useMemo(() => {
       return (initialComments || []).reduce<Record<string, number>>(
         (acc, comment) => {
@@ -707,17 +786,27 @@ const DdocEditor = forwardRef(
         (tocItems.length > 0 && !rest.versionHistoryState?.enabled)) &&
       (!isFocusMode || showTOC);
 
-    const containerWidth =
-      typeof window !== 'undefined' ? window.innerWidth : 0;
-    const shouldHideRight = scaledWidth + 148 * 2 > containerWidth;
-
     const leftWidth = shouldRenderDocumentOutline ? 148 : 0;
+    const { shouldHideRight, shouldScroll } = useCanvasMetrics({
+      canvasRef,
+      rootRef,
+      scaledWidth,
+      leftWidth,
+      widthStore: isContainerQueryRoot ? editorWidthStore : undefined,
+    });
 
-    // remaining space after reserving left
-    const availableSpace = containerWidth - leftWidth;
-
-    // should editor overflow?
-    const shouldScroll = scaledWidth > availableSpace;
+    // The scroller is the canvas, except in Split View where it stays on the
+    // inner wrapper as before (docs/DROP_IN_EDITOR.md §2.2). The ref object
+    // itself switches, so effects keyed on it re-bind to the new element.
+    const editorScrollContainerRef = isSplitViewActive
+      ? contentWrapperRef
+      : canvasRef;
+    const setCanvasNode = useCallback((node: HTMLDivElement | null) => {
+      canvasRef.current = node;
+    }, []);
+    const setContentWrapperNode = useCallback((node: HTMLDivElement | null) => {
+      contentWrapperRef.current = node;
+    }, []);
     const editorContentRef = useRef<HTMLDivElement | null>(null);
     const setActiveEditorContentRef = useCallback(
       (node: HTMLDivElement | null, isActive: boolean) => {
@@ -771,14 +860,8 @@ const DdocEditor = forwardRef(
       <div
         id="toolbar"
         className={cn(
-          'z-[45] hidden mobile:flex items-center color-bg-secondary justify-center w-full h-11 fixed left-0 transition-all duration-300 top-[var(--navbar)]',
-          {
-            'translate-y-0 opacity-100': !isFocusMode && isNavbarVisible,
-            '-translate-y-[var(--navbar)] opacity-100':
-              !isFocusMode && !isNavbarVisible,
-            '-translate-y-[var(--navbar)] opacity-0 pointer-events-none':
-              isFocusMode,
-          },
+          'z-[45] items-center color-bg-secondary justify-center w-full h-11 shrink-0',
+          isFocusMode ? 'hidden' : 'hidden ddoc-mobile:flex',
         )}
       >
         <ToolbarReveal
@@ -813,7 +896,7 @@ const DdocEditor = forwardRef(
               isSplitView={isSplitView}
               onToggleSplitView={
                 // Hidden during collaboration — Split View is solo-only in v1.
-                setIsSplitView && !isCollabEnabled
+                !isCollabEnabled
                   ? () => setIsSplitView((open) => !open)
                   : undefined
               }
@@ -827,6 +910,33 @@ const DdocEditor = forwardRef(
         </ToolbarReveal>
       </div>
     ) : null;
+
+    const mobileToolbar =
+      !isPreviewMode && !disableBottomToolbar && !isFocusMode ? (
+        <div
+          className={cn(
+            'flex ddoc-mobile:hidden w-full h-[52px] shrink-0 z-10 color-bg-default',
+            isKeyboardVisible && 'hidden',
+          )}
+        >
+          <ToolbarReveal
+            isReady={isToolbarReady}
+            className="flex items-center w-full h-full px-4 border-b border-color-default"
+          >
+            <MobileToolbar
+              onError={onError}
+              editor={editor}
+              isKeyboardVisible={isKeyboardVisible}
+              isNavbarVisible={isNavbarVisible}
+              setIsNavbarVisible={setIsNavbarVisible}
+              ipfsImageUploadFn={ipfsImageUploadFn}
+              ipfsImageFetchFn={ipfsImageFetchFn}
+              fetchV1ImageFn={fetchV1ImageFn}
+              fonts={fonts}
+            />
+          </ToolbarReveal>
+        </div>
+      ) : null;
 
     const renderComp = () => {
       return (
@@ -844,8 +954,6 @@ const DdocEditor = forwardRef(
               />
             )}
 
-            {/* Hidden in Split View — the markdown pane has its own toolbar. */}
-            {!isSplitViewActive && editorToolbar}
             {/* The export trigger normally registers via the toolbar's
                 ImportExportButton. When that toolbar is unmounted (preview
                 mode, Split View), mount the hidden registrar instead so the
@@ -873,35 +981,40 @@ const DdocEditor = forwardRef(
               />
             )}
             {isPresentationMode && editor && (
-              <PresentationMode
-                editor={editor}
-                onClose={handleClosePresentationMode}
-                isFullscreen={isFullscreen}
-                setIsFullscreen={setIsFullscreen}
-                onError={onError}
-                setCommentDrawerOpen={setCommentDrawerOpen}
-                sharedSlidesLink={sharedSlidesLink}
-                isPreviewMode={isPreviewMode}
-                documentName={documentName as string}
-                onSlidesShare={onSlidesShare}
-                slides={slides}
-                setSlides={setSlides}
-                renderThemeToggle={renderThemeToggle}
-                isContentLoading={isContentLoading}
-                ipfsImageFetchFn={ipfsImageFetchFn}
-                documentStyling={documentStyling}
-                fetchV1ImageFn={fetchV1ImageFn}
-                theme={theme ?? 'light'}
-              />
+              // Viewport-level overlay: its width checks stay on the window.
+              <EditorWidthContext.Provider value={null}>
+                <PresentationMode
+                  editor={editor}
+                  onClose={handleClosePresentationMode}
+                  isFullscreen={isFullscreen}
+                  setIsFullscreen={setIsFullscreen}
+                  onError={onError}
+                  setCommentDrawerOpen={setCommentDrawerOpen}
+                  sharedSlidesLink={sharedSlidesLink}
+                  isPreviewMode={isPreviewMode}
+                  documentName={documentName as string}
+                  onSlidesShare={onSlidesShare}
+                  slides={slides}
+                  setSlides={setSlides}
+                  renderThemeToggle={renderThemeToggle}
+                  isContentLoading={isContentLoading}
+                  ipfsImageFetchFn={ipfsImageFetchFn}
+                  documentStyling={documentStyling}
+                  fetchV1ImageFn={fetchV1ImageFn}
+                  theme={theme ?? 'light'}
+                />
+              </EditorWidthContext.Provider>
             )}
             <div
-              ref={editorScrollContainerRef}
-              data-editor-scroll-container="true"
+              ref={setContentWrapperNode}
+              data-editor-scroll-container={
+                isSplitViewActive ? 'true' : undefined
+              }
               className={cn(
-                'flex w-full',
-                // In Split View the right-pane wrapper owns the scroll — let the
-                // editor content flow so there's only one scroller.
-                isSplitViewActive ? 'overflow-visible' : 'overflow-auto',
+                'flex flex-none overflow-visible',
+                // Landscape in the canvas column: stretch sizes it, so the
+                // margins do not add horizontal overflow.
+                (!isLandscapeMode || isSplitViewActive) && 'w-full',
                 isLandscapeMode && 'mx-[24px]',
               )}
             >
@@ -917,11 +1030,11 @@ const DdocEditor = forwardRef(
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
-                    '-mt-[1.5rem] md:!mt-[0.8rem]',
-                  isPreviewMode && 'md:!mt-[1rem]',
-                  { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                    '-mt-[1.5rem] ddoc-md:!mt-[0.8rem]',
+                  isPreviewMode && 'ddoc-md:!mt-[1rem]',
+                  { 'ddoc-md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
                   {
-                    '-mt-[1.5rem] md:!mt-[0.7rem]':
+                    '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
                       !isNavbarVisible && !isPreviewMode,
                   },
                   isFocusMode && 'mt-[48px]',
@@ -952,6 +1065,8 @@ const DdocEditor = forwardRef(
                     tabConfig={tabConfig}
                     isConnected={isConnected}
                     isFocusMode={isFocusMode}
+                    layout="contained"
+                    tabPanelSlot={tabPanelSlot}
                   />
                 )}
               </div>
@@ -977,14 +1092,16 @@ const DdocEditor = forwardRef(
                       !isSplitViewActive &&
                         !isPreviewMode &&
                         !isFocusMode &&
-                        (isNavbarVisible ? 'md:!mt-[0.8rem]' : null),
-                      !isSplitViewActive && isPreviewMode && 'md:!mt-[1rem]',
+                        (isNavbarVisible ? 'ddoc-md:!mt-[0.8rem]' : null),
+                      !isSplitViewActive &&
+                        isPreviewMode &&
+                        'ddoc-md:!mt-[1rem]',
                       {
-                        'md:!mt-[0.7rem]':
+                        'ddoc-md:!mt-[0.7rem]':
                           !isSplitViewActive && !isPreviewMode && !isFocusMode,
                       },
                       {
-                        '-mt-[1.5rem] md:!mt-[0.7rem]':
+                        '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
                           !isSplitViewActive &&
                           !isNavbarVisible &&
                           !isPreviewMode,
@@ -995,15 +1112,10 @@ const DdocEditor = forwardRef(
                     )}
                     data-zoom-below-100={zoom < 1 ? 'true' : 'false'}
                     style={{
-                      minHeight: isFocusMode
-                        ? focusHeight
-                        : // Split View: don't force viewport height — the content
-                          // flows inside the right pane's own scroll box.
-                          isSplitViewActive
-                          ? 'auto'
-                          : isNavbarVisible
-                            ? `calc(100dvh - (var(--navbar) + var(--toolbar)) - ${bottomInset})`
-                            : `calc(100dvh - var(--toolbar) - ${bottomInset})`,
+                      // Split View: the content flows inside the right pane.
+                      minHeight: isSplitViewActive
+                        ? 'auto'
+                        : 'var(--ddoc-canvas-h)',
                     }}
                   >
                     <div
@@ -1167,7 +1279,7 @@ const DdocEditor = forwardRef(
                                       <div
                                         ref={tagsContainerRef}
                                         className={cn(
-                                          'flex flex-wrap px-4 md:px-8 lg:px-[80px] mb-8 items-center gap-1 mt-4 lg:!mt-0',
+                                          'flex flex-wrap px-4 ddoc-md:px-8 ddoc-lg:px-[80px] mb-8 items-center gap-1 mt-4 ddoc-lg:!mt-0',
                                           { 'pt-12': isPreviewMode },
                                         )}
                                         {...(!isFocusMode &&
@@ -1364,15 +1476,15 @@ const DdocEditor = forwardRef(
               <div
                 className={cn(
                   'editor-right-rail',
-                  !isMobile && 'max-w-[263px] w-full xl:shrink-[2]',
+                  !isMobile && 'max-w-[263px] w-full ddoc-xl:shrink-[2]',
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
-                    '-mt-[1.5rem] md:!mt-[0.8rem]',
-                  isPreviewMode && 'md:!mt-[1rem]',
-                  { 'md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                    '-mt-[1.5rem] ddoc-md:!mt-[0.8rem]',
+                  isPreviewMode && 'ddoc-md:!mt-[1rem]',
+                  { 'ddoc-md:!mt-[0.7rem]': !isPreviewMode && !isFocusMode },
                   {
-                    '-mt-[1.5rem] md:!mt-[0.7rem]':
+                    '-mt-[1.5rem] ddoc-md:!mt-[0.7rem]':
                       !isNavbarVisible && !isPreviewMode,
                   },
                   isFocusMode && 'mt-[48px]',
@@ -1396,49 +1508,6 @@ const DdocEditor = forwardRef(
                 <LucideIcon name="MessageSquareText" size="sm" />
               </Button>
             )}
-            {!isPreviewMode && !disableBottomToolbar && !isFocusMode && (
-              <div
-                className={cn(
-                  'flex mobile:hidden w-full h-[52px] fixed left-0 z-10 transition-all duration-300 ease-in-out color-bg-default',
-                  isKeyboardVisible && 'hidden',
-                  {
-                    'top-[var(--navbar)]': isNavbarVisible,
-                    'top-0': !isNavbarVisible,
-                  },
-                )}
-              >
-                <ToolbarReveal
-                  isReady={isToolbarReady}
-                  className="flex items-center w-full h-full px-4 border-b border-color-default"
-                >
-                  <MobileToolbar
-                    onError={onError}
-                    editor={editor}
-                    isKeyboardVisible={isKeyboardVisible}
-                    isNavbarVisible={isNavbarVisible}
-                    setIsNavbarVisible={setIsNavbarVisible}
-                    ipfsImageUploadFn={ipfsImageUploadFn}
-                    ipfsImageFetchFn={ipfsImageFetchFn}
-                    fetchV1ImageFn={fetchV1ImageFn}
-                    fonts={fonts}
-                  />
-                </ToolbarReveal>
-              </div>
-            )}
-            {editor && (
-              <CommentDrawer
-                isOpen={commentDrawerOpen as boolean}
-                onClose={() => setCommentDrawerOpen?.(false)}
-                isNavbarVisible={isNavbarVisible}
-                isPresentationMode={isPresentationMode as boolean}
-                activeCommentId={activeCommentId}
-                activeTabId={activeTabId}
-                onTabChange={setActiveTabId}
-                isPreviewMode={isPreviewMode}
-                tabs={tabs}
-              />
-            )}
-
             <div>
               {editor && isBelow1280px && !isFocusMode && (
                 <CommentBubbleCard
@@ -1455,22 +1524,12 @@ const DdocEditor = forwardRef(
       );
     };
 
-    // Bottom chrome the scroller must end above so its bottom edge (and the
-    // browser's native drag-autoscroll belt there, TEC-2947) stays reachable:
-    // the consumer's fixed footer, plus the collapsed tab panel that sits on
-    // it below 1280px (hard-coded height for now).
-    const footerInset = footerHeight || '0px';
-    const mobileTabPanelInset =
-      isBelow1280px && shouldRenderDocumentOutline ? '50px' : '0px';
-    const bottomInset = `calc(${footerInset} + ${mobileTabPanelInset})`;
-    const focusHeight = `calc(100vh - ${mobileTabPanelInset})`;
-
     // A doc created on a newer schema must never bind editors in this build;
     // useDdocEditor already blocks editor creation via the schema guard, this
     // branch replaces the editor surface with a refresh prompt.
     if (isSchemaUnsupported) {
       return (
-        <div className="w-full h-[100dvh] color-bg-secondary flex items-center justify-center p-6">
+        <div className="w-full h-full color-bg-secondary flex items-center justify-center p-6">
           <div className="flex flex-col items-center gap-4 text-center max-w-[24rem]">
             <LucideIcon name="RefreshCw" size="md" />
             <div className="flex flex-col gap-2">
@@ -1495,59 +1554,24 @@ const DdocEditor = forwardRef(
         isFocusMode={isFocusMode}
       >
         <div
+          ref={rootRef}
           className={cn(
-            'w-full [--navbar:64px] max-lg:[--navbar:46px] [--toolbar:44px] max-mobile:[--toolbar:52px]',
+            'ddoc-editor-root h-full w-full flex flex-col overflow-hidden relative',
             !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
+            isContainerQueryRoot && 'ddoc-editor-cq',
           )}
-          style={{
-            height: isFocusMode
-              ? focusHeight
-              : isSplitViewActive
-                ? isNavbarVisible
-                  ? `calc(100dvh - 56px - ${bottomInset})`
-                  : `calc(100dvh - ${bottomInset})`
-                : !isPreviewMode
-                  ? isNavbarVisible
-                    ? `calc(100dvh - (var(--toolbar) + var(--navbar)) - ${bottomInset})`
-                    : `calc(100dvh - var(--toolbar) - ${bottomInset})`
-                  : `calc(100dvh - var(--toolbar) - ${bottomInset})`,
-          }}
         >
-          {/* Author's custom CSS escape hatch. The author writes bare selectors
-              (`h1 { … }`, `p { … }`); sanitizeCustomCss scopes every rule to the
-              document (`.ProseMirror { … }`) AND strips injection vectors —
-              breakout via `}`, url()/@import exfiltration, position:fixed
-              overlays, expression()/behavior. Custom CSS reaches viewers of a
-              published doc, so it is treated as untrusted input, not a trusted
-              stylesheet. Applies live while editing, in preview, and published. */}
-          {safeCustomCss ? (
-            <style dangerouslySetInnerHTML={{ __html: safeCustomCss }} />
-          ) : null}
-          <div
-            id="editor-canvas"
-            onMouseDown={handleFocusModeMouseDown}
-            className={cn(
-              'h-[100%] flex w-full relative',
-              // Split View: the right-pane wrapper owns the scroll, not the canvas.
-              isSplitViewActive ? 'overflow-hidden' : 'overflow-auto',
-              !isPreviewMode &&
-                !isFocusMode &&
-                !isSplitViewActive &&
-                (isNavbarVisible
-                  ? 'mt-[calc(var(--navbar)+var(--toolbar))]'
-                  : 'mt-[var(--toolbar)]'),
-              // Split View hides the rich toolbar, so only reserve the navbar.
-              isSplitViewActive &&
-                !isFocusMode &&
-                (isNavbarVisible ? 'mt-[var(--navbar)]' : 'mt-0'),
-              isPreviewMode && !isFocusMode && 'mt-[var(--navbar)]',
-              !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
-              editorCanvasClassNames,
-            )}
-            style={!isFocusMode ? getBackgroundStyle() : undefined}
-          >
-            <SearchReplace editor={editor} viewerMode={viewerMode} />
-
+          <EditorWidthContext.Provider value={editorWidthStore}>
+            {/* Author's custom CSS escape hatch. The author writes bare selectors
+                (`h1 { … }`, `p { … }`); sanitizeCustomCss scopes every rule to the
+                document (`.ProseMirror { … }`) AND strips injection vectors —
+                breakout via `}`, url()/@import exfiltration, position:fixed
+                overlays, expression()/behavior. Custom CSS reaches viewers of a
+                published doc, so it is treated as untrusted input, not a trusted
+                stylesheet. Applies live while editing, in preview, and published. */}
+            {safeCustomCss ? (
+              <style dangerouslySetInnerHTML={{ __html: safeCustomCss }} />
+            ) : null}
             <CommentStoreProvider
               isInlineCommentAvailable={
                 !isCollabEnabled &&
@@ -1587,154 +1611,186 @@ const DdocEditor = forwardRef(
               storeApiRef={storeApiRef}
               initialCommentAnchors={initialCommentAnchors}
             >
-              <nav
-                id="Navbar"
-                onKeyDown={(e) => {
-                  // Escape from anywhere in the navbar returns focus to the
-                  // editor, letting keyboard users leave the navbar's tabbing
-                  // order (mirrors the formatting toolbar's behavior).
-                  if (e.key === 'Escape' && editor) {
-                    e.preventDefault();
-                    editor.commands.focus();
-                  }
-                }}
-                className={cn(
-                  'h-[var(--navbar)] color-bg-default p-2 flex gap-10 items-center justify-between w-screen fixed left-0 top-0 border-b color-border-default z-[45] transition-all duration-300',
-                  {
-                    'translate-y-0 opacity-100':
-                      !isFocusMode && isNavbarVisible && !isPresentationMode,
-                    'translate-y-[-100%] opacity-0 pointer-events-none':
-                      isFocusMode || !isNavbarVisible || isPresentationMode,
-                  },
-                )}
-              >
-                {editor &&
-                  renderNavbar?.({
-                    get editor() {
-                      return editor.getJSON();
-                    },
-                    liveEditor: editor,
-                  })}
-              </nav>
-              {/*
-                Split View keeps the REAL editor mounted in place — it is never
-                moved into a second <EditorContent>, which would orphan every
-                React node view (tables, images, embeds). `display: contents`
-                makes these wrappers invisible in normal mode (renderComp lays
-                out exactly as before) and turns them into the 2-pane split
-                layout when active, without changing renderComp's tree position.
-              */}
+              <EditorNavbar
+                editor={editor ?? null}
+                renderNavbar={renderNavbar}
+                container={navbarContainer}
+                isHidden={isFocusMode || !isNavbarVisible || isPresentationMode}
+              />
+              {!isSplitViewActive && editorToolbar}
+              {mobileToolbar}
               <div
-                ref={splitContainerRef}
+                id="editor-canvas"
+                ref={setCanvasNode}
+                data-editor-scroll-container={
+                  isSplitViewActive ? undefined : 'true'
+                }
+                onMouseDown={handleFocusModeMouseDown}
                 className={cn(
-                  isSplitViewActive
-                    ? 'flex w-full h-full p-4 color-bg-secondary overflow-hidden'
-                    : 'contents',
+                  // 0px, not 0%: a % basis is content-sized in an auto-height
+                  // parent, and the canvas would then grow without bound.
+                  'flex-[1_1_0px] min-h-0 w-full flex flex-col relative',
+                  // Split View: the right-pane wrapper owns the scroll.
+                  isSplitViewActive ? 'overflow-hidden' : 'overflow-auto',
+                  !isPresentationMode
+                    ? 'color-bg-secondary'
+                    : 'color-bg-default',
+                  editorCanvasClassNames,
                 )}
+                style={!isFocusMode ? getBackgroundStyle() : undefined}
               >
-                {editor && isSplitViewActive && (
-                  <SplitViewMarkdownPane
-                    markdown={splitViewMarkdown}
-                    onMarkdownChange={onSplitViewMarkdownChange}
-                    ipfsImageUploadFn={ipfsImageUploadFn}
-                    onError={onError}
-                    customCSS={documentStyling?.customCSS}
-                    style={{ flexGrow: splitRatio }}
-                  />
-                )}
-
-                {/* Draggable divider to resize the two panes. */}
-                {editor && isSplitViewActive && (
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-valuenow={Math.round(splitRatio * 100)}
-                    aria-valuemin={20}
-                    aria-valuemax={80}
-                    onMouseDown={handleSplitterDown}
-                    className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
-                  >
-                    <div className="h-10 w-[3px] rounded-full color-bg-default-hover transition-colors group-hover:color-bg-brand" />
-                  </div>
-                )}
-
-                {/* RIGHT pane (split) / passthrough (normal) — the real editor. */}
                 <div
-                  style={
-                    isSplitViewActive ? { flexGrow: 1 - splitRatio } : undefined
-                  }
+                  className={cn(
+                    'ddoc-drawer-anchor',
+                    isPresentationMode && 'ddoc-drawer-anchor--presenting',
+                  )}
+                >
+                  <SearchReplace editor={editor} viewerMode={viewerMode} />
+                  {editor && (
+                    <CommentDrawer
+                      isOpen={commentDrawerOpen}
+                      onClose={() => setCommentDrawerOpen(false)}
+                      isNavbarVisible={isNavbarVisible}
+                      isPresentationMode={isPresentationMode}
+                      activeCommentId={activeCommentId}
+                      activeTabId={activeTabId}
+                      onTabChange={setActiveTabId}
+                      isPreviewMode={isPreviewMode}
+                      tabs={tabs}
+                    />
+                  )}
+                </div>
+                {/*
+                  Split View keeps the REAL editor mounted in place — it is never
+                  moved into a second <EditorContent>, which would orphan every
+                  React node view (tables, images, embeds). `display: contents`
+                  makes these wrappers invisible in normal mode (renderComp lays
+                  out exactly as before) and turns them into the 2-pane split
+                  layout when active, without changing renderComp's tree position.
+                */}
+                <div
+                  ref={splitContainerRef}
                   className={cn(
                     isSplitViewActive
-                      ? 'flex-1 min-w-0 h-full flex flex-col color-bg-default rounded border color-border-default overflow-hidden relative'
+                      ? 'flex w-full flex-1 min-h-0 p-4 color-bg-secondary overflow-hidden'
                       : 'contents',
                   )}
                 >
                   {editor && isSplitViewActive && (
-                    <SplitViewRightHeader
-                      editor={editor}
-                      onExitSplitView={() => setIsSplitView?.(false)}
-                      showTabsPanel={showSplitTabsPanel}
-                      onToggleTabsPanel={() =>
-                        setShowSplitTabsPanel((open) => !open)
-                      }
+                    <SplitViewMarkdownPane
+                      markdown={splitViewMarkdown}
+                      onMarkdownChange={onSplitViewMarkdownChange}
+                      ipfsImageUploadFn={ipfsImageUploadFn}
+                      onError={onError}
+                      customCSS={documentStyling?.customCSS}
+                      style={{ flexGrow: splitRatio }}
                     />
                   )}
 
+                  {/* Draggable divider to resize the two panes. */}
+                  {editor && isSplitViewActive && (
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-valuenow={Math.round(splitRatio * 100)}
+                      aria-valuemin={20}
+                      aria-valuemax={80}
+                      onMouseDown={handleSplitterDown}
+                      className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center"
+                    >
+                      <div className="h-10 w-[3px] rounded-full color-bg-default-hover transition-colors group-hover:color-bg-brand" />
+                    </div>
+                  )}
+
+                  {/* RIGHT pane (split) / passthrough (normal) — the real editor. */}
                   <div
+                    style={
+                      isSplitViewActive
+                        ? { flexGrow: 1 - splitRatio }
+                        : undefined
+                    }
                     className={cn(
                       isSplitViewActive
-                        ? 'flex-1 min-h-0 relative overflow-hidden'
+                        ? 'flex-1 min-w-0 h-full flex flex-col color-bg-default rounded border color-border-default overflow-hidden relative'
                         : 'contents',
                     )}
                   >
+                    {editor && isSplitViewActive && (
+                      <SplitViewRightHeader
+                        editor={editor}
+                        onExitSplitView={() => setIsSplitView?.(false)}
+                        showTabsPanel={showSplitTabsPanel}
+                        onToggleTabsPanel={() =>
+                          setShowSplitTabsPanel((open) => !open)
+                        }
+                      />
+                    )}
+
                     <div
-                      ref={splitViewScrollRef}
-                      {...(isSplitViewActive
-                        ? { 'data-split-view-preview': 'true' }
-                        : {})}
                       className={cn(
                         isSplitViewActive
-                          ? 'absolute inset-0 overflow-y-auto overflow-x-hidden'
+                          ? 'flex-1 min-h-0 relative overflow-hidden'
                           : 'contents',
                       )}
                     >
-                      {renderComp()}
-                    </div>
-
-                    {/* Document-tabs overlay (existing DocumentOutline). */}
-                    {editor && isSplitViewActive && showSplitTabsPanel && (
-                      <div className="absolute top-0 left-0 h-full w-[263px] z-20 color-bg-default border-r color-border-default shadow-elevation-3 overflow-y-auto">
-                        <DocumentOutline
-                          editor={editor}
-                          hasToC={true}
-                          items={tocItems}
-                          setItems={setTocItems}
-                          showTOC={showTOC}
-                          setShowTOC={setShowTOC}
-                          isPreviewMode={false}
-                          orientation={documentStyling?.orientation}
-                          tabs={tabs}
-                          setTabs={setTabs}
-                          activeTabId={activeTabId}
-                          setActiveTabId={setActiveTabId}
-                          createTab={createTab}
-                          renameTab={renameTab}
-                          duplicateTab={duplicateTab}
-                          orderTab={orderTab}
-                          deleteTab={deleteTab}
-                          ydoc={ydoc}
-                          tabCommentCounts={tabCommentCounts}
-                          tabConfig={tabConfig}
-                          isConnected={isConnected}
-                          isFocusMode={isFocusMode}
-                        />
+                      <div
+                        ref={splitViewScrollRef}
+                        {...(isSplitViewActive
+                          ? { 'data-split-view-preview': 'true' }
+                          : {})}
+                        className={cn(
+                          isSplitViewActive
+                            ? 'absolute inset-0 overflow-y-auto overflow-x-hidden'
+                            : 'contents',
+                        )}
+                      >
+                        {renderComp()}
                       </div>
-                    )}
+
+                      {/* Document-tabs overlay (existing DocumentOutline). */}
+                      {editor && isSplitViewActive && showSplitTabsPanel && (
+                        <div className="absolute top-0 left-0 h-full w-[263px] z-20 color-bg-default border-r color-border-default shadow-elevation-3 overflow-y-auto">
+                          <DocumentOutline
+                            editor={editor}
+                            hasToC={true}
+                            items={tocItems}
+                            setItems={setTocItems}
+                            showTOC={showTOC}
+                            setShowTOC={setShowTOC}
+                            isPreviewMode={false}
+                            orientation={documentStyling?.orientation}
+                            tabs={tabs}
+                            setTabs={setTabs}
+                            activeTabId={activeTabId}
+                            setActiveTabId={setActiveTabId}
+                            createTab={createTab}
+                            renameTab={renameTab}
+                            duplicateTab={duplicateTab}
+                            orderTab={orderTab}
+                            deleteTab={deleteTab}
+                            ydoc={ydoc}
+                            tabCommentCounts={tabCommentCounts}
+                            tabConfig={tabConfig}
+                            isConnected={isConnected}
+                            isFocusMode={isFocusMode}
+                            layout="contained"
+                            tabPanelSlot={tabPanelSlot}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
+              <div
+                ref={setTabPanelSlot}
+                className="ddoc-tab-panel-slot relative shrink-0 w-full z-[9]"
+                style={{
+                  height: isBelow1280px && shouldRenderDocumentOutline ? 50 : 0,
+                }}
+              />
             </CommentStoreProvider>
-          </div>
+          </EditorWidthContext.Provider>
         </div>
       </EditorProvider>
     );

@@ -209,6 +209,7 @@ function App() {
 
   const [zoomLevel, setZoomLevel] = useState<string>('1');
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
+  const [navbarHost, setNavbarHost] = useState<HTMLElement | null>(null);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   // Controlled focus mode (D6) — the second-level nav's View menu drives it.
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -820,103 +821,107 @@ function App() {
   ]);
 
   return (
-    <div>
+    <div className="h-[100dvh] w-full flex flex-col">
       <DocumentStylingPanel
         isOpen={showStylingControls}
         onClose={() => setShowStylingControls(false)}
         documentStyling={documentStyling}
         onStylingChange={setDocumentStyling}
       />
-      <DdocEditor
-        ref={editorRef}
-        fonts={demoFonts}
-        collaboration={collaboration}
-        username={username}
-        setUsername={setUsername}
-        isPreviewMode={isPreviewMode}
-        disableInlineComment={disableInlineComment}
-        onChange={handleContentChange}
-        initialContent={initialContent}
-        enableIndexeddbSync={true}
-        ddocId={docId}
-        // Only consulted at doc creation; existing docs follow their marker.
-        preferredSchemaVersion={
-          new URLSearchParams(window.location.search).get('v2') === '1'
-            ? 2
-            : undefined
-        }
-        tabConfig={tabConfig}
-        onError={(error) => {
-          toast({
-            title: 'Error',
-            description: error,
-            variant: 'error',
-            iconType: 'icon',
-          });
-        }}
-        renderNavbar={renderNavbar}
-        ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
-        selectedTags={selectedTags}
-        setSelectedTags={setSelectedTags}
-        isCommentSectionOpen={isCommentSectionOpen}
-        setIsCommentSectionOpen={setIsCommentSectionOpen}
-        setInlineCommentData={setInlineCommentData}
-        inlineCommentData={inlineCommentData}
-        commentDrawerOpen={commentDrawerOpen}
-        setCommentDrawerOpen={setCommentDrawerOpen}
-        isPresentationMode={isPresentationMode}
-        setIsPresentationMode={setIsPresentationMode}
-        isFocusMode={isFocusMode}
-        onFocusModeChange={setIsFocusMode}
-        isSplitView={isSplitView}
-        setIsSplitView={setIsSplitView}
-        zoomLevel={zoomLevel}
-        setZoomLevel={setZoomLevel}
-        isNavbarVisible={isNavbarVisible}
-        setIsNavbarVisible={setIsNavbarVisible}
-        onComment={(): void => {}}
-        onInlineComment={(): void => {}}
-        onMarkdownImport={(): void => {}}
-        onMarkdownExport={(): void => {}}
-        onPdfExport={(): void => {}}
-        onHtmlExport={(): void => {}}
-        onTxtExport={(): void => {}}
-        onDocxImport={(): void => {}}
-        initialComments={initialComments}
-        onCommentReply={handleReplyOnComment}
-        onNewComment={handleNewComment}
-        setInitialComments={setInitialComment}
-        onResolveComment={handleResolveComment}
-        onUnresolveComment={handleUnresolveComment}
-        onDeleteComment={handleDeleteComment}
-        showTOC={showTOC}
-        setShowTOC={setShowTOC}
-        isConnected={isConnected}
-        connectViaWallet={async () => {}}
-        isLoading={false}
-        connectViaUsername={handleConnectViaUsername}
-        onCopyHeadingLink={(link: string) => {
-          navigator.clipboard.writeText(link);
-          // Mirror the consumer (protected-document-context.tsx): the
-          // package only supplies the slug; feedback is the host's job.
-          toast({
-            title: 'Anchor link copied to clipboard',
-            toastType: 'mini',
-            iconType: 'icon',
-            customIcon: 'Link',
-          });
-        }}
-        onCollaboratorChange={onCollaboratorChange}
-        documentStyling={documentStyling}
-        isDDocOwner={isDDocOwner}
-        viewerMode={isDDocOwner ? undefined : viewerMode}
-        initialCommentAnchors={initialCommentAnchors}
-        setCharacterCount={setCharacterCount}
-        setWordCount={setWordCount}
-        setPageCount={setPageCount}
-        // Mirrors ddocs.new: the fixed DemoFooter overlaps the viewport bottom.
-        footerHeight="25px"
-      />
+      <div ref={setNavbarHost} className="shrink-0" />
+      <div className="flex-1 min-h-0">
+        <DdocEditor
+          ref={editorRef}
+          navbarContainer={navbarHost}
+          fonts={demoFonts}
+          collaboration={collaboration}
+          username={username}
+          setUsername={setUsername}
+          isPreviewMode={isPreviewMode}
+          disableInlineComment={disableInlineComment}
+          onChange={handleContentChange}
+          initialContent={initialContent}
+          enableIndexeddbSync={true}
+          ddocId={docId}
+          // Only consulted at doc creation; existing docs follow their marker.
+          preferredSchemaVersion={
+            new URLSearchParams(window.location.search).get('v2') === '1'
+              ? 2
+              : undefined
+          }
+          tabConfig={tabConfig}
+          onError={(error) => {
+            toast({
+              title: 'Error',
+              description: error,
+              variant: 'error',
+              iconType: 'icon',
+            });
+          }}
+          renderNavbar={renderNavbar}
+          ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
+          selectedTags={selectedTags}
+          setSelectedTags={setSelectedTags}
+          isCommentSectionOpen={isCommentSectionOpen}
+          setIsCommentSectionOpen={setIsCommentSectionOpen}
+          setInlineCommentData={setInlineCommentData}
+          inlineCommentData={inlineCommentData}
+          commentDrawerOpen={commentDrawerOpen}
+          onCommentDrawerOpenChange={setCommentDrawerOpen}
+          isPresentationMode={isPresentationMode}
+          onPresentationModeChange={setIsPresentationMode}
+          isFocusMode={isFocusMode}
+          onFocusModeChange={setIsFocusMode}
+          isSplitView={isSplitView}
+          onSplitViewChange={setIsSplitView}
+          zoomLevel={zoomLevel}
+          onZoomLevelChange={setZoomLevel}
+          isNavbarVisible={isNavbarVisible}
+          onNavbarVisibleChange={setIsNavbarVisible}
+          onComment={(): void => {}}
+          onInlineComment={(): void => {}}
+          onMarkdownImport={(): void => {}}
+          onMarkdownExport={(): void => {}}
+          onPdfExport={(): void => {}}
+          onHtmlExport={(): void => {}}
+          onTxtExport={(): void => {}}
+          onDocxImport={(): void => {}}
+          initialComments={initialComments}
+          onCommentReply={handleReplyOnComment}
+          onNewComment={handleNewComment}
+          setInitialComments={setInitialComment}
+          onResolveComment={handleResolveComment}
+          onUnresolveComment={handleUnresolveComment}
+          onDeleteComment={handleDeleteComment}
+          showTOC={showTOC}
+          onShowTOCChange={setShowTOC}
+          isConnected={isConnected}
+          connectViaWallet={async () => {}}
+          isLoading={false}
+          connectViaUsername={handleConnectViaUsername}
+          onCopyHeadingLink={(link: string) => {
+            navigator.clipboard.writeText(link);
+            // Mirror the consumer (protected-document-context.tsx): the
+            // package only supplies the slug; feedback is the host's job.
+            toast({
+              title: 'Anchor link copied to clipboard',
+              toastType: 'mini',
+              iconType: 'icon',
+              customIcon: 'Link',
+            });
+          }}
+          onCollaboratorChange={onCollaboratorChange}
+          documentStyling={documentStyling}
+          isDDocOwner={isDDocOwner}
+          viewerMode={isDDocOwner ? undefined : viewerMode}
+          initialCommentAnchors={initialCommentAnchors}
+          onStatsChange={(stats) => {
+            setCharacterCount(stats.characters);
+            setWordCount(stats.words);
+            setPageCount(stats.pages ?? 0);
+          }}
+        />
+      </div>
       <DemoFooter wordCount={wordCount} pageCount={pageCount} />
       <WordCountModal
         open={wordCountModalOpen}

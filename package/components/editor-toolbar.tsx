@@ -10,7 +10,7 @@ import {
   PopoverContent,
 } from '@fileverse/ui';
 import ToolbarButton from '../common/toolbar-button';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
 import {
   FontDescriptor,
   IpfsImageFetchPayload,
@@ -130,11 +130,11 @@ const TiptapToolBar = ({
     ? editorStates.onSetLineHeight
     : noopSetEditorValue;
 
-  const isBelow1560px = useMediaQuery('(max-width: 1560px)');
-  const isBelow1370px = useMediaQuery('(max-width: 1370px)');
-  const isBelow1270px = useMediaQuery('(max-width: 1270px)');
-  const isBelow1160px = useMediaQuery('(max-width: 1160px)');
-  const isBelow1030px = useMediaQuery('(max-width: 1030px)');
+  const isBelow1560px = useEditorMediaQuery('(max-width: 1560px)');
+  const isBelow1370px = useEditorMediaQuery('(max-width: 1370px)');
+  const isBelow1270px = useEditorMediaQuery('(max-width: 1270px)');
+  const isBelow1160px = useEditorMediaQuery('(max-width: 1160px)');
+  const isBelow1030px = useEditorMediaQuery('(max-width: 1030px)');
 
   const toolbarBreakpoint = useMemo(() => {
     switch (true) {

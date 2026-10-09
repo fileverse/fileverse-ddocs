@@ -75,12 +75,17 @@ export const CommentDrawerDesktop = ({
     rounded={true}
     dismissible
     className={cn(
-      'w-[336px] !z-40 right-0 shadow-elevation-4 rounded-lg border color-border-default',
-      isOpen && 'right-2 md:!right-4',
-      isNavbarVisible
-        ? `h-[calc(98vh-140px)] ${isPreviewMode ? 'top-[4rem]' : 'top-[7.25rem] '}`
-        : 'top-[4rem] h-[calc(100vh-90px)] xl:h-[calc(99vh-90px)]',
-      isPresentationMode && 'h-[calc(100vh-5rem)] top-[4rem] !z-[60]',
+      'w-[336px] shadow-elevation-4 rounded-lg border color-border-default',
+      isPresentationMode
+        ? cn(
+            '!z-[60] right-0 top-[4rem] h-[calc(100vh-5rem)]',
+            isOpen && 'right-2 md:!right-4',
+          )
+        : cn(
+            '!absolute !z-40 !bottom-auto top-2 h-[calc(var(--ddoc-canvas-h)-16px)]',
+            // Closed, it must sit flush so the anchor's clip hides all of it.
+            isOpen ? 'right-2 ddoc-md:!right-4' : 'right-0',
+          ),
     )}
     headerClassName="border-b color-border-default !color-bg-default px-4 pb-[12px] !rounded-t-lg"
     contentClassName="!rounded-lg !px-0 !h-full !pb-5 select-text"

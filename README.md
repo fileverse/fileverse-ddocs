@@ -46,6 +46,32 @@ import 'katex/dist/katex.min.css';      // math; fonts are served as files
 import '@fileverse-dev/ddoc/styles';    // editor CSS
 ```
 
+### Sizing
+
+`DdocEditor` fills its parent: `width: 100%; height: 100%`. The parent must have a definite height. The editor never reads the viewport, so a navbar above it or a footer below it is ordinary layout:
+
+```tsx
+<div style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+  <div style={{ flex: 1, minHeight: 0 }}>
+    <DdocEditor renderNavbar={renderNavbar} />
+  </div>
+  <footer>…</footer>
+</div>
+```
+
+If the editor renders with no height, its parent has none.
+
+`renderNavbar` output is the editor's first row by default. Without `renderNavbar` no navbar element is rendered. To place the navbar elsewhere, pass the element to render into. Hold it in state, not in a ref, so the editor re-renders when it attaches:
+
+```tsx
+const [navbarEl, setNavbarEl] = useState<HTMLElement | null>(null);
+
+<header ref={setNavbarEl} />
+<DdocEditor navbarContainer={navbarEl} renderNavbar={renderNavbar} />
+```
+
+The layout follows the editor's width, not the window's: in a narrow panel it uses its narrow layout. Known limits: one `DdocEditor` per page; in a narrow editor on a wide screen the comment sheet still covers the whole viewport.
+
 ### Peer Dependencies
 
 This package requires the following peer dependencies to be installed in your project:
@@ -120,6 +146,28 @@ The preset composes `@fileverse/ui/tailwind` (class-based dark mode, animate plu
 
 You should now be set to use dDocs!
 
+### Migrating from 5.x
+
+6.0 changes how the editor is sized. No prop was removed.
+
+- Give the editor a parent with a definite height (see Sizing). It no longer sizes itself from `100dvh`.
+- Put your footer after the editor in normal flow. `footerHeight` has no effect and can be removed.
+- The navbar and toolbars are no longer inside `#editor-canvas`. CSS that used `#editor-canvas` as their ancestor should use `.ddoc-editor-root`.
+- Without `renderNavbar` the editor renders no navbar element at all. The navbar's height now comes from its content; it was a fixed 64px, 46px below `lg`.
+- `editorCanvasClassNames` should not set a height.
+- `zoomLevel`, `isNavbarVisible` and `isPreviewMode` are optional. Every UI state can be left out, or controlled with a value and an `onXChange` callback. The `setX` props still work and are deprecated.
+- Your Tailwind build needs no config change. The new `ddoc-*` variants (container-query breakpoints that follow the editor's width) come from the `@fileverse-dev/ddoc/tailwind` preset you already use.
+
+Behaviour that changes without a code change on your side:
+
+- UI features that did nothing without their `setX` prop now work on internal state. The Split View toggle shows whenever live collaboration is off (it needed `setIsSplitView` before), and the comment drawer, the outline and presentation mode open without a setter. To keep one fixed, pass its value with no callback, for example `isPresentationMode={false}`. For Split View, `isSplitView={false}` keeps the editor out of Split View, but the toolbar toggle is still shown and does nothing.
+- `onFocusModeChange` and the deprecated `onFocusMode` also fire when `isFocusMode` is not passed.
+- `#editor-canvas` is now the document scroller (it carries `data-editor-scroll-container`), and the root (`.ddoc-editor-root`) is `overflow: hidden`.
+- A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element.
+- The navbar and toolbars no longer slide or fade when hidden; their rows are removed and the canvas takes the space.
+- The mobile tab panel sits at the editor's bottom edge. It no longer adds `24px + env(safe-area-inset-bottom)`, so your footer must carry the safe-area inset.
+- The editor's responsive classes use `:where()` in their window fallback, so they need Chrome 88+, Safari 14+ or Firefox 78+.
+
 # dDocProps Interface
 
 The `DdocProps` interface is a TypeScript interface that defines the properties for a page-related component. It includes properties for handling preview mode, managing publishing data, and optionally storing metadata and content associated with the page.
@@ -131,7 +179,7 @@ The `DdocProps` interface is a TypeScript interface that defines the properties 
 | `initialContent`         | `JSONContent`                                 | Initial content of the editor                   |
 | `onChange`               | `(changes: JSONContent, chunk?: any) => void` | Callback triggered on editor content changes    |
 | `ref`                    | `React.RefObject`                             | Reference to access editor instance             |
-| `isPreviewMode`          | `boolean`                                     | Controls if editor is in preview/read-only mode |
+| `isPreviewMode`          | `boolean`                                     | Controls if editor is in preview/read-only mode. Optional, defaults to `false` |
 | `editorCanvasClassNames` | `string`                                      | Additional CSS classes for editor canvas        |
 | `ignoreCorruptedData`    | `boolean`                                     | Whether to ignore corrupted data during loading |
 | `onInvalidContentError`  | `(error: any) => void`                        | Callback for handling invalid content errors    |
@@ -151,19 +199,40 @@ The `DdocProps` interface is a TypeScript interface that defines the properties 
 
 ## UI/UX Props
 
-| Property                | Type                                      | Description                            |
-| ----------------------- | ----------------------------------------- | -------------------------------------- |
-| `zoomLevel`             | `string`                                  | Current zoom level of the editor       |
-| `setZoomLevel`          | `React.Dispatch<SetStateAction<string>>`  | Function to update zoom level          |
-| `isNavbarVisible`       | `boolean`                                 | Controls navbar visibility             |
-| `setIsNavbarVisible`    | `React.Dispatch<SetStateAction<boolean>>` | Function to toggle navbar visibility   |
-| `renderNavbar`          | `() => JSX.Element`                       | Custom navbar renderer                 |
-| `renderThemeToggle`     | `() => JSX.Element`                       | Custom theme toggle renderer           |
-| `isPresentationMode`    | `boolean`                                 | Controls presentation mode             |
-| `setIsPresentationMode` | `React.Dispatch<SetStateAction<boolean>>` | Function to toggle presentation mode   |
-| `sharedSlidesLink`      | `string`                                  | Link for shared presentation slides    |
-| `documentStyling`       | `DocumentStyling`                         | Custom styling for document appearance |
-| `fonts`                 | `FontDescriptor[]`                        | Consumer-provided font catalog (see Custom Fonts) |
+Every UI state can be left out (the editor keeps it internally), or controlled with a value and an `onXChange` callback. The `setX` props still work and are deprecated.
+
+| Property                    | Type                                      | Description                                                                         |
+| --------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| `zoomLevel`                 | `string`                                  | Current zoom level of the editor. Optional, defaults to `'1'`                       |
+| `onZoomLevelChange`         | `(zoomLevel: string) => void`             | Zoom changed                                                                        |
+| `setZoomLevel`              | `React.Dispatch<SetStateAction<string>>`  | Deprecated, use `onZoomLevelChange`                                                 |
+| `isNavbarVisible`           | `boolean`                                 | Controls navbar visibility. Optional, defaults to `true`                            |
+| `onNavbarVisibleChange`     | `(visible: boolean) => void`              | Navbar shown or hidden                                                              |
+| `setIsNavbarVisible`        | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onNavbarVisibleChange`                                             |
+| `renderNavbar`              | `() => JSX.Element`                       | Custom navbar renderer. Without it no navbar is rendered                            |
+| `navbarContainer`           | `HTMLElement \| null`                     | Element to render the navbar into. Omit for in-flow. `null` renders nothing until it attaches |
+| `renderThemeToggle`         | `() => JSX.Element`                       | Custom theme toggle renderer                                                        |
+| `showTOC`                   | `boolean`                                 | Controls the outline                                                                |
+| `onShowTOCChange`           | `(show: boolean) => void`                 | Outline shown or hidden                                                             |
+| `setShowTOC`                | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onShowTOCChange`                                                   |
+| `commentDrawerOpen`         | `boolean`                                 | Controls the comment drawer                                                         |
+| `onCommentDrawerOpenChange` | `(open: boolean) => void`                 | Comment drawer opened or closed                                                     |
+| `setCommentDrawerOpen`      | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onCommentDrawerOpenChange`                                         |
+| `isPresentationMode`        | `boolean`                                 | Controls presentation mode                                                          |
+| `onPresentationModeChange`  | `(active: boolean) => void`               | Presentation mode entered or left                                                   |
+| `setIsPresentationMode`     | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onPresentationModeChange`                                          |
+| `isSplitView`               | `boolean`                                 | Controls Split View                                                                 |
+| `onSplitViewChange`         | `(active: boolean) => void`               | Split View entered or left                                                          |
+| `setIsSplitView`            | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onSplitViewChange`                                                 |
+| `isFocusMode`               | `boolean`                                 | Controls focus mode                                                                 |
+| `onFocusModeChange`         | `(isFocusMode: boolean) => void`          | Focus mode changed                                                                  |
+| `onFocusMode`               | `(isFocusMode: boolean) => void`          | Deprecated, use `onFocusModeChange`                                                 |
+| `onStatsChange`             | `(stats: { words; characters; selectedWords; pages: number \| null }) => void` | Active-tab stats; fires when any field changes. `pages` is `null` until measured |
+| `setWordCount`, `setCharacterCount`, `setSelectedWordCount`, `setPageCount` | `React.Dispatch<SetStateAction<number>>` | Deprecated, use `onStatsChange` |
+| `footerHeight`              | `string`                                  | Deprecated, no effect. Put the footer after the editor in normal flow               |
+| `sharedSlidesLink`          | `string`                                  | Link for shared presentation slides                                                 |
+| `documentStyling`           | `DocumentStyling`                         | Custom styling for document appearance                                              |
+| `fonts`                     | `FontDescriptor[]`                        | Consumer-provided font catalog (see Custom Fonts)                                   |
 
 ## Document Styling
 
@@ -283,7 +352,8 @@ const fonts: FontDescriptor[] = [
 | `onCommentReply`       | `(id: string, reply: IComment) => void` | Callback for comment replies       |
 | `onNewComment`         | `(comment: IComment) => void`           | Callback for new comments          |
 | `commentDrawerOpen`    | `boolean`                               | Controls comment drawer visibility |
-| `setCommentDrawerOpen` | `(isOpen: boolean) => void`             | Function to toggle comment drawer  |
+| `onCommentDrawerOpenChange` | `(open: boolean) => void`          | Comment drawer opened or closed    |
+| `setCommentDrawerOpen` | `(isOpen: boolean) => void`             | Deprecated, use `onCommentDrawerOpenChange` |
 | `onResolveComment`     | `(commentId: string) => void`           | Callback when resolving comments   |
 | `onUnresolveComment`   | `(commentId: string) => void`           | Callback when unresolving comments |
 | `onDeleteComment`      | `(commentId: string) => void`           | Callback when deleting comments    |
@@ -303,9 +373,9 @@ const fonts: FontDescriptor[] = [
 
 | Property            | Type                                                                     | Description                               |
 | ------------------- | ------------------------------------------------------------------------ | ----------------------------------------- |
-| `setCharacterCount` | `React.Dispatch<SetStateAction<number>>`                                 | Updates character count                   |
-| `setWordCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Updates word count                        |
-| `setPageCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Updates approx. export page count         |
+| `setCharacterCount` | `React.Dispatch<SetStateAction<number>>`                                 | Deprecated, use `onStatsChange`. Updates character count |
+| `setWordCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Deprecated, use `onStatsChange`. Updates word count |
+| `setPageCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Deprecated, use `onStatsChange`. Updates approx. export page count |
 | `ensResolutionUrl`  | `string`                                                                 | URL for ENS name resolution               |
 | `ipfsImageUploadFn` | ` (file: File) => Promise<IpfsImageUploadResponse>`                      | function for secure image uploads         |
 | `ipfsImageFetchFn`  | ` (_data: IpfsImageFetchPayload) => Promise<{ url: string;file: File;}>` | function for fetch secure image from IPFS |

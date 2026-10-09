@@ -383,7 +383,7 @@ export const CommentDropdown = ({
     <div
       ref={dropdownRef}
       data-testid="comment-dropdown"
-      className="w-[300px] color-bg-default shadow-elevation-4 md:shadow-none rounded-md select-text"
+      className="w-[300px] color-bg-default shadow-elevation-4 ddoc-md:shadow-none rounded-md select-text"
     >
       {children}
     </div>

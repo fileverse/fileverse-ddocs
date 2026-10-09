@@ -518,7 +518,7 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   line-height: inherit !important;
 }
 
-@media (min-width: 1281px) and (max-width: 1680px) {
+@container ddoc-editor (min-width: 1281px) and (max-width: 1680px) {
   /* Only force left alignment when floating comment is visible AND zoom >= 100% */
   .editor-main-lane:has(
       .comment-floating-comments[data-floating-comment-hidden='false']
@@ -547,4 +547,72 @@ div[data-type='page-break']:hover .remove-page-break-icon {
     min-width: 0;
     max-width: 0;
   }
+}
+@media (min-width: 1281px) and (max-width: 1680px) {
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true']):where(:not(.ddoc-editor-cq *)) {
+    justify-content: flex-start;
+  }
+
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-left-rail.editor-left-rail-has-outline:where(:not(.ddoc-editor-cq *)) {
+    flex: 0 1 182px;
+    min-width: 0;
+    max-width: 182px;
+  }
+
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-left-rail:not(.editor-left-rail-has-outline):where(:not(.ddoc-editor-cq *)),
+  .editor-main-lane:has(
+      .comment-floating-comments[data-floating-comment-hidden='false']
+    ):not([data-zoom-below-100='true'])
+    .editor-right-rail:where(:not(.ddoc-editor-cq *)) {
+    flex: 0 1 0;
+    min-width: 0;
+    max-width: 0;
+  }
+}
+
+/* Zero-height sticky line the comment drawer hangs from. Full width so its
+   right edge is the canvas's visible right edge; clipped on x so the closed
+   (translated) drawer does not widen the scroller. */
+.ddoc-drawer-anchor {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  flex: none;
+  width: 100%;
+  height: 0;
+  overflow-x: clip;
+  pointer-events: none;
+}
+
+.ddoc-drawer-anchor > * {
+  pointer-events: auto;
+}
+
+/* The anchor is a stacking context; lift it over the fixed z-50 presentation
+   overlay so the presentation-mode drawer stays usable. */
+.ddoc-drawer-anchor--presenting {
+  z-index: 60;
+}
+
+/* Breakpoints inside the editor follow its width (ddoc-* variants). The class
+   is added only when fixed overlays are not trapped by the container. */
+.ddoc-editor-cq {
+  container-type: inline-size;
+  container-name: ddoc-editor;
+}
+
+/* Presentation mode covers the window, so its content answers to the overlay's
+   width, not the root's. Nearest ddoc-editor container wins. */
+.ddoc-editor-cq .ddoc-presentation-overlay {
+  container-type: inline-size;
+  container-name: ddoc-editor;
 }
