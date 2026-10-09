@@ -166,6 +166,7 @@ function App() {
   const [collabStatus, setCollabStatus] = useState<string>('off');
   const [username, setUsername] = useState('username');
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMediaMax1280px = useMediaQuery('(max-width: 1280px)');
   const [selectedTags, setSelectedTags] = useState<TagType[]>([]);
   const [isCommentSectionOpen, setIsCommentSectionOpen] = useState(false);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
@@ -208,6 +209,7 @@ function App() {
 
   const [zoomLevel, setZoomLevel] = useState<string>('1');
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
+  const [navbarHost, setNavbarHost] = useState<HTMLElement | null>(null);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   // Controlled focus mode (D6) — the second-level nav's View menu drives it.
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -541,7 +543,7 @@ function App() {
         )}
         <div className="flex gap-2 items-center">
           <DocSwitcher currentDocId={docId} currentTitle={title} />
-          <div className="relative truncate inline-block ddoc-xl:!max-w-[300px] !max-w-[108px] color-bg-default text-[14px] font-medium leading-[20px]">
+          <div className="relative truncate inline-block xl:!max-w-[300px] !max-w-[108px] color-bg-default text-[14px] font-medium leading-[20px]">
             <span className="invisible whitespace-pre">
               {title || 'Untitled'}
             </span>
@@ -556,12 +558,12 @@ function App() {
           <Tag
             icon="CircleCheck"
             variant="transparent"
-            className="h-6 rounded border color-border-default color-text-secondary text-[12px] font-normal hidden ddoc-xl:flex"
+            className="h-6 rounded border color-border-default color-text-secondary text-[12px] font-normal hidden xl:flex"
             style={{ backgroundColor: 'hsl(var(--color-bg-secondary))' }}
           >
             {lastSavedAt ? 'Saved' : 'Not saved yet'}
           </Tag>
-          <div className="w-6 h-6 rounded color-bg-secondary flex justify-center items-center border color-border-default ddoc-xl:hidden">
+          <div className="w-6 h-6 rounded color-bg-secondary flex justify-center items-center border color-border-default xl:hidden">
             <LucideIcon
               name="BadgeCheck"
               size="sm"
@@ -572,7 +574,7 @@ function App() {
         <div className="flex gap-2">
           <ThemeToggle />
 
-          <div className="contents ddoc-xl:hidden">
+          {isMediaMax1280px ? (
             <DynamicDropdown
               key="navbar-more-actions"
               align="center"
@@ -634,8 +636,8 @@ function App() {
                 </div>
               }
             />
-          </div>
-          <div className="hidden ddoc-xl:contents">
+          ) : (
+            <>
               <IconButton
                 variant={'ghost'}
                 icon={modeIcon}
@@ -646,7 +648,7 @@ function App() {
               <IconButton
                 variant={'ghost'}
                 icon="Share2"
-                className="flex ddoc-xl:hidden"
+                className="flex xl:hidden"
                 size="md"
               />
               <IconButton
@@ -655,7 +657,8 @@ function App() {
                 size="md"
                 onClick={() => setShowStylingControls(!showStylingControls)}
               />
-          </div>
+            </>
+          )}
           <IconButton
             variant={'ghost'}
             icon="MessageSquareText"
@@ -719,13 +722,13 @@ function App() {
             toggleLeftIcon={true}
             leftIcon="Share2"
             variant={'ghost'}
-            className="!min-w-[90px] !px-0 hidden ddoc-xl:flex"
+            className="!min-w-[90px] !px-0 hidden xl:flex"
           >
             Share
           </Button>
           <div className="flex gap-2 px-2 justify-center items-center">
             <LucideIcon name="Farcaster" />
-            <div className="flex-col hidden ddoc-xl:flex">
+            <div className="flex-col hidden xl:flex">
               <p className="text-heading-xsm">@[username]</p>
               <p className="text-helper-text-sm">Farcaster</p>
             </div>
@@ -825,9 +828,11 @@ function App() {
         documentStyling={documentStyling}
         onStylingChange={setDocumentStyling}
       />
+      <div ref={setNavbarHost} className="shrink-0" />
       <div className="flex-1 min-h-0">
         <DdocEditor
           ref={editorRef}
+          navbarContainer={navbarHost}
           fonts={demoFonts}
           collaboration={collaboration}
           username={username}
