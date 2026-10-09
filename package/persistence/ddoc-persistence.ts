@@ -1,5 +1,6 @@
 import { fromUint8Array, toUint8Array } from 'js-base64';
 import * as Y from 'yjs';
+import { fingerprintDdocContent } from './content-fingerprint';
 
 /**
  * Read, merge into, delete and fingerprint a dDoc's y-indexeddb database
@@ -474,10 +475,11 @@ export const deleteDdocContent = (
 };
 
 /**
- * Short, stable fingerprint of a doc's state: SHA-256 of its Yjs snapshot
- * (state vector plus delete set), base64. The state vector alone misses
- * delete-only edits; the snapshot does not. The same state gives the same
- * fingerprint however it was produced.
+ * Short, stable fingerprint of a doc's content (44 characters). Changes on
+ * every content edit, including delete-only and formatting-only edits; does
+ * not change when only the active tab changes. The same content gives the
+ * same fingerprint however the state was produced. See
+ * `describeDdocContent` for the rule.
  */
 export const getDdocContentFingerprint = async (
   encodedState: string,
@@ -485,12 +487,7 @@ export const getDdocContentFingerprint = async (
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, toUint8Array(encodedState));
-    const snapshot = Y.encodeSnapshot(Y.snapshot(doc));
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      new Uint8Array(snapshot),
-    );
-    return fromUint8Array(new Uint8Array(digest));
+    return await fingerprintDdocContent(doc);
   } finally {
     doc.destroy();
   }
