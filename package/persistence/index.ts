@@ -4,10 +4,12 @@ export {
   getDdocContentFingerprint,
   mergeDdocContent,
   readDdocContent,
+  repairDdocContent,
 } from './ddoc-persistence';
 export type {
   DdocContentDeleteResult,
   DdocContentMergeResult,
+  DdocContentRepairResult,
   DdocContentSnapshot,
   DdocContentStatus,
   DdocPersistenceOptions,

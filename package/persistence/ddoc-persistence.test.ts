@@ -10,6 +10,7 @@ import {
   getDdocContentFingerprint,
   mergeDdocContent,
   readDdocContent,
+  repairDdocContent,
 } from './ddoc-persistence';
 import { watchIndexeddbConnection } from './provider-lifecycle';
 
@@ -359,5 +360,86 @@ describe('getDdocContentFingerprint', () => {
 
     const stored = (await readDdocContent(ID)).encodedState as string;
     expect(await getDdocContentFingerprint(stored)).toBe(live);
+  });
+});
+
+describe('repairDdocContent', () => {
+  const syncsWithin = async (name: string, ms: number) => {
+    const doc = new Y.Doc();
+    const persistence = new IndexeddbPersistence(name, doc);
+    const outcome = await Promise.race([
+      persistence.whenSynced.then(() => 'synced' as const),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), ms)),
+    ]);
+    const text = doc.getText('body').toString();
+    await persistence.destroy().catch(() => {});
+    return { outcome, text };
+  };
+
+  it('drops rows y-indexeddb cannot apply, so the editor can load again', async () => {
+    const editor = await openEditor(ID, docWithText('hello'));
+    editor.doc.getText('body').insert(5, ' world');
+    await editor.destroy();
+    await addRow(ID, new Uint8Array([255, 1, 2, 3, 9, 9]));
+    await addRow(ID, 'not an update');
+    const before = (await rows(ID)).length;
+
+    // y-indexeddb's replay throws on the bad rows and never finishes.
+    const swallow = (event: PromiseRejectionEvent | unknown) => event;
+    process.on('unhandledRejection', swallow);
+    try {
+      expect((await syncsWithin(ID, 200)).outcome).toBe('hung');
+    } finally {
+      process.off('unhandledRejection', swallow);
+    }
+
+    const result = await repairDdocContent(ID);
+    expect(result).toMatchObject({ status: 'repaired', droppedRows: 2 });
+    // The hung provider above may have added its attach row; the good rows
+    // are kept and the two bad ones are gone.
+    expect((await rows(ID)).length).toBeGreaterThanOrEqual(before - 2);
+    expect((await rows(ID)).every((row) => row instanceof Uint8Array)).toBe(
+      true,
+    );
+
+    const loaded = await syncsWithin(ID, 1000);
+    expect(loaded).toEqual({ outcome: 'synced', text: 'hello world' });
+  });
+
+  it('writes nothing to a healthy database', async () => {
+    const editor = await openEditor(ID, docWithText('hello'));
+    await editor.destroy();
+    const before = await rows(ID);
+
+    expect(await repairDdocContent(ID)).toMatchObject({
+      status: 'healthy',
+      droppedRows: 0,
+    });
+    expect(await rows(ID)).toEqual(before);
+  });
+
+  it('is a no-op the second time', async () => {
+    const editor = await openEditor(ID, docWithText('hello'));
+    await editor.destroy();
+    await addRow(ID, 'not an update');
+
+    expect((await repairDdocContent(ID)).status).toBe('repaired');
+    expect(await repairDdocContent(ID)).toMatchObject({
+      status: 'healthy',
+      droppedRows: 0,
+    });
+  });
+
+  it('reports missing and creates nothing', async () => {
+    expect((await repairDdocContent(ID)).status).toBe('missing');
+    expect(await databaseNames()).not.toContain(ID);
+  });
+
+  it('reports corrupt for a database without the y-indexeddb schema', async () => {
+    const db = await rawOpen(ID, (upgrade) =>
+      upgrade.createObjectStore('updates', { autoIncrement: true }),
+    );
+    db.close();
+    expect((await repairDdocContent(ID)).status).toBe('corrupt');
   });
 });

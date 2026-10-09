@@ -35,6 +35,8 @@ interface UseTabManagerArgs {
   initialContent: DdocProps['initialContent'];
   enableCollaboration?: boolean;
   isDDocOwner: boolean;
+  /** Overrides the derived "brand-new document" (see DdocProps.isNewDocument). */
+  isNewDocument?: boolean;
   createDefaultTabIfMissing: boolean;
   shouldSyncActiveTab: boolean;
   defaultTabId?: string;
@@ -55,6 +57,7 @@ export const useTabManager = ({
   initialContent,
   enableCollaboration,
   isDDocOwner,
+  isNewDocument,
   createDefaultTabIfMissing,
   shouldSyncActiveTab,
   defaultTabId,
@@ -66,7 +69,8 @@ export const useTabManager = ({
   const isInitialContentResolved =
     enableCollaboration || initialContent !== null;
   const hasSavedInitialMigrationRef = useRef(false);
-  const isNewDdoc = isDDocOwner && !enableCollaboration && !initialContent;
+  const isNewDdoc =
+    isNewDocument ?? (isDDocOwner && !enableCollaboration && !initialContent);
   const flushTabUpdate = useCallback(() => {
     if (isNewDdoc) return;
     flushPendingUpdate?.();

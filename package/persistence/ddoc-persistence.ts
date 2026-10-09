@@ -78,10 +78,18 @@ const hasDdocSchema = (database: IDBDatabase) =>
   database.objectStoreNames.contains(UPDATES_STORE) &&
   database.objectStoreNames.contains(CUSTOM_STORE);
 
+/**
+ * A stored row is a Uint8Array. Checked by its tag rather than `instanceof`,
+ * which is false for arrays created in another realm (a worker, an iframe, a
+ * test environment), and would make a healthy store look corrupt.
+ */
+const isUpdateBytes = (row: unknown): row is Uint8Array =>
+  Object.prototype.toString.call(row) === '[object Uint8Array]';
+
 /** Apply stored rows in key order, the way y-indexeddb replays them. */
 const replayRows = (doc: Y.Doc, rows: unknown[] | undefined) => {
   for (const row of rows ?? []) {
-    if (!(row instanceof Uint8Array)) {
+    if (!isUpdateBytes(row)) {
       throw new Error('dDoc IndexedDB contains a non-Yjs update');
     }
     Y.applyUpdate(doc, row);
@@ -399,6 +407,168 @@ export const mergeDdocContent = (
           );
       } catch (error) {
         finish(notMerged('unavailable', error));
+      }
+    };
+  });
+};
+
+export type DdocContentRepairResult = {
+  ddocId: string;
+  /**
+   * `repaired`: bad rows were dropped. `healthy`: nothing to drop, nothing
+   * written. `missing`: no database. `corrupt`: the database lacks
+   * y-indexeddb's stores, so there are no rows to keep.
+   */
+  status:
+    | 'repaired'
+    | 'healthy'
+    | 'missing'
+    | 'corrupt'
+    | 'timed-out'
+    | 'unavailable';
+  droppedRows: number;
+  error?: Error;
+};
+
+/** Does this stored row decode as a Yjs update on its own? */
+const isValidUpdateRow = (row: unknown): row is Uint8Array => {
+  if (!isUpdateBytes(row)) return false;
+  const scratch = new Y.Doc();
+  try {
+    Y.applyUpdate(scratch, row);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    scratch.destroy();
+  }
+};
+
+/**
+ * Drop the stored rows that are not valid Yjs updates. One row y-indexeddb
+ * cannot apply makes its replay throw and never finish, so an editor waiting
+ * for it never loads. Each row is checked on its own; only the bad ones are
+ * deleted, in one readwrite transaction, and the good rows are left exactly as
+ * they are. Their content is lost, but it was already unreadable. Writes
+ * nothing when every row is good. Never creates a database.
+ */
+export const repairDdocContent = async (
+  ddocId: string,
+  options: DdocPersistenceOptions = {},
+): Promise<DdocContentRepairResult> => {
+  const result = (
+    status: DdocContentRepairResult['status'],
+    droppedRows = 0,
+    error?: unknown,
+  ): DdocContentRepairResult => ({
+    ddocId,
+    status,
+    droppedRows,
+    ...(error ? { error: toError(error) } : {}),
+  });
+
+  if (typeof indexedDB === 'undefined') {
+    return result('unavailable', 0, new Error('IndexedDB is unavailable'));
+  }
+  const factory = indexedDB as IDBFactory & {
+    databases?: () => Promise<Array<{ name?: string }>>;
+  };
+  if (factory.databases) {
+    try {
+      const databases = await factory.databases();
+      if (!databases.some((database) => database.name === ddocId)) {
+        return result('missing');
+      }
+    } catch {
+      // Safari does not consistently support indexedDB.databases().
+    }
+  }
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS;
+  return new Promise((resolve) => {
+    let database: IDBDatabase | null = null;
+    let transaction: IDBTransaction | null = null;
+    let settled = false;
+    let createdByRepair = false;
+    let dropped = 0;
+
+    const finish = (value: DdocContentRepairResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      database?.close();
+      resolve(value);
+    };
+
+    const timeout = setTimeout(() => {
+      try {
+        transaction?.abort();
+      } catch {
+        // The transaction may already be complete.
+      }
+      finish(
+        result('timed-out', 0, new Error('dDoc IndexedDB repair timed out')),
+      );
+    }, timeoutMs);
+
+    let openRequest: IDBOpenDBRequest;
+    try {
+      openRequest = indexedDB.open(ddocId);
+    } catch (error) {
+      finish(result('unavailable', 0, error));
+      return;
+    }
+    openRequest.onupgradeneeded = () => {
+      createdByRepair = true;
+      openRequest.transaction?.abort();
+    };
+    openRequest.onerror = () =>
+      finish(
+        createdByRepair
+          ? result('missing')
+          : result('unavailable', 0, openRequest.error),
+      );
+    openRequest.onsuccess = () => {
+      database = openRequest.result;
+      if (settled) {
+        database.close();
+        return;
+      }
+      if (!hasDdocSchema(database)) {
+        finish(
+          result('corrupt', 0, new Error('dDoc IndexedDB schema is invalid')),
+        );
+        return;
+      }
+
+      try {
+        const tx = database.transaction(UPDATES_STORE, 'readwrite');
+        transaction = tx;
+        const store = tx.objectStore(UPDATES_STORE);
+        const keysRequest = store.getAllKeys();
+        const rowsRequest = store.getAll();
+        rowsRequest.onsuccess = () => {
+          const keys = keysRequest.result ?? [];
+          const rows = rowsRequest.result ?? [];
+          rows.forEach((row, index) => {
+            if (!isValidUpdateRow(row)) {
+              store.delete(keys[index]);
+              dropped += 1;
+            }
+          });
+        };
+        tx.oncomplete = () =>
+          finish(dropped > 0 ? result('repaired', dropped) : result('healthy'));
+        tx.onabort = () =>
+          finish(
+            result(
+              'unavailable',
+              0,
+              tx.error ?? new Error('dDoc IndexedDB repair aborted'),
+            ),
+          );
+      } catch (error) {
+        finish(result('unavailable', 0, error));
       }
     };
   });

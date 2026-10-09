@@ -12,25 +12,46 @@ import { DdocProps } from '../types';
 import { compactDdocPersistence } from '../persistence/compaction';
 import {
   waitForIndexeddbSync,
+  waitForIndexeddbSyncOrStall,
   watchIndexeddbConnection,
 } from '../persistence/provider-lifecycle';
+import {
+  deleteDdocContent,
+  readDdocContent,
+  repairDdocContent,
+} from '../persistence/ddoc-persistence';
 
 interface UseYjsSetupArgs {
   onChange?: DdocProps['onChange'];
+  onLocalChange?: DdocProps['onLocalChange'];
   enableIndexeddbSync?: boolean;
   ddocId?: string;
   collaboration?: CollaborationProps;
   onCollaboratorChange?: DdocProps['onCollaboratorChange'];
   onIndexedDbError?: (error: Error) => void;
+  /**
+   * How long to wait for y-indexeddb before checking whether the store is
+   * corrupt. Internal; tests shorten it.
+   */
+  indexeddbStallCheckMs?: number;
 }
+
+/**
+ * One stored row y-indexeddb cannot apply makes its replay throw and never
+ * finish, so the editor would wait forever. After this long without a sync,
+ * the store is checked; a healthy but slow store is left to finish.
+ */
+const INDEXEDDB_STALL_CHECK_MS = 5_000;
 
 export const useYjsSetup = ({
   onChange,
+  onLocalChange,
   enableIndexeddbSync,
   ddocId,
   collaboration,
   onCollaboratorChange,
   onIndexedDbError,
+  indexeddbStallCheckMs = INDEXEDDB_STALL_CHECK_MS,
 }: UseYjsSetupArgs) => {
   const [ydoc] = useState(new Y.Doc());
   const [isIndexeddbSynced, setIsIndexeddbSynced] =
@@ -67,6 +88,7 @@ export const useYjsSetup = ({
     services,
     callbacks,
     onLocalUpdate: onChange,
+    onLocalChange,
     ignoredOrigins: [yjsIndexeddbProviderRef],
   });
 
@@ -81,12 +103,39 @@ export const useYjsSetup = ({
       setIsIndexeddbSynced(false);
       let newYjsIndexeddbProvider: IndexeddbPersistence | null = null;
       try {
-        newYjsIndexeddbProvider = new IndexeddbPersistence(ddocId, ydoc);
-        // Capture the provider before sync resolves so origin checks can detect IndexedDB replay.
-        yjsIndexeddbProviderRef.current = newYjsIndexeddbProvider;
+        const attach = () => {
+          const attached = new IndexeddbPersistence(ddocId, ydoc);
+          // Capture the provider before sync resolves so origin checks can detect IndexedDB replay.
+          yjsIndexeddbProviderRef.current = attached;
+          return attached;
+        };
+        newYjsIndexeddbProvider = attach();
         // Wait for the database to be ready and synced. Rejects if the
         // database cannot be opened (plain whenSynced would hang).
-        await waitForIndexeddbSync(newYjsIndexeddbProvider);
+        const outcome = await waitForIndexeddbSyncOrStall(
+          newYjsIndexeddbProvider,
+          indexeddbStallCheckMs,
+        );
+        if (outcome === 'stalled') {
+          const stored = await readDdocContent(ddocId);
+          if (stored.status === 'corrupt') {
+            // Drop the rows y-indexeddb cannot apply, then attach again.
+            const repair = await repairDdocContent(ddocId);
+            onIndexedDbErrorRef.current?.(
+              new Error(
+                `dDoc IndexedDB store was corrupt; dropped ${repair.droppedRows} unreadable row(s)`,
+              ),
+            );
+            await newYjsIndexeddbProvider.destroy().catch(() => {});
+            if (repair.status === 'corrupt') {
+              // No y-indexeddb stores at all, so nothing readable to keep:
+              // start a fresh database from what the editor holds.
+              await deleteDdocContent(ddocId);
+            }
+            newYjsIndexeddbProvider = attach();
+          }
+          await waitForIndexeddbSync(newYjsIndexeddbProvider);
+        }
         const syncedProvider = newYjsIndexeddbProvider;
         stopWatchingIndexeddbRef.current = watchIndexeddbConnection(
           syncedProvider,
@@ -124,7 +173,7 @@ export const useYjsSetup = ({
     } else {
       setIsIndexeddbSynced(true);
     }
-  }, [enableIndexeddbSync, ddocId, ydoc]);
+  }, [enableIndexeddbSync, ddocId, ydoc, indexeddbStallCheckMs]);
 
   const onChangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -142,6 +191,23 @@ export const useYjsSetup = ({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  // Same reasoning for the argument-free change signal.
+  const onLocalChangeRef = useRef(onLocalChange);
+  useEffect(() => {
+    onLocalChangeRef.current = onLocalChange;
+  }, [onLocalChange]);
+
+  // Tell the host the doc changed. The whole document is encoded only for a
+  // host that passed `onChange`; `onLocalChange` gets the signal for free.
+  const notifyHost = useCallback(
+    (chunk: string) => {
+      if (onChangeRef.current) {
+        onChangeRef.current(fromUint8Array(Y.encodeStateAsUpdate(ydoc)), chunk);
+      }
+      onLocalChangeRef.current?.();
+    },
+    [ydoc],
+  );
 
   // Immediately flush any pending debounced onChange.
   // Call this after critical structural changes (tab create/delete/rename/reorder)
@@ -151,15 +217,16 @@ export const useYjsSetup = ({
       clearTimeout(onChangeDebounceRef.current);
       onChangeDebounceRef.current = null;
     }
-    onChangeRef.current?.(fromUint8Array(Y.encodeStateAsUpdate(ydoc)), '');
-  }, [ydoc]);
+    notifyHost('');
+  }, [notifyHost]);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = (update: Uint8Array, origin: any) => {
       if (origin === 'self' || origin === yjsIndexeddbProviderRef.current)
         return;
-      const chunk = fromUint8Array(update);
+      // Only a host that asked for the update (`onChange`) needs it encoded.
+      const chunk = onChangeRef.current ? fromUint8Array(update) : '';
 
       // Debounce the expensive full-state encoding.
       // The incremental chunk is tiny and fires immediately via the second arg.
@@ -170,10 +237,7 @@ export const useYjsSetup = ({
       }
       onChangeDebounceRef.current = setTimeout(() => {
         onChangeDebounceRef.current = null;
-        onChangeRef.current?.(
-          fromUint8Array(Y.encodeStateAsUpdate(ydoc)),
-          chunk,
-        );
+        notifyHost(chunk);
       }, 300);
     };
     if (ydoc) {
@@ -185,7 +249,7 @@ export const useYjsSetup = ({
       // handler is stable, so re-runs of this effect (which only happen on
       // ydoc change — never in practice) shouldn't cancel in-flight saves.
     };
-  }, [ydoc]);
+  }, [ydoc, notifyHost]);
 
   return {
     ydoc,

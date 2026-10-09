@@ -15,6 +15,8 @@ export const useDdocEditor = ({
   versionHistoryState,
   collaboration,
   onChange,
+  onLocalChange,
+  isNewDocument,
   onCollaboratorChange,
   onCommentInteraction,
   onError,
@@ -89,6 +91,7 @@ export const useDdocEditor = ({
 
   const yjsSetup = useYjsSetup({
     onChange,
+    onLocalChange,
     enableIndexeddbSync,
     ddocId,
     collaboration,
@@ -108,9 +111,14 @@ export const useDdocEditor = ({
     !isVersionMode && !isPreviewMode && !collabEnabled && rest.isDDocOwner,
   );
 
+  const isNewDdoc =
+    isNewDocument ??
+    Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent);
+
   const tabManager = useTabManager({
     ydoc: yjsSetup.ydoc,
     initialContent: ddocContent,
+    isNewDocument: isNewDdoc,
     enableCollaboration: collabEnabled,
     isDDocOwner: rest.isDDocOwner || false,
     createDefaultTabIfMissing: Boolean(
@@ -142,7 +150,7 @@ export const useDdocEditor = ({
   // is already readable here on the very first render.
   const { docSchemaVersion, isSchemaUnsupported } = useDocSchemaVersion({
     ydoc: yjsSetup.ydoc,
-    isNewDdoc: Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent),
+    isNewDdoc,
     isContentResolved:
       !shouldWaitForIndexeddbBeforeCreatingDefaultTab ||
       yjsSetup.isIndexeddbSynced,

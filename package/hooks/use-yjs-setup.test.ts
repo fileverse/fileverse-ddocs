@@ -2,7 +2,7 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { useYjsSetup } from './use-yjs-setup';
@@ -107,5 +107,123 @@ describe('useYjsSetup IndexedDB lifecycle', () => {
     expect(hook.result.current.ydoc.getText('body').toString()).toBe(
       source.getText('body').toString(),
     );
+  });
+});
+
+describe('useYjsSetup corrupt store guard (TEC-2476 Step 5)', () => {
+  // y-indexeddb leaves its replay failure unhandled; that is the bug this
+  // guards against, so the rejection itself is expected here.
+  const swallow = () => {};
+  beforeEach(() => {
+    process.on('unhandledRejection', swallow);
+  });
+  afterEach(() => {
+    process.off('unhandledRejection', swallow);
+  });
+
+  const seed = async (text: string) => {
+    const doc = new Y.Doc();
+    doc.getText('body').insert(0, text);
+    const persistence = new IndexeddbPersistence(ID, doc);
+    await persistence.whenSynced;
+    await persistence.destroy();
+  };
+
+  const addRow = (value: unknown) =>
+    new Promise<void>((resolve) => {
+      const request = indexedDB.open(ID);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('updates', 'readwrite');
+        tx.objectStore('updates').add(value);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+      };
+    });
+
+  const allRowsValid = () =>
+    new Promise<boolean>((resolve) => {
+      const request = indexedDB.open(ID);
+      request.onsuccess = () => {
+        const db = request.result;
+        const getAll = db
+          .transaction('updates', 'readonly')
+          .objectStore('updates')
+          .getAll();
+        getAll.onsuccess = () => {
+          db.close();
+          resolve(
+            getAll.result.every(
+              (row) =>
+                Object.prototype.toString.call(row) === '[object Uint8Array]',
+            ),
+          );
+        };
+      };
+    });
+
+  const renderWithStallCheck = (stallMs: number) => {
+    const onIndexedDbError = vi.fn();
+    const hook = renderHook(() =>
+      useYjsSetup({
+        enableIndexeddbSync: true,
+        ddocId: ID,
+        onIndexedDbError,
+        indexeddbStallCheckMs: stallMs,
+      }),
+    );
+    return { hook, onIndexedDbError };
+  };
+
+  it('repairs a store with a row y-indexeddb cannot apply, instead of waiting forever', async () => {
+    await seed('hello world');
+    await addRow(new Uint8Array([255, 1, 2, 3, 9, 9]));
+
+    const { hook, onIndexedDbError } = renderWithStallCheck(50);
+    await initialise(hook);
+
+    expect(hook.result.current.isIndexeddbSynced).toBe(true);
+    expect(hook.result.current.ydoc.getText('body').toString()).toBe(
+      'hello world',
+    );
+    expect(onIndexedDbError).toHaveBeenCalledTimes(1);
+    // Only the bad row goes; the good rows are kept.
+    expect(onIndexedDbError.mock.calls[0][0].message).toMatch(
+      /dropped 1 unreadable/,
+    );
+    expect(await allRowsValid()).toBe(true);
+  });
+
+  it('leaves a healthy store alone when it has not synced at the check', async () => {
+    await seed('hello');
+    const { hook, onIndexedDbError } = renderWithStallCheck(0);
+    await initialise(hook);
+
+    expect(hook.result.current.isIndexeddbSynced).toBe(true);
+    expect(hook.result.current.ydoc.getText('body').toString()).toBe('hello');
+    expect(onIndexedDbError).not.toHaveBeenCalled();
+  });
+
+  it('replaces a database that has no y-indexeddb stores', async () => {
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.open(ID);
+      request.onupgradeneeded = () => request.result.createObjectStore('other');
+      request.onsuccess = () => {
+        request.result.close();
+        resolve();
+      };
+    });
+
+    const { hook, onIndexedDbError } = renderWithStallCheck(50);
+    await initialise(hook);
+
+    expect(hook.result.current.isIndexeddbSynced).toBe(true);
+    expect(onIndexedDbError).toHaveBeenCalledTimes(1);
+    act(() => {
+      hook.result.current.ydoc.getText('body').insert(0, 'fresh');
+    });
+    expect(await allRowsValid()).toBe(true);
   });
 });

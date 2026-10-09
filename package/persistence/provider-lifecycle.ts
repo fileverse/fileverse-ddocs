@@ -18,6 +18,29 @@ export const waitForIndexeddbSync = (
     persistence._db.catch(reject);
   });
 
+/**
+ * Like `waitForIndexeddbSync`, but resolves `stalled` if the provider has not
+ * synced after `stallMs`, so the caller can check why. The underlying wait is
+ * not cancelled; wait again to keep waiting.
+ */
+export const waitForIndexeddbSyncOrStall = (
+  persistence: IndexeddbPersistence,
+  stallMs: number,
+): Promise<'synced' | 'stalled'> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve('stalled'), stallMs);
+    waitForIndexeddbSync(persistence).then(
+      () => {
+        clearTimeout(timer);
+        resolve('synced');
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
 type WatchOptions = {
   /** Called for every failed write and for a lost connection. */
   onError: (error: Error) => void;

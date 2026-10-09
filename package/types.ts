@@ -263,6 +263,24 @@ export interface DdocProps extends CommentAccountProps {
     updatedDocContent: string | JSONContent,
     updateChunk: string,
   ) => void;
+  /**
+   * Called when the document changes, from the same places as `onChange`
+   * (after typing pauses, on a flushed structural change, and when a
+   * collaborator's update arrives), but with no arguments. A host that passes
+   * this and not `onChange` never pays for encoding the whole document on
+   * every change. A host that keeps the content elsewhere (the package's
+   * y-indexeddb store) only needs to know that an edit happened.
+   */
+  onLocalChange?: () => void;
+  /**
+   * Whether this is a brand-new document. When omitted the editor derives it
+   * as "owner, no collaboration, no `initialContent`". A host that loads an
+   * existing document from the package's y-indexeddb store passes no
+   * `initialContent`, so it must pass `false` here: a new document is stamped
+   * with the preferred schema version, which would relabel an existing older
+   * document.
+   */
+  isNewDocument?: boolean;
   onCollaboratorChange?: (collaborators: undefined | IDocCollabUsers[]) => void;
   onTextSelection?: (data: IEditorSelectionData) => void;
   onCommentInteraction?: (data: IEditorSelectionData) => void;
