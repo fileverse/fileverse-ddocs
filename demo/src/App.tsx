@@ -864,17 +864,17 @@ function App() {
           setInlineCommentData={setInlineCommentData}
           inlineCommentData={inlineCommentData}
           commentDrawerOpen={commentDrawerOpen}
-          setCommentDrawerOpen={setCommentDrawerOpen}
+          onCommentDrawerOpenChange={setCommentDrawerOpen}
           isPresentationMode={isPresentationMode}
-          setIsPresentationMode={setIsPresentationMode}
+          onPresentationModeChange={setIsPresentationMode}
           isFocusMode={isFocusMode}
           onFocusModeChange={setIsFocusMode}
           isSplitView={isSplitView}
-          setIsSplitView={setIsSplitView}
+          onSplitViewChange={setIsSplitView}
           zoomLevel={zoomLevel}
-          setZoomLevel={setZoomLevel}
+          onZoomLevelChange={setZoomLevel}
           isNavbarVisible={isNavbarVisible}
-          setIsNavbarVisible={setIsNavbarVisible}
+          onNavbarVisibleChange={setIsNavbarVisible}
           onComment={(): void => {}}
           onInlineComment={(): void => {}}
           onMarkdownImport={(): void => {}}
@@ -891,7 +891,7 @@ function App() {
           onUnresolveComment={handleUnresolveComment}
           onDeleteComment={handleDeleteComment}
           showTOC={showTOC}
-          setShowTOC={setShowTOC}
+          onShowTOCChange={setShowTOC}
           isConnected={isConnected}
           connectViaWallet={async () => {}}
           isLoading={false}
@@ -912,9 +912,11 @@ function App() {
           isDDocOwner={isDDocOwner}
           viewerMode={isDDocOwner ? undefined : viewerMode}
           initialCommentAnchors={initialCommentAnchors}
-          setCharacterCount={setCharacterCount}
-          setWordCount={setWordCount}
-          setPageCount={setPageCount}
+          onStatsChange={(stats) => {
+            setCharacterCount(stats.characters);
+            setWordCount(stats.words);
+            setPageCount(stats.pages ?? 0);
+          }}
         />
       </div>
       <DemoFooter wordCount={wordCount} pageCount={pageCount} />
