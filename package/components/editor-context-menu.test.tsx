@@ -38,6 +38,42 @@ describe.each([1, 2])('context menu (schema v%s)', (schemaVersion) => {
   const open = () =>
     fireEvent.contextMenu(editor.view.dom, { clientX: 100, clientY: 100 });
 
+  it('anchors viewport coordinates outside the transformed editor canvas', () => {
+    const { container } = render(
+      <div style={{ transform: 'translate(80px, 120px) scale(1.5)' }}>
+        <EditorContextMenu editor={editor} />
+      </div>,
+    );
+    open();
+    const menu = screen.getByRole('menu', { name: 'Document editing' });
+    const anchor = document.querySelector<HTMLElement>(
+      `[aria-controls="${menu.id}"]`,
+    );
+    expect(anchor?.parentElement).toBe(document.body);
+    expect(container.contains(anchor)).toBe(false);
+    expect(anchor?.style.position).toBe('fixed');
+    expect(anchor?.style.left).toBe('100px');
+    expect(anchor?.style.top).toBe('100px');
+
+    fireEvent.contextMenu(editor.view.dom, { clientX: 240, clientY: 180 });
+    expect(anchor?.style.left).toBe('240px');
+    expect(anchor?.style.top).toBe('180px');
+  });
+
+  it('anchors keyboard context menus at the caret in viewport coordinates', () => {
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 170,
+      right: 170,
+      top: 220,
+      bottom: 240,
+    });
+    render(<EditorContextMenu editor={editor} />);
+    fireEvent.contextMenu(editor.view.dom, { clientX: 0, clientY: 0 });
+    const anchor = document.querySelector<HTMLElement>('[aria-controls]');
+    expect(anchor?.style.left).toBe('170px');
+    expect(anchor?.style.top).toBe('240px');
+  });
+
   it('keeps the selection when right-clicking within selected text', () => {
     editor.commands.setTextSelection({ from: start, to: start + 5 });
     render(<EditorContextMenu editor={editor} />);

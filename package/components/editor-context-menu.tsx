@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import {
@@ -160,20 +161,26 @@ export function EditorContextMenu({
       }}
       modal={false}
     >
-      <DropdownMenuTrigger asChild>
-        <span
-          aria-hidden="true"
-          tabIndex={-1}
-          style={{
-            position: 'fixed',
-            left: point?.x ?? 0,
-            top: point?.y ?? 0,
-            width: 0,
-            height: 0,
-            pointerEvents: 'none',
-          }}
-        />
-      </DropdownMenuTrigger>
+      {/* clientX/clientY are viewport coordinates. A fixed anchor inside the
+          editor's transformed/zoomed canvas would use that canvas as its
+          containing block instead, offsetting and scaling the menu position. */}
+      {createPortal(
+        <DropdownMenuTrigger asChild>
+          <span
+            aria-hidden="true"
+            tabIndex={-1}
+            style={{
+              position: 'fixed',
+              left: point?.x ?? 0,
+              top: point?.y ?? 0,
+              width: 0,
+              height: 0,
+              pointerEvents: 'none',
+            }}
+          />
+        </DropdownMenuTrigger>,
+        editor.view.dom.ownerDocument.body,
+      )}
       <DropdownMenuContent
         aria-label="Document editing"
         aria-labelledby={undefined}
