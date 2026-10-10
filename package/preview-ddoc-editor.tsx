@@ -9,9 +9,14 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
+import {
+  resolveImageFetchFn,
+  resolveImageUploadFn,
+} from './utils/storage-adapter';
 import { Button, Tag, TagType, TagInput, cn, Skeleton } from '@fileverse/ui';
 import { useMediaQuery, useOnClickOutside } from 'usehooks-ts';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -33,7 +38,8 @@ const PreviewDdocEditorContent = forwardRef(
       onTextSelection,
       onCommentInteraction,
       ensResolutionUrl,
-      ipfsImageUploadFn,
+      imageUploadFn,
+      ipfsImageUploadFn: ipfsImageUploadFnProp,
       onError,
       setCharacterCount,
       setWordCount,
@@ -43,7 +49,8 @@ const PreviewDdocEditorContent = forwardRef(
       setSelectedTags,
       className,
       unFocused,
-      ipfsImageFetchFn,
+      imageFetchFn,
+      ipfsImageFetchFn: ipfsImageFetchFnProp,
       fetchV1ImageFn,
       contentClassName,
       isLoading,
@@ -57,6 +64,16 @@ const PreviewDdocEditorContent = forwardRef(
     }: DdocProps & { contentClassName?: string; isLoading?: boolean },
     ref,
   ) => {
+    // Resolve the storage-agnostic image fns (preferred) against the
+    // deprecated ipfs-prefixed ones; internals keep the legacy interface.
+    const ipfsImageUploadFn = useMemo(
+      () => resolveImageUploadFn(imageUploadFn, ipfsImageUploadFnProp),
+      [imageUploadFn, ipfsImageUploadFnProp],
+    );
+    const ipfsImageFetchFn = useMemo(
+      () => resolveImageFetchFn(imageFetchFn, ipfsImageFetchFnProp),
+      [imageFetchFn, ipfsImageFetchFnProp],
+    );
     const [isHiddenTagsVisible, setIsHiddenTagsVisible] = useState(false);
     const tagsContainerRef = useRef(null);
 
