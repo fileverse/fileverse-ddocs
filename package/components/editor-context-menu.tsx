@@ -35,27 +35,29 @@ const clipboardItems: MenuItem[] = [
     shortcut: '⇧V',
   },
 ];
-const tableItems: MenuItem[] = [
+const tableInsertItems: MenuItem[] = [
   {
     id: 'table.addRowAbove',
     label: 'Insert row above',
-    icon: 'TableRowsSplit',
+    icon: 'AddRowAbove',
   },
   {
     id: 'table.addRowBelow',
     label: 'Insert row below',
-    icon: 'TableRowsSplit',
+    icon: 'AddRowBelow',
   },
   {
     id: 'table.addColumnLeft',
     label: 'Insert column left',
-    icon: 'TableColumnsSplit',
+    icon: 'AddLeftColumn',
   },
   {
     id: 'table.addColumnRight',
     label: 'Insert column right',
-    icon: 'TableColumnsSplit',
+    icon: 'AddRightColumn',
   },
+];
+const tableDeleteItems: MenuItem[] = [
   { id: 'table.deleteRow', label: 'Delete row', icon: 'Trash2' },
   { id: 'table.deleteColumn', label: 'Delete column', icon: 'Trash2' },
   { id: 'table.deleteTable', label: 'Delete table', icon: 'Trash2' },
@@ -133,7 +135,9 @@ export function EditorContextMenu({
 
   const sections = [
     clipboardItems.filter((item) => !readOnly || item.id === 'edit.copy'),
-    ...(!readOnly && editor.isActive('table') ? [tableItems] : []),
+    ...(!readOnly && editor.isActive('table')
+      ? [tableInsertItems, tableDeleteItems]
+      : []),
     [
       {
         id: 'edit.selectAll',
