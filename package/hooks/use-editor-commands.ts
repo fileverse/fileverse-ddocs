@@ -23,6 +23,7 @@ import {
   useCommentStoreOptional,
 } from '../stores/comment-store';
 import { openCustomSpacingDialog } from '../stores/custom-spacing-store';
+import { runClipboardAction } from '../utils/editor-clipboard';
 
 // Module-scope stable selectors: useCommentStoreOptional's
 // useSyncExternalStore contract compares snapshots with Object.is, so these
@@ -266,24 +267,19 @@ export const useEditorCommands = (
           withReplaceOpen: true,
         }),
       ),
-      'edit.cut': cmd(() => document.execCommand('cut'), {
+      'edit.cut': cmd(() => runClipboardAction(editor, 'cut', onError), {
+        isEnabled: state.hasSelection && editor.isEditable,
+      }),
+      'edit.copy': cmd(() => runClipboardAction(editor, 'copy', onError), {
         isEnabled: state.hasSelection,
       }),
-      'edit.copy': cmd(() => document.execCommand('copy'), {
-        isEnabled: state.hasSelection,
+      'edit.paste': cmd(() => runClipboardAction(editor, 'paste', onError), {
+        isEnabled: editor.isEditable,
       }),
-      'edit.paste': cmd(async () => {
-        const text = await navigator.clipboard.readText();
-        editor.chain().focus().insertContent(text).run();
-      }),
-      'edit.pasteWithoutFormatting': cmd(async () => {
-        const text = await navigator.clipboard.readText();
-        editor
-          .chain()
-          .focus()
-          .insertContentAt(editor.state.selection, { type: 'text', text })
-          .run();
-      }),
+      'edit.pasteWithoutFormatting': cmd(
+        () => runClipboardAction(editor, 'pasteWithoutFormatting', onError),
+        { isEnabled: editor.isEditable },
+      ),
 
       // --- insert (delegating to the shared module / thin wrappers) ---
       'insert.table': cmd(() => insertCommands.table(editor)),
