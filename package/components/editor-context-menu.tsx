@@ -7,7 +7,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
   LucideIcon,
 } from '@fileverse/ui';
@@ -21,18 +20,16 @@ type MenuItem = {
   id: EditorCommandId;
   label: string;
   icon: string;
-  shortcut?: string;
 };
 
 const clipboardItems: MenuItem[] = [
-  { id: 'edit.cut', label: 'Cut', icon: 'Scissors', shortcut: 'X' },
-  { id: 'edit.copy', label: 'Copy', icon: 'Copy', shortcut: 'C' },
-  { id: 'edit.paste', label: 'Paste', icon: 'Clipboard', shortcut: 'V' },
+  { id: 'edit.cut', label: 'Cut', icon: 'Scissors' },
+  { id: 'edit.copy', label: 'Copy', icon: 'Copy' },
+  { id: 'edit.paste', label: 'Paste', icon: 'Clipboard' },
   {
     id: 'edit.pasteWithoutFormatting',
     label: 'Paste without formatting',
     icon: 'ClipboardType',
-    shortcut: '⇧V',
   },
 ];
 const tableInsertItems: MenuItem[] = [
@@ -74,11 +71,6 @@ export function EditorContextMenu({
   const commands = useEditorCommands(editor, { onError });
   const { isPreviewMode, isSuggestionMode } = useEditingContext();
   const readOnly = isPreviewMode || isSuggestionMode || !editor.isEditable;
-  const modifier =
-    typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad/.test(navigator.platform)
-      ? '⌘'
-      : 'Ctrl+';
 
   useEffect(() => {
     const dom = editor.view.dom;
@@ -143,7 +135,6 @@ export function EditorContextMenu({
         id: 'edit.selectAll',
         label: 'Select all',
         icon: 'TextSelect',
-        shortcut: 'A',
       },
       ...(!readOnly
         ? [
@@ -213,12 +204,6 @@ export function EditorContextMenu({
               >
                 <LucideIcon name={item.icon} size="sm" className="mr-3" />
                 {item.label}
-                {item.shortcut && (
-                  <DropdownMenuShortcut>
-                    {modifier}
-                    {item.shortcut}
-                  </DropdownMenuShortcut>
-                )}
               </DropdownMenuItem>
             ))}
           </div>
