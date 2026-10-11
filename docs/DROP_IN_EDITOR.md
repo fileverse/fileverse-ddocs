@@ -189,13 +189,12 @@ Uncontrolled:
 
 Controlled: the prop is the only accepted value. A request the host has not accepted is never treated as current.
 
-- Two values are kept apart: the committed value (the prop, as last rendered) and a pending request (the last value asked for in the current batch, or none).
-- `set` computes from the pending request if there is one, otherwise from the committed value. If the result equals that basis it is a no-op. Otherwise it becomes the pending request and the host is notified.
-- A batch is one synchronous task. The pending request is cleared in a microtask queued by the first `set` of the batch, and on every commit of the component, whichever comes first. So several functional updates in one handler compose, and a later, separate action always starts from the prop.
-- Host declines (no re-render, or a re-render with the same value): the request is dropped at the end of the task. The next toggle computes from the prop and asks again.
-- Host accepts later: the prop changes, nobody is notified. A toggle made in between computed from the old prop and asked for the same value again.
+- `set` computes from the prop as last rendered. If the result equals the prop it is a no-op. Otherwise the host is notified.
+- Functional updates do not compose in one handler: two `set(prev => …)` calls before a re-render both compute from the same prop. No call site does this (checked 2026-10-11, including ddocs.new); the pending-request bookkeeping that made it work was removed as unused.
+- Host declines (no re-render, or a re-render with the same value): the next toggle computes from the prop and asks again.
+- Host accepts later: the prop changes, nobody is notified.
 - Controlled with neither callback: the value is fixed; `set` notifies nobody.
-- A prop going from defined to `undefined` switches to internal state seeded with the last committed prop value, never a pending request.
+- A prop going from defined to `undefined` falls back to internal state as it was (the default, unless it changed while uncontrolled). The last prop value is not carried over; no consumer switches modes at runtime.
 
 ### 4.2 States
 
@@ -210,7 +209,7 @@ Controlled: the prop is the only accepted value. A request the host has not acce
 | Focus mode | `isFocusMode` | `onFocusModeChange` | `onFocusMode` | `false` |
 
 - `zoomLevel`, `setZoomLevel`, `isNavbarVisible`, `setIsNavbarVisible` and `isPreviewMode` become optional. `isPreviewMode` defaults to `false`.
-- Focus mode moves onto the shared hook. Two behaviours change from `useFocusMode` today: `onFocusModeChange` also fires when uncontrolled, and controlled-to-uncontrolled keeps the last value instead of resetting to `false`. The Cmd+Shift+F and Escape shortcuts stay.
+- Focus mode moves onto the shared hook. One behaviour changes from `useFocusMode` today: `onFocusModeChange` also fires when uncontrolled. The Cmd+Shift+F and Escape shortcuts stay.
 
 ### 4.3 `onStatsChange`
 
@@ -323,7 +322,7 @@ The lasting record of this revamp is the README and `AGENTS.md`, updated in the 
 | Scroll | Normal mode: tab restore, heading and comment navigation, caret navigation and floating comments all act on the element whose `scrollTop` changes. Split View: only the right pane scrolls; tab scroll restore is exempt (degraded as before, §2.2) and the canvas `scrollTop` stays 0. |
 | Comment drawer | In a short host with long threads the header, filters, list and input stay reachable; scrolling the document does not move or resize the drawer; opening it does not shift the page; with a wide or zoomed page the drawer stays just inside the canvas's visible right edge and scrollbar at `scrollLeft` 0, midway and maximum, and after a host-only resize; repeat in Split View and presentation mode. |
 | Shared components | Preview and version history keep tab access, the desktop tab portal, and the mobile `--version-sheet-bottom` offset. |
-| State | For every row in §4.2: omitted props, controlled `false`, new callback alone, legacy setter alone, both, several functional updates in one handler, controlled-to-uncontrolled handoff; a host that declines a request (with and without a re-render) and a later toggle still derived from the prop; delayed acceptance; handoff after a declined request; controlled with no callback; one notification per change under Strict Mode; focus-mode shortcuts and `onFocusMode` retained. |
+| State | For every row in §4.2: omitted props, controlled `false`, new callback alone, legacy setter alone, both, several functional updates in one handler when uncontrolled; a host that declines a request (with and without a re-render) and a later toggle still derived from the prop; delayed acceptance; controlled with no callback; one notification per change under Strict Mode; focus-mode shortcuts and `onFocusMode` retained. |
 | Stats | With only `onStatsChange`, all four fields update on load, selection, edits and tab changes; a late page result from a previous tab or an unmounted editor cannot overwrite the snapshot; an inline callback causes no render loop. |
 | Integration | At 200% zoom the canvas stays inside the editor's allocation; after dSheet-to-dDoc navigation exactly the intended toolbar shows on each side of 960px. |
 | Package | Type check and build; state and scroll tests; `package/styles/css-ownership.test.ts`; browser QA for layout and scrolling. |

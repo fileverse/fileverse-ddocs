@@ -35,15 +35,6 @@ describe('useFocusMode', () => {
     expect(onFocusMode.mock.calls).toEqual([[true]]);
   });
 
-  it('keeps the value when the prop is withdrawn', () => {
-    const { result, rerender } = renderHook(
-      ({ value }: { value?: boolean }) => useFocusMode({ isFocusMode: value }),
-      { initialProps: { value: true } as { value?: boolean } },
-    );
-    rerender({ value: undefined });
-    expect(result.current.isFocusMode).toBe(true);
-  });
-
   it('toggles on Cmd+Shift+F and leaves on Escape', () => {
     const { result } = renderHook(() => useFocusMode());
     press({ key: 'f', metaKey: true, shiftKey: true });

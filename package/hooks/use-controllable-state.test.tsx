@@ -75,18 +75,6 @@ describe('useControllableState, controlled', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it('composes functional updates inside one handler', () => {
-    const onChange = vi.fn();
-    const { result } = renderHook(() =>
-      useControllableState<number>(0, 0, onChange),
-    );
-    act(() => {
-      result.current[1]((n) => n + 1);
-      result.current[1]((n) => n + 1);
-    });
-    expect(onChange.mock.calls).toEqual([[1], [2]]);
-  });
-
   it('derives a later toggle from the prop when the host declined without re-rendering', async () => {
     const onChange = vi.fn();
     const { result } = setup({ value: false, onChange });
@@ -120,21 +108,5 @@ describe('useControllableState, controlled', () => {
     const { result } = setup({ value: false });
     expect(() => act(() => result.current[1](true))).not.toThrow();
     expect(result.current[0]).toBe(false);
-  });
-
-  it('hands off to internal state with the last prop value', () => {
-    const { result, rerender } = setup({ value: true });
-    rerender({ value: undefined });
-    expect(result.current[0]).toBe(true);
-    act(() => result.current[1](false));
-    expect(result.current[0]).toBe(false);
-  });
-
-  it('hands off the prop value, not a declined request', async () => {
-    const { result, rerender } = setup({ value: true, onChange: vi.fn() });
-    act(() => result.current[1](false));
-    await endTask();
-    rerender({ value: undefined });
-    expect(result.current[0]).toBe(true);
   });
 });
