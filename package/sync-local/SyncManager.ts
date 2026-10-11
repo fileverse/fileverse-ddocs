@@ -379,6 +379,7 @@ export class SyncManager {
       ownerEdSecret: config.ownerEdSecret,
       contractAddress: config.contractAddress,
       ownerAddress: config.ownerAddress,
+      ddocId: config.ddocId,
       editLock: config.editLock,
       encryptedTitle: config.encryptedTitle,
       identityToken: config.identityToken,
