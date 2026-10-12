@@ -1,4 +1,5 @@
 export {
+  DDOC_STORE_REPAIRED,
   DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS,
   deleteDdocContent,
   getDdocContentFingerprint,

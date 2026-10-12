@@ -16,6 +16,7 @@ import {
   watchIndexeddbConnection,
 } from '../persistence/provider-lifecycle';
 import {
+  DDOC_STORE_REPAIRED,
   deleteDdocContent,
   readDdocContent,
   repairDdocContent,
@@ -43,6 +44,12 @@ interface UseYjsSetupArgs {
  */
 const INDEXEDDB_STALL_CHECK_MS = 5_000;
 
+/**
+ * How many times a provider that stalled on a readable store is replaced
+ * before the load is treated as slow but healthy and waited for.
+ */
+const MAX_FRESH_ATTACHES = 2;
+
 export const useYjsSetup = ({
   onChange,
   onLocalChange,
@@ -65,8 +72,22 @@ export const useYjsSetup = ({
     ? { ...collaboration.on, onCollaboratorsChange: onCollaboratorChange }
     : undefined;
 
+  // The provider attached to this doc. After it detaches or fails it stays
+  // here (destroyed) rather than going back to null: the update handler below
+  // ignores updates whose origin is this provider (its replay), and a null
+  // here would also match every update made without an origin, so after a
+  // detach those edits would stop reaching the host.
   const yjsIndexeddbProviderRef = useRef<IndexeddbPersistence | null>(null);
   const stopWatchingIndexeddbRef = useRef<(() => void) | null>(null);
+  // The latest call to initialiseYjsIndexedDbProvider. A newer call
+  // supersedes it: the older call stops waiting at once, drops what it
+  // attached, and finishes a repair or delete it already started; the newer
+  // call waits for that before touching the store. So only one call works on
+  // the store at a time, and two providers are never attached to one doc.
+  const latestIndexeddbAttemptRef = useRef<{
+    supersede: () => void;
+    done: Promise<void>;
+  } | null>(null);
   // Connection listeners outlive renders; read the latest callback.
   const onIndexedDbErrorRef = useRef(onIndexedDbError);
   useEffect(() => {
@@ -92,61 +113,167 @@ export const useYjsSetup = ({
     ignoredOrigins: [yjsIndexeddbProviderRef],
   });
 
-  const initialiseYjsIndexedDbProvider = useCallback(async () => {
-    stopWatchingIndexeddbRef.current?.();
-    stopWatchingIndexeddbRef.current = null;
-    const provider = yjsIndexeddbProviderRef.current;
-    if (provider) {
-      await provider.destroy();
-    }
-    if (enableIndexeddbSync && ddocId) {
-      setIsIndexeddbSynced(false);
-      let newYjsIndexeddbProvider: IndexeddbPersistence | null = null;
+  const initialiseYjsIndexedDbProvider = useCallback((): Promise<void> => {
+    const previous = latestIndexeddbAttemptRef.current;
+    previous?.supersede();
+
+    let isLatest = true;
+    let resolveSuperseded: () => void = () => {};
+    const superseded = new Promise<'superseded'>((resolve) => {
+      resolveSuperseded = () => resolve('superseded');
+    });
+    // The provider this call attached last. destroy() detaches it from the
+    // doc at once; only closing its connection waits, so it is never awaited.
+    const own: { provider: IndexeddbPersistence | null } = { provider: null };
+    const dropOwn = () => {
+      void own.provider?.destroy().catch(() => {});
+    };
+    // A host callback that throws must not end this call, or every later call
+    // waiting on it.
+    const report = (error: Error) => {
       try {
-        const attach = () => {
-          const attached = new IndexeddbPersistence(ddocId, ydoc);
-          // Capture the provider before sync resolves so origin checks can detect IndexedDB replay.
-          yjsIndexeddbProviderRef.current = attached;
-          return attached;
-        };
-        newYjsIndexeddbProvider = attach();
-        // Wait for the database to be ready and synced. Rejects if the
-        // database cannot be opened (plain whenSynced would hang).
-        const outcome = await waitForIndexeddbSyncOrStall(
-          newYjsIndexeddbProvider,
-          indexeddbStallCheckMs,
-        );
-        if (outcome === 'stalled') {
+        onIndexedDbErrorRef.current?.(error);
+      } catch (callbackError) {
+        console.error('onIndexedDbError threw:', callbackError);
+      }
+    };
+
+    const run = async (): Promise<void> => {
+      // Repairs, reads and deletes are bounded by their own timeouts; every
+      // wait on a provider ends when this call is superseded. So this always
+      // settles, and it never rejects.
+      await previous?.done.catch(() => {});
+      if (!isLatest) return;
+      stopWatchingIndexeddbRef.current?.();
+      stopWatchingIndexeddbRef.current = null;
+      // May already be destroyed (detached, or failed to open).
+      void yjsIndexeddbProviderRef.current?.destroy().catch(() => {});
+      if (!enableIndexeddbSync || !ddocId) {
+        setIsIndexeddbSynced(true);
+        return;
+      }
+      setIsIndexeddbSynced(false);
+
+      const attach = () => {
+        const attached = new IndexeddbPersistence(ddocId, ydoc);
+        // Capture the provider before sync resolves so origin checks can detect IndexedDB replay.
+        yjsIndexeddbProviderRef.current = attached;
+        own.provider = attached;
+        return attached;
+      };
+      // A wait that loses to `superseded` may still reject later (the open
+      // fails); mark it handled so that is not an unhandled rejection.
+      const handled = <T>(promise: Promise<T>) => {
+        promise.catch(() => {});
+        return promise;
+      };
+      const waitOrStall = (attached: IndexeddbPersistence) =>
+        // Rejects if the database cannot be opened (plain whenSynced would hang).
+        Promise.race([
+          handled(waitForIndexeddbSyncOrStall(attached, indexeddbStallCheckMs)),
+          superseded,
+        ]);
+      // Attach and wait. If the provider has not synced after the stall
+      // check, read the store. Corrupt: y-indexeddb hit a row it cannot apply
+      // and will never finish, so the caller repairs it. Readable: give a slow
+      // load one more check; if the provider has still not synced, its replay
+      // has failed for good (the store was repaired, or its connection closed,
+      // after it started), so attach afresh. After a few fresh attaches it is
+      // a slow but healthy load: keep waiting.
+      const load = async (): Promise<'synced' | 'corrupt' | 'superseded'> => {
+        for (let fresh = 0; ; fresh += 1) {
+          const attached = attach();
+          const outcome = await waitOrStall(attached);
+          if (outcome !== 'stalled') return outcome;
           const stored = await readDdocContent(ddocId);
-          if (stored.status === 'corrupt') {
-            // Drop the rows y-indexeddb cannot apply, then attach again.
-            const repair = await repairDdocContent(ddocId);
-            onIndexedDbErrorRef.current?.(
-              new Error(
-                `dDoc IndexedDB store was corrupt; dropped ${repair.droppedRows} unreadable row(s)`,
+          if (!isLatest) return 'superseded';
+          if (stored.status === 'corrupt') return 'corrupt';
+          if (fresh >= MAX_FRESH_ATTACHES) {
+            return Promise.race([
+              handled(waitForIndexeddbSync(attached)).then(
+                () => 'synced' as const,
+              ),
+              superseded,
+            ]);
+          }
+          if (stored.status !== 'missing') {
+            const again = await waitOrStall(attached);
+            if (again !== 'stalled') return again;
+          }
+          if (!isLatest) return 'superseded';
+          dropOwn();
+        }
+      };
+
+      try {
+        let loaded = await load();
+        if (loaded === 'superseded') return dropOwn();
+        if (loaded === 'corrupt') {
+          dropOwn();
+          // Drop the rows y-indexeddb cannot apply, then attach again.
+          const repair = await repairDdocContent(ddocId);
+          // No updates store, so no stored rows to keep: start a new
+          // database from what the editor holds.
+          const removed =
+            repair.status === 'corrupt'
+              ? (await deleteDdocContent(ddocId)).status
+              : null;
+          // Tell the host when the store was changed, even if a newer call
+          // has taken over: rows are gone either way.
+          if (repair.status === 'repaired') {
+            report(
+              Object.assign(
+                new Error(
+                  `dDoc IndexedDB store was corrupt; dropped ${repair.droppedRows} unreadable row(s)`,
+                ),
+                { name: DDOC_STORE_REPAIRED },
               ),
             );
-            await newYjsIndexeddbProvider.destroy().catch(() => {});
-            if (repair.status === 'corrupt') {
-              // No y-indexeddb stores at all, so nothing readable to keep:
-              // start a fresh database from what the editor holds.
-              await deleteDdocContent(ddocId);
-            }
-            newYjsIndexeddbProvider = attach();
+          } else if (repair.status === 'corrupt') {
+            report(
+              Object.assign(
+                new Error(
+                  removed === 'deleted'
+                    ? 'dDoc IndexedDB store had no updates store; started a new one'
+                    : `dDoc IndexedDB store had no updates store; deleting it is ${removed}, a new one starts once it is gone`,
+                ),
+                { name: DDOC_STORE_REPAIRED },
+              ),
+            );
           }
-          await waitForIndexeddbSync(newYjsIndexeddbProvider);
+          // Also covers a host that refreshed from inside onIndexedDbError.
+          if (!isLatest) return;
+          if (
+            repair.status === 'timed-out' ||
+            repair.status === 'unavailable'
+          ) {
+            throw (
+              repair.error ??
+              new Error(`dDoc IndexedDB repair failed (${repair.status})`)
+            );
+          }
+          loaded = await load();
+          if (loaded === 'superseded') return dropOwn();
+          if (loaded === 'corrupt') {
+            // Still unreadable after the repair: give up on the store rather
+            // than wait forever. Editing continues in memory.
+            throw new Error(
+              'dDoc IndexedDB store is still corrupt after repair',
+            );
+          }
         }
-        const syncedProvider = newYjsIndexeddbProvider;
+
+        const syncedProvider = own.provider;
+        if (!syncedProvider || !isLatest) return dropOwn();
         stopWatchingIndexeddbRef.current = watchIndexeddbConnection(
           syncedProvider,
           {
             onError: (error) => {
               console.error('IndexedDB persistence failed:', error);
-              onIndexedDbErrorRef.current?.(error);
+              report(error);
             },
             onDetached: () => {
               if (yjsIndexeddbProviderRef.current === syncedProvider) {
-                yjsIndexeddbProviderRef.current = null;
                 stopWatchingIndexeddbRef.current = null;
               }
             },
@@ -159,20 +286,38 @@ export const useYjsSetup = ({
           console.warn('IndexedDB compaction failed:', error);
         });
       } catch (error) {
+        dropOwn();
+        if (!isLatest) return;
         console.error('IndexedDB initialization failed:', error);
-        if (yjsIndexeddbProviderRef.current === newYjsIndexeddbProvider) {
-          yjsIndexeddbProviderRef.current = null;
-        }
-        void newYjsIndexeddbProvider?.destroy().catch(() => {});
         setIsIndexeddbSynced(true);
-        onIndexedDbErrorRef.current?.(
-          error instanceof Error ? error : new Error(String(error)),
-        );
+        report(error instanceof Error ? error : new Error(String(error)));
         // Don't rethrow - allow editor to continue without persistence
       }
-    } else {
-      setIsIndexeddbSynced(true);
-    }
+    };
+
+    const done = run().catch((error: unknown) => {
+      console.error('IndexedDB initialization failed:', error);
+    });
+    latestIndexeddbAttemptRef.current = {
+      supersede: () => {
+        isLatest = false;
+        resolveSuperseded();
+      },
+      done,
+    };
+    // The caller waits until the store is loaded or given up, whichever call
+    // ends up doing it: a call superseded by a refresh settles with the
+    // refresh, not before the doc is loaded.
+    const settledForCaller = async () => {
+      let current = done;
+      for (;;) {
+        await current;
+        const latest = latestIndexeddbAttemptRef.current?.done;
+        if (!latest || latest === current) return;
+        current = latest;
+      }
+    };
+    return settledForCaller();
   }, [enableIndexeddbSync, ddocId, ydoc, indexeddbStallCheckMs]);
 
   const onChangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(

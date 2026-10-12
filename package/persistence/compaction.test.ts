@@ -1,9 +1,10 @@
 // @vitest-environment node
 import 'fake-indexeddb/auto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { compactDdocPersistence } from './compaction';
+import { watchIndexeddbConnection } from './provider-lifecycle';
 
 // Ported from fileverse-dsheet src/persistence-compaction.test.ts (c6f5179),
 // plus the dDoc editor's own open sequence.
@@ -212,6 +213,38 @@ describe('compactDdocPersistence', () => {
     const after = await readRows(name);
     expect(after).toHaveLength(before.length);
     expect(bytes(after)).toBe(bytes(before));
+  });
+
+  it('does not report its own rollback as a failed save', async () => {
+    const name = nextName();
+    await buildBloatedStore(name, 3, 20);
+    const persistence = await open(name);
+    const onError = vi.fn();
+    const stop = watchIndexeddbConnection(persistence, {
+      onError,
+      onDetached: () => {},
+    });
+
+    const originalDelete = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function () {
+      throw new Error('boom');
+    };
+    restore.push(() => {
+      IDBObjectStore.prototype.delete = originalDelete;
+    });
+    await expect(compactDdocPersistence(persistence)).rejects.toThrow('boom');
+    restore.pop()?.();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onError).not.toHaveBeenCalled();
+
+    // A real save that fails on the same connection is still reported.
+    const tx = persistence.db!.transaction('updates', 'readwrite');
+    tx.abort();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    stop();
+    await persistence.destroy();
   });
 
   it('clamps minRows so a tiny store is never rewritten', async () => {

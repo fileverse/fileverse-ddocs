@@ -342,8 +342,8 @@ export interface DdocProps extends CommentAccountProps {
    */
   documentStyling?: DocumentStyling;
   /**
-   * Callback when IndexedDB initialization fails
-   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, quota exceeded, corrupted DB). The editor will continue to function without local persistence.
+   * Callback when local saving to IndexedDB has a problem
+   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, corrupted DB), when a save is rejected (e.g., quota exceeded), when the browser closes or another tab deletes the database (the editor detaches from it), and when a corrupt store was repaired on load. The editor keeps working in memory; `refreshYjsIndexedDbProvider` attaches again and saves what it holds.
    */
   onIndexedDbError?: (error: Error) => void;
 }

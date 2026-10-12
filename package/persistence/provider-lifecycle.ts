@@ -1,4 +1,5 @@
 import type { IndexeddbPersistence } from 'y-indexeddb';
+import { isCompactionTransaction } from './compaction';
 
 const toError = (error: unknown, fallback: string) =>
   error instanceof Error
@@ -72,6 +73,8 @@ export const watchIndexeddbConnection = (
 
   const handleAbort = (event: Event) => {
     const transaction = event.target as IDBTransaction | null;
+    // A rolled-back compaction loses nothing; it is not a failed save.
+    if (transaction && isCompactionTransaction(transaction)) return;
     onError(toError(transaction?.error, 'dDoc IndexedDB write was aborted'));
   };
 

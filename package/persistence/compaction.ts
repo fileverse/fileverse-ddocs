@@ -13,6 +13,15 @@ const UPDATES_STORE = 'updates';
  */
 export const DEFAULT_COMPACTION_MIN_ROWS = 3;
 
+// Compaction runs on the editor's own connection, so when it rolls back, the
+// abort bubbles to the same listener that reports failed saves. Nothing the
+// user wrote is lost by a rolled-back compaction, so that listener skips these.
+const compactionTransactions = new WeakSet<IDBTransaction>();
+
+/** Is this one of compaction's own transactions? */
+export const isCompactionTransaction = (transaction: IDBTransaction) =>
+  compactionTransactions.has(transaction);
+
 /**
  * y-indexeddb appends a copy of the doc every time a provider attaches, and
  * only trims after 500 rows. The editor applies the consumer's initialContent
@@ -44,6 +53,7 @@ export const compactDdocPersistence = async (
 
   return new Promise<number>((resolve, reject) => {
     const tx = db.transaction(UPDATES_STORE, 'readwrite');
+    compactionTransactions.add(tx);
     const store = tx.objectStore(UPDATES_STORE);
     let replaced = 0;
     // `tx.error` is still null when `onerror` fires, and an exception thrown

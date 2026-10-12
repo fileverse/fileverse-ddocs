@@ -14,6 +14,13 @@ import { fingerprintDdocContent } from './content-fingerprint';
 
 export const DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS = 8_000;
 
+/**
+ * `name` of the Error passed to `onIndexedDbError` when the editor repaired a
+ * corrupt store on load. It is a notice, not a failed save: the store is
+ * working again, but the unreadable rows it dropped are gone.
+ */
+export const DDOC_STORE_REPAIRED = 'DdocStoreRepaired';
+
 // y-indexeddb's schema (y-indexeddb.js, IndexeddbPersistence constructor).
 const UPDATES_STORE = 'updates';
 const CUSTOM_STORE = 'custom';
@@ -74,9 +81,13 @@ const snapshotDocument = (ddocId: string, doc: Y.Doc): DdocContentSnapshot => {
   };
 };
 
-const hasDdocSchema = (database: IDBDatabase) =>
-  database.objectStoreNames.contains(UPDATES_STORE) &&
-  database.objectStoreNames.contains(CUSTOM_STORE);
+/**
+ * The doc lives entirely in the `updates` store; y-indexeddb loads from it
+ * alone and uses `custom` only for its own key-value helpers. So a database
+ * with `updates` is readable and repairable even if `custom` is missing.
+ */
+const hasUpdatesStore = (database: IDBDatabase) =>
+  database.objectStoreNames.contains(UPDATES_STORE);
 
 /**
  * A stored row is a Uint8Array. Checked by its tag rather than `instanceof`,
@@ -157,8 +168,8 @@ const readDatabase = (
         database.close();
         return;
       }
-      if (!hasDdocSchema(database)) {
-        fail('corrupt', new Error('dDoc IndexedDB schema is invalid'));
+      if (!hasUpdatesStore(database)) {
+        fail('corrupt', new Error('dDoc IndexedDB has no updates store'));
         return;
       }
 
@@ -186,6 +197,37 @@ const readDatabase = (
     };
   });
 
+/**
+ * Whether the browser lists a database with this name: true, false, or null
+ * when it cannot say (no `indexedDB.databases()`, which Safari does not
+ * consistently support, a failure, or no answer within the timeout). Callers
+ * then open the database and abort any upgrade, which never creates one.
+ */
+const isDatabaseListed = async (
+  ddocId: string,
+  timeoutMs: number,
+): Promise<boolean | null> => {
+  const factory = indexedDB as IDBFactory & {
+    databases?: () => Promise<Array<{ name?: string }>>;
+  };
+  if (!factory.databases) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const databases = await Promise.race([
+      factory.databases(),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+    if (!databases) return null;
+    return databases.some((database) => database.name === ddocId);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const readFreshSnapshot = async (
   ddocId: string,
   timeoutMs: number,
@@ -198,46 +240,27 @@ const readFreshSnapshot = async (
     );
   }
 
-  const factory = indexedDB as IDBFactory & {
-    databases?: () => Promise<Array<{ name?: string }>>;
-  };
-  if (factory.databases) {
-    try {
-      const databases = await factory.databases();
-      if (!databases.some((database) => database.name === ddocId)) {
-        return unavailableSnapshot(ddocId, 'missing');
-      }
-    } catch {
-      // Safari does not consistently support indexedDB.databases().
-    }
+  if ((await isDatabaseListed(ddocId, timeoutMs)) === false) {
+    return unavailableSnapshot(ddocId, 'missing');
   }
 
   return readDatabase(ddocId, timeoutMs);
 };
 
-const pendingReads = new Map<string, Promise<DdocContentSnapshot>>();
-
 /**
  * Read the doc's database as stored: every row replayed in key order, the
- * same thing the editor loads on open. Never creates a database. Concurrent
- * reads of one id share a promise; completed reads are not cached.
+ * same thing the editor loads on open. Never creates a database. Every call
+ * reads afresh: a read already under way may have started before the latest
+ * edit was written, so its result is never handed to a later caller.
  */
 export const readDdocContent = (
   ddocId: string,
   options: DdocPersistenceOptions = {},
-): Promise<DdocContentSnapshot> => {
-  const inFlight = pendingReads.get(ddocId);
-  if (inFlight) return inFlight;
-
-  const pending = readFreshSnapshot(
+): Promise<DdocContentSnapshot> =>
+  readFreshSnapshot(
     ddocId,
     options.timeoutMs ?? DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS,
-  ).finally(() => {
-    if (pendingReads.get(ddocId) === pending) pendingReads.delete(ddocId);
-  });
-  pendingReads.set(ddocId, pending);
-  return pending;
-};
+  );
 
 /**
  * Merge a full Yjs state into the doc's database, creating the database if
@@ -248,6 +271,10 @@ export const readDdocContent = (
  * An editor open in another tab sees the new row on its next load. An editor
  * open in this tab does not (its Y.Doc is in memory), so callers with a
  * mounted editor merge into its live doc instead.
+ *
+ * Expects a complete state (`Y.encodeStateAsUpdate` of a doc). An update whose
+ * new parts all depend on updates the store does not have yet changes nothing
+ * visible, and is not stored.
  */
 export const mergeDdocContent = (
   ddocId: string,
@@ -321,8 +348,14 @@ export const mergeDdocContent = (
     }
 
     // A merge may create the database. Use exactly y-indexeddb's schema so
-    // the editor's IndexeddbPersistence opens it as its own.
+    // the editor's IndexeddbPersistence opens it as its own. A merge that has
+    // already given up (timed out while queued behind a delete, say) must not
+    // create it when its open finally runs: the doc may just have been deleted.
     openRequest.onupgradeneeded = () => {
+      if (settled) {
+        openRequest.transaction?.abort();
+        return;
+      }
       created = true;
       const upgradeDb = openRequest.result;
       if (!upgradeDb.objectStoreNames.contains(UPDATES_STORE)) {
@@ -340,9 +373,12 @@ export const mergeDdocContent = (
         database.close();
         return;
       }
-      if (!hasDdocSchema(database)) {
+      if (!hasUpdatesStore(database)) {
         finish(
-          notMerged('corrupt', new Error('dDoc IndexedDB schema is invalid')),
+          notMerged(
+            'corrupt',
+            new Error('dDoc IndexedDB has no updates store'),
+          ),
         );
         return;
       }
@@ -416,8 +452,8 @@ export type DdocContentRepairResult = {
   ddocId: string;
   /**
    * `repaired`: bad rows were dropped. `healthy`: nothing to drop, nothing
-   * written. `missing`: no database. `corrupt`: the database lacks
-   * y-indexeddb's stores, so there are no rows to keep.
+   * written. `missing`: no database. `corrupt`: the database has no `updates`
+   * store, so there are no rows to keep.
    */
   status:
     | 'repaired'
@@ -470,21 +506,11 @@ export const repairDdocContent = async (
   if (typeof indexedDB === 'undefined') {
     return result('unavailable', 0, new Error('IndexedDB is unavailable'));
   }
-  const factory = indexedDB as IDBFactory & {
-    databases?: () => Promise<Array<{ name?: string }>>;
-  };
-  if (factory.databases) {
-    try {
-      const databases = await factory.databases();
-      if (!databases.some((database) => database.name === ddocId)) {
-        return result('missing');
-      }
-    } catch {
-      // Safari does not consistently support indexedDB.databases().
-    }
+  const timeoutMs = options.timeoutMs ?? DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS;
+  if ((await isDatabaseListed(ddocId, timeoutMs)) === false) {
+    return result('missing');
   }
 
-  const timeoutMs = options.timeoutMs ?? DEFAULT_DDOC_PERSISTENCE_TIMEOUT_MS;
   return new Promise((resolve) => {
     let database: IDBDatabase | null = null;
     let transaction: IDBTransaction | null = null;
@@ -534,9 +560,13 @@ export const repairDdocContent = async (
         database.close();
         return;
       }
-      if (!hasDdocSchema(database)) {
+      if (!hasUpdatesStore(database)) {
         finish(
-          result('corrupt', 0, new Error('dDoc IndexedDB schema is invalid')),
+          result(
+            'corrupt',
+            0,
+            new Error('dDoc IndexedDB has no updates store'),
+          ),
         );
         return;
       }
@@ -584,7 +614,6 @@ export const deleteDdocContent = (
   ddocId: string,
   options: DdocPersistenceOptions = {},
 ): Promise<DdocContentDeleteResult> => {
-  pendingReads.delete(ddocId);
   if (typeof indexedDB === 'undefined') {
     return Promise.resolve({
       ddocId,
@@ -649,7 +678,8 @@ export const deleteDdocContent = (
  * every content edit, including delete-only and formatting-only edits; does
  * not change when only the active tab changes. The same content gives the
  * same fingerprint however the state was produced. See
- * `describeDdocContent` for the rule.
+ * `describeDdocContent` for the rule. Uses `crypto.subtle`, which browsers
+ * only provide on secure (https or localhost) pages.
  */
 export const getDdocContentFingerprint = async (
   encodedState: string,

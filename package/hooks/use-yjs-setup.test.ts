@@ -65,6 +65,31 @@ describe('useYjsSetup IndexedDB lifecycle', () => {
     );
   });
 
+  it('still reports edits made without an origin after detaching', async () => {
+    const onLocalChange = vi.fn();
+    const hook = renderHook(() =>
+      useYjsSetup({
+        enableIndexeddbSync: true,
+        ddocId: ID,
+        onIndexedDbError: vi.fn(),
+        onLocalChange,
+      }),
+    );
+    await initialise(hook);
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(ID);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+
+    // A plain transaction has a null origin (tab-name undo does this).
+    act(() => {
+      hook.result.current.ydoc.getText('body').insert(0, 'after detach');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(onLocalChange).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the latest onIndexedDbError after re-render', async () => {
     const first = vi.fn();
     const second = vi.fn();
@@ -189,10 +214,12 @@ describe('useYjsSetup corrupt store guard (TEC-2476 Step 5)', () => {
       'hello world',
     );
     expect(onIndexedDbError).toHaveBeenCalledTimes(1);
-    // Only the bad row goes; the good rows are kept.
+    // Only the bad row goes; the good rows are kept. Reported as a notice,
+    // not a failed save.
     expect(onIndexedDbError.mock.calls[0][0].message).toMatch(
       /dropped 1 unreadable/,
     );
+    expect(onIndexedDbError.mock.calls[0][0].name).toBe('DdocStoreRepaired');
     expect(await allRowsValid()).toBe(true);
   });
 
@@ -204,6 +231,38 @@ describe('useYjsSetup corrupt store guard (TEC-2476 Step 5)', () => {
     expect(hook.result.current.isIndexeddbSynced).toBe(true);
     expect(hook.result.current.ydoc.getText('body').toString()).toBe('hello');
     expect(onIndexedDbError).not.toHaveBeenCalled();
+  });
+
+  it('keeps the text of an updates store that has no custom store', async () => {
+    // A bad first row, then the doc. Only `custom` is missing, so the store is
+    // repaired, not deleted.
+    const doc = new Y.Doc();
+    doc.getText('body').insert(0, 'precious content');
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.open(ID);
+      request.onupgradeneeded = () =>
+        request.result.createObjectStore('updates', { autoIncrement: true });
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('updates', 'readwrite');
+        tx.objectStore('updates').add(new Uint8Array([255, 1, 2, 3, 9, 9]));
+        tx.objectStore('updates').add(Y.encodeStateAsUpdate(doc));
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+      };
+    });
+
+    const { hook, onIndexedDbError } = renderWithStallCheck(50);
+    await initialise(hook);
+
+    expect(hook.result.current.ydoc.getText('body').toString()).toBe(
+      'precious content',
+    );
+    expect(onIndexedDbError.mock.calls[0][0].message).toMatch(
+      /dropped 1 unreadable/,
+    );
   });
 
   it('replaces a database that has no y-indexeddb stores', async () => {

@@ -46,6 +46,10 @@ import { fromUint8Array } from 'js-base64';
 import { crypto as cryptoUtils } from './crypto';
 import { collabStore } from './storage/collab-store';
 import { docStore } from './storage/doc-store';
+import {
+  readDdocContent,
+  repairDdocContent,
+} from '../../package/persistence';
 import { DocumentStylingPanel } from './DocumentStylingPanel';
 import {
   DocumentStyling,
@@ -131,6 +135,56 @@ function App() {
     },
     [docId],
   );
+
+  // --- Where the doc is kept ---
+  // By default the demo works like ddocs.new: the doc lives only in the
+  // package's y-indexeddb store. It reads the store before mounting the
+  // editor (the editor waits while initialContent is null), passes no
+  // initialContent for a doc the store holds, with isNewDocument false so the
+  // editor does not take it for a new doc, saves nothing itself
+  // (onLocalChange, no onChange), and shows store errors.
+  // `?localCopy=1` keeps the older host behaviour instead: a localStorage copy
+  // saved through onChange and passed back as initialContent.
+  const storeOnly = useMemo(
+    () => new URLSearchParams(window.location.search).get('localCopy') !== '1',
+    [],
+  );
+  const [storeCheck, setStoreCheck] = useState<
+    'pending' | 'existing' | 'new'
+  >('pending');
+  useEffect(() => {
+    if (!storeOnly) return;
+    let cancelled = false;
+    setStoreCheck('pending');
+    void (async () => {
+      let stored = await readDdocContent(docId);
+      if (stored.status === 'corrupt') {
+        await repairDdocContent(docId);
+        stored = await readDdocContent(docId);
+      }
+      if (cancelled) return;
+      setStoreCheck(
+        stored.status === 'missing' || stored.status === 'empty'
+          ? 'new'
+          : 'existing',
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storeOnly, docId]);
+  const handleLocalChange = useCallback(() => {
+    setLastSavedAt(Date.now());
+  }, []);
+  const handleIndexedDbError = useCallback((error: Error) => {
+    console.error('[demo] local save problem:', error);
+    toast({
+      title: 'Local save problem',
+      description: error.message,
+      variant: 'error',
+      iconType: 'icon',
+    });
+  }, []);
 
   // --- Tab deep linking ---
   const handleCopyTabLink = useCallback(
@@ -835,8 +889,19 @@ function App() {
         setUsername={setUsername}
         isPreviewMode={isPreviewMode}
         disableInlineComment={disableInlineComment}
-        onChange={handleContentChange}
-        initialContent={initialContent}
+        onChange={storeOnly ? undefined : handleContentChange}
+        onLocalChange={storeOnly ? handleLocalChange : undefined}
+        initialContent={
+          storeOnly
+            ? storeCheck === 'pending'
+              ? null
+              : undefined
+            : initialContent
+        }
+        isNewDocument={
+          storeOnly && storeCheck === 'existing' ? false : undefined
+        }
+        onIndexedDbError={handleIndexedDbError}
         enableIndexeddbSync={true}
         ddocId={docId}
         // Only consulted at doc creation; existing docs follow their marker.

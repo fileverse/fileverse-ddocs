@@ -136,14 +136,26 @@ describe('readDdocContent', () => {
     expect((await readDdocContent(ID)).status).toBe('empty');
   });
 
-  it('reports corrupt for a database without the y-indexeddb schema', async () => {
+  it('reports corrupt for a database without an updates store', async () => {
     const db = await rawOpen(ID, (upgrade) =>
-      upgrade.createObjectStore('updates', { autoIncrement: true }),
+      upgrade.createObjectStore('custom'),
     );
     db.close();
     const result = await readDdocContent(ID);
     expect(result.status).toBe('corrupt');
     expect(result.error).toBeInstanceOf(Error);
+  });
+
+  it('reads a database whose updates store holds the doc, even without custom', async () => {
+    // y-indexeddb loads from `updates` alone; `custom` is not needed to read.
+    const db = await rawOpen(ID, (upgrade) =>
+      upgrade.createObjectStore('updates', { autoIncrement: true }),
+    );
+    db.close();
+    await addRow(ID, Y.encodeStateAsUpdate(docWithText('kept')));
+    const result = await readDdocContent(ID);
+    expect(result.status).toBe('available');
+    expect(decodeText(result.encodedState)).toBe('kept');
   });
 
   it('reports corrupt for a row that is not a Yjs update', async () => {
@@ -169,15 +181,54 @@ describe('readDdocContent', () => {
     }
   });
 
-  it('shares one in-flight read per id', async () => {
+  it('does not wait on a database list that never answers', async () => {
     const editor = await openEditor(ID, docWithText('hello'));
     await editor.destroy();
-    const first = readDdocContent(ID);
-    expect(readDdocContent(ID)).toBe(first);
-    await first;
-    const next = readDdocContent(ID);
-    expect(next).not.toBe(first);
-    await next;
+    const databases = indexedDB.databases.bind(indexedDB);
+    indexedDB.databases = () => new Promise(() => {});
+    try {
+      const existing = await readDdocContent(ID, { timeoutMs: 50 });
+      expect(existing.status).toBe('available');
+      expect(decodeText(existing.encodedState)).toBe('hello');
+      expect(
+        (await readDdocContent('never-opened', { timeoutMs: 50 })).status,
+      ).toBe('missing');
+      expect((await repairDdocContent(ID, { timeoutMs: 50 })).status).toBe(
+        'healthy',
+      );
+    } finally {
+      indexedDB.databases = databases;
+    }
+    // The fallback open never creates a database.
+    expect(await databaseNames()).not.toContain('never-opened');
+  });
+
+  it('sees an edit made while an earlier read was running', async () => {
+    // A read that has started its transaction cannot see a write queued
+    // behind it. A read asked for after that write must not get its result.
+    const doc = docWithText('before');
+    const editor = await openEditor(ID, doc);
+    let second: ReturnType<typeof readDdocContent> | null = null;
+    const getAll = IDBObjectStore.prototype.getAll;
+    IDBObjectStore.prototype.getAll = function (
+      this: IDBObjectStore,
+      ...args: Parameters<IDBObjectStore['getAll']>
+    ) {
+      const request = getAll.apply(this, args);
+      IDBObjectStore.prototype.getAll = getAll;
+      // The first read's transaction exists; the user types, then reads again.
+      doc.getText('body').insert(6, ' after');
+      second = readDdocContent(ID);
+      return request;
+    };
+    try {
+      const first = await readDdocContent(ID);
+      expect(decodeText(first.encodedState)).toBe('before');
+      expect(decodeText((await second!).encodedState)).toBe('before after');
+    } finally {
+      IDBObjectStore.prototype.getAll = getAll;
+      await editor.destroy();
+    }
   });
 
   it('reports unavailable without IndexedDB', async () => {
@@ -312,6 +363,23 @@ describe('deleteDdocContent', () => {
     expect(await databaseNames()).not.toContain(ID);
   });
 
+  it('is not undone by a merge that gave up while queued behind it', async () => {
+    await mergeDdocContent(ID, encode(docWithText('hello')));
+    const held = await rawOpen(ID);
+    const deleting = deleteDdocContent(ID, { timeoutMs: 50 });
+    const merging = mergeDdocContent(ID, encode(docWithText('late')), {
+      timeoutMs: 100,
+    });
+    expect((await deleting).status).toBe('blocked');
+    expect((await merging).status).toBe('timed-out');
+
+    // The delete goes through, and the merge's queued open runs after it.
+    held.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await databaseNames()).not.toContain(ID);
+    expect((await readDdocContent(ID)).status).toBe('missing');
+  });
+
   it('is not blocked by a watched editor, which detaches', async () => {
     const editor = await openEditor(ID, docWithText('hello'));
     const errors: Error[] = [];
@@ -435,11 +503,28 @@ describe('repairDdocContent', () => {
     expect(await databaseNames()).not.toContain(ID);
   });
 
-  it('reports corrupt for a database without the y-indexeddb schema', async () => {
+  it('reports corrupt for a database without an updates store', async () => {
+    const db = await rawOpen(ID, (upgrade) =>
+      upgrade.createObjectStore('custom'),
+    );
+    db.close();
+    expect((await repairDdocContent(ID)).status).toBe('corrupt');
+  });
+
+  it('repairs an updates store even when custom is missing, keeping the good rows', async () => {
     const db = await rawOpen(ID, (upgrade) =>
       upgrade.createObjectStore('updates', { autoIncrement: true }),
     );
     db.close();
-    expect((await repairDdocContent(ID)).status).toBe('corrupt');
+    await addRow(ID, new Uint8Array([255, 1, 2, 3, 9, 9]));
+    await addRow(ID, Y.encodeStateAsUpdate(docWithText('precious')));
+    expect(await repairDdocContent(ID)).toEqual({
+      ddocId: ID,
+      status: 'repaired',
+      droppedRows: 1,
+    });
+    expect(decodeText((await readDdocContent(ID)).encodedState)).toBe(
+      'precious',
+    );
   });
 });

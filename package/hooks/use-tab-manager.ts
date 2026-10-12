@@ -124,6 +124,7 @@ export const useTabManager = ({
   }, [
     ydoc,
     initialContent,
+    isNewDdoc,
     isDDocOwner,
     enableCollaboration,
     createDefaultTabIfMissing,
