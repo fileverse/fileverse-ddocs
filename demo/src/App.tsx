@@ -139,10 +139,14 @@ function App() {
   // --- Where the doc is kept ---
   // By default the demo works like ddocs.new: the doc lives only in the
   // package's y-indexeddb store. It reads the store before mounting the
-  // editor (the editor waits while initialContent is null), passes no
-  // initialContent for a doc the store holds, with isNewDocument false so the
-  // editor does not take it for a new doc, saves nothing itself
-  // (onLocalChange, no onChange), and shows store errors.
+  // editor (the editor waits while initialContent is null) and passes what
+  // the store holds as initialContent, with isNewDocument false so the editor
+  // does not take it for a new doc. It saves nothing itself (onLocalChange,
+  // no onChange) and shows store errors.
+  // The stored body must be passed: left to load the store by itself, the
+  // editor builds before the store loads, cannot see the doc's schema marker,
+  // and binding a schema-2 doc with the schema-1 editor deletes its text from
+  // the store. A store that cannot be read keeps the editor waiting.
   // `?localCopy=1` keeps the older host behaviour instead: a localStorage copy
   // saved through onChange and passed back as initialContent.
   const storeOnly = useMemo(
@@ -150,12 +154,13 @@ function App() {
     [],
   );
   const [storeCheck, setStoreCheck] = useState<
-    'pending' | 'existing' | 'new'
-  >('pending');
+    | { status: 'pending' | 'new' | 'unreadable' }
+    | { status: 'existing'; content: string }
+  >({ status: 'pending' });
   useEffect(() => {
     if (!storeOnly) return;
     let cancelled = false;
-    setStoreCheck('pending');
+    setStoreCheck({ status: 'pending' });
     void (async () => {
       let stored = await readDdocContent(docId);
       if (stored.status === 'corrupt') {
@@ -163,11 +168,20 @@ function App() {
         stored = await readDdocContent(docId);
       }
       if (cancelled) return;
-      setStoreCheck(
-        stored.status === 'missing' || stored.status === 'empty'
-          ? 'new'
-          : 'existing',
-      );
+      if (stored.status === 'available' && stored.encodedState) {
+        setStoreCheck({ status: 'existing', content: stored.encodedState });
+      } else if (stored.status === 'missing' || stored.status === 'empty') {
+        setStoreCheck({ status: 'new' });
+      } else {
+        console.error('[demo] could not read the store:', stored.status);
+        toast({
+          title: "Couldn't read this doc's store",
+          description: `Status: ${stored.status}. Reload to try again.`,
+          variant: 'error',
+          iconType: 'icon',
+        });
+        setStoreCheck({ status: 'unreadable' });
+      }
     })();
     return () => {
       cancelled = true;
@@ -893,13 +907,15 @@ function App() {
         onLocalChange={storeOnly ? handleLocalChange : undefined}
         initialContent={
           storeOnly
-            ? storeCheck === 'pending'
-              ? null
-              : undefined
+            ? storeCheck.status === 'existing'
+              ? storeCheck.content
+              : storeCheck.status === 'new'
+                ? undefined
+                : null
             : initialContent
         }
         isNewDocument={
-          storeOnly && storeCheck === 'existing' ? false : undefined
+          storeOnly && storeCheck.status === 'existing' ? false : undefined
         }
         onIndexedDbError={handleIndexedDbError}
         enableIndexeddbSync={true}
