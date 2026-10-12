@@ -40,7 +40,7 @@ Compatibility: the prop surface is additive, so existing consumer code compiles 
 
 ```
 root  .ddoc-editor-root   h-full w-full flex flex-col overflow-hidden
-├─ renderNavbar() output  no wrapper; in flow, or createPortal → navbarContainer (§3)
+├─ .ddoc-navbar-row       unstyled collapse row around renderNavbar(); or createPortal → navbarContainer, no element (§3)
 ├─ #toolbar / mobile      shrink-0, in flow
 ├─ #editor-canvas         flex: 1 1 0px, min-h-0, flex flex-col overflow-auto, [data-editor-scroll-container]
 │  ├─ drawer anchor       sticky top-0 left-0, full width, zero height (§2.5)
@@ -171,8 +171,8 @@ Today three things read the window: `useMediaQuery` (23 calls in 16 files, thres
   ```
 
 - Changing the target element, or switching between portalled and in-flow, remounts the navbar subtree and loses its local state.
-- No wrapper: the editor renders exactly what `renderNavbar` returns. The old `<nav id="Navbar">` element is gone, with its styling (background, `p-2`, bottom border, `flex gap-10 items-center justify-between`, `z-[45]`) and its Escape-returns-focus-to-editor handler. The host supplies its own element, styling and `id`. In flow the returned element is a direct flex child of the root, so it should be one element that does not shrink.
-- Visibility: hidden when `isNavbarVisible` is false, in focus mode and in presentation mode, as today. Hiding unmounts the navbar (there is no wrapper to hide), so its local state is lost; it also renders nothing until the editor exists. Exception: a portalled navbar is hidden only in presentation mode. It stays in focus mode and when `isNavbarVisible` is false, because its element belongs to the host's layout and hiding only its content leaves an empty host header. The host hides its own element from `onFocusModeChange` and `onNavbarVisibleChange` if it wants to.
+- The editor renders exactly what `renderNavbar` returns. The old `<nav id="Navbar">` element is gone, with its styling (background, `p-2`, bottom border, `flex gap-10 items-center justify-between`, `z-[45]`) and its Escape-returns-focus-to-editor handler. The host supplies its own element, styling and `id`. In flow the output sits in `.ddoc-navbar-row`, an unstyled grid row that exists only to animate the collapse, so `renderNavbar` should return one element. A portalled navbar gets no element from the editor.
+- Visibility: hidden when `isNavbarVisible` is false, in focus mode and in presentation mode, as today. In flow, hiding collapses `.ddoc-navbar-row` over 300ms (`grid-template-rows: 1fr → 0fr` with the navbar pinned to the row's bottom, so it slides up as on `main`, plus an opacity fade; off under `prefers-reduced-motion`) and the navbar stays mounted. A hidden portalled navbar (presentation mode) is unmounted. Nothing renders until the editor exists. A host can put `ddoc-navbar-row` / `ddoc-navbar-row--hidden` on its own navbar element to get the same animation. Exception: a portalled navbar is hidden only in presentation mode. It stays in focus mode and when `isNavbarVisible` is false, because its element belongs to the host's layout and hiding only its content leaves an empty host header. The host hides its own element from `onFocusModeChange` and `onNavbarVisibleChange` if it wants to.
 - New prop `showNavbarToggle?: boolean`, default `true`. `false` removes the collapse chevron from both toolbars. A host with a portalled navbar either wires the chevron through `onNavbarVisibleChange` or turns it off; otherwise the chevron changes nothing visible.
 
 ## 4. State

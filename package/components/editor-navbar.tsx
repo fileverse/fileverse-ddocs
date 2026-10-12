@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
+import cn from 'classnames';
 import type { DdocProps } from '../types';
 
 type EditorNavbarProps = {
@@ -10,14 +11,15 @@ type EditorNavbarProps = {
   isHidden: boolean;
 };
 
-// Renders the host's navbar as given: no wrapper element, no styling.
+// Renders the host's navbar as given. In flow it sits in an unstyled row that
+// only animates the collapse; a portalled navbar gets no element at all.
 export const EditorNavbar = ({
   editor,
   renderNavbar,
   container,
   isHidden,
 }: EditorNavbarProps) => {
-  if (!renderNavbar || !editor || container === null || isHidden) return null;
+  if (!renderNavbar || !editor || container === null) return null;
 
   const navbar = renderNavbar({
     get editor() {
@@ -26,5 +28,13 @@ export const EditorNavbar = ({
     liveEditor: editor,
   });
 
-  return container ? createPortal(navbar, container) : navbar;
+  if (container) return isHidden ? null : createPortal(navbar, container);
+
+  return (
+    <div
+      className={cn('ddoc-navbar-row', isHidden && 'ddoc-navbar-row--hidden')}
+    >
+      {navbar}
+    </div>
+  );
 };

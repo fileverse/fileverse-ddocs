@@ -597,6 +597,43 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   pointer-events: auto;
 }
 
+/* In-flow navbar row. It only animates the collapse: the row shrinks to zero
+   while the navbar, pinned to the row's bottom edge, slides up out of view.
+   A host with a portalled navbar can put these classes on its own element. */
+.ddoc-navbar-row {
+  display: grid;
+  grid-template-rows: 1fr;
+  align-items: end;
+  flex: none;
+  overflow: hidden;
+  transition:
+    grid-template-rows 300ms ease,
+    opacity 300ms ease,
+    visibility 0s;
+}
+
+.ddoc-navbar-row > * {
+  min-height: 0;
+}
+
+.ddoc-navbar-row--hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    grid-template-rows 300ms ease,
+    opacity 300ms ease,
+    visibility 0s 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ddoc-navbar-row,
+  .ddoc-navbar-row--hidden {
+    transition: none;
+  }
+}
+
 /* The anchor is a stacking context; lift it over the fixed z-50 presentation
    overlay so the presentation-mode drawer stays usable. */
 .ddoc-drawer-anchor--presenting {

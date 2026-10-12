@@ -59,7 +59,9 @@ describe('DdocEditor mounted structure', () => {
     for (const state of [{ isFocusMode: true }, { isNavbarVisible: false }]) {
       render(<DdocEditor {...state} renderNavbar={renderNavbar} />);
       await act(async () => {});
-      expect(screen.queryByText('nav')).toBeNull();
+      expect(screen.getByText('nav').parentElement?.className).toContain(
+        'ddoc-navbar-row--hidden',
+      );
       cleanup();
 
       render(

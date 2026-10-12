@@ -8,7 +8,7 @@ const editor = { getJSON: () => ({ type: 'doc' }) } as unknown as Editor;
 const renderNavbar = () => <span>host navbar</span>;
 
 describe('EditorNavbar', () => {
-  it('renders the host navbar in flow with no wrapper', () => {
+  it('renders the host navbar in flow inside the unstyled collapse row', () => {
     const { container } = render(
       <EditorNavbar
         editor={editor}
@@ -16,7 +16,9 @@ describe('EditorNavbar', () => {
         isHidden={false}
       />,
     );
-    expect(container.innerHTML).toBe('<span>host navbar</span>');
+    expect(container.innerHTML).toBe(
+      '<div class="ddoc-navbar-row"><span>host navbar</span></div>',
+    );
   });
 
   it('renders nothing without a renderer', () => {
@@ -65,10 +67,26 @@ describe('EditorNavbar', () => {
     expect(second.innerHTML).toBe('<span>host navbar</span>');
   });
 
-  it('renders nothing when hidden', () => {
+  it('collapses the in-flow row when hidden, keeping the navbar mounted', () => {
     const { container } = render(
       <EditorNavbar editor={editor} renderNavbar={renderNavbar} isHidden />,
     );
-    expect(container.innerHTML).toBe('');
+    expect(container.firstElementChild?.className).toBe(
+      'ddoc-navbar-row ddoc-navbar-row--hidden',
+    );
+    expect(screen.getByText('host navbar')).toBeTruthy();
+  });
+
+  it('renders nothing for a hidden portalled navbar', () => {
+    const host = document.body.appendChild(document.createElement('div'));
+    render(
+      <EditorNavbar
+        editor={editor}
+        renderNavbar={renderNavbar}
+        container={host}
+        isHidden
+      />,
+    );
+    expect(host.innerHTML).toBe('');
   });
 });

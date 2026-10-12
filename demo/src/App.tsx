@@ -830,7 +830,9 @@ function App() {
       />
       <div
         ref={setNavbarHost}
-        className={isFocusMode || !isNavbarVisible ? 'hidden' : 'shrink-0'}
+        className={`ddoc-navbar-row ${
+          isFocusMode || !isNavbarVisible ? 'ddoc-navbar-row--hidden' : ''
+        }`}
       />
       <div className="flex-1 min-h-0">
         <DdocEditor
