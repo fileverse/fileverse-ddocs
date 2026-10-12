@@ -942,18 +942,6 @@ const DdocEditor = forwardRef(
       return (
         <AnimatePresence>
           <>
-            {isFocusMode && (
-              <FullScreenToolbar
-                dropdownOpen={dropdownOpen}
-                setDropdownOpen={setDropdownOpen}
-                zoomLevel={zoomLevel}
-                setZoomLevel={setZoomLevel}
-                showTOC={showTOC}
-                setShowTOC={setShowTOC}
-                toggleFocusMode={toggleFocusMode}
-              />
-            )}
-
             {/* The export trigger normally registers via the toolbar's
                 ImportExportButton. When that toolbar is unmounted (preview
                 mode, Split View), mount the hidden registrar instead so the
@@ -1625,6 +1613,18 @@ const DdocEditor = forwardRef(
               />
               {!isSplitViewActive && editorToolbar}
               {mobileToolbar}
+              {/* Pinned to the root's corner, outside the scroller. */}
+              {isFocusMode && (
+                <FullScreenToolbar
+                  dropdownOpen={dropdownOpen}
+                  setDropdownOpen={setDropdownOpen}
+                  zoomLevel={zoomLevel}
+                  setZoomLevel={setZoomLevel}
+                  showTOC={showTOC}
+                  setShowTOC={setShowTOC}
+                  toggleFocusMode={toggleFocusMode}
+                />
+              )}
               <div
                 id="editor-canvas"
                 ref={setCanvasNode}

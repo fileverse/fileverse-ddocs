@@ -31,7 +31,7 @@ export const FullScreenToolbar = ({
     setShowTOC?.(false);
   }, []);
   return (
-    <div className="fixed right-[24px] z-[9] items-center flex gap-[4px] top-[24px]">
+    <div className="absolute right-[24px] z-[9] items-center flex gap-[4px] top-[24px]">
       <DynamicDropdownV2
         key="zoom-levels"
         align="start"
