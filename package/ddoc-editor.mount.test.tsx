@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import DdocEditor from './ddoc-editor';
 import { canUseEditorContainerQueries } from './utils/container-query-support';
 
@@ -59,7 +59,7 @@ describe('DdocEditor mounted structure', () => {
     for (const state of [{ isFocusMode: true }, { isNavbarVisible: false }]) {
       render(<DdocEditor {...state} renderNavbar={renderNavbar} />);
       await act(async () => {});
-      expect(document.querySelector('#Navbar')?.classList).toContain('hidden');
+      expect(screen.queryByText('nav')).toBeNull();
       cleanup();
 
       render(
@@ -70,7 +70,7 @@ describe('DdocEditor mounted structure', () => {
         />,
       );
       await act(async () => {});
-      expect(host.querySelector('#Navbar')?.classList).not.toContain('hidden');
+      expect(host.textContent).toBe('nav');
       cleanup();
     }
     host.remove();

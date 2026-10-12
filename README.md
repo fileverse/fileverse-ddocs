@@ -61,7 +61,7 @@ import '@fileverse-dev/ddoc/styles';    // editor CSS
 
 If the editor renders with no height, its parent has none.
 
-`renderNavbar` output is the editor's first row by default. Without `renderNavbar` no navbar element is rendered. To place the navbar elsewhere, pass the element to render into. Hold it in state, not in a ref, so the editor re-renders when it attaches:
+`renderNavbar` output is the editor's first row by default, rendered as is: the editor adds no wrapper element and no styling, so return one element with your own background, padding and border. Without `renderNavbar` nothing is rendered. To place the navbar elsewhere, pass the element to render into. Hold it in state, not in a ref, so the editor re-renders when it attaches:
 
 ```tsx
 const [navbarEl, setNavbarEl] = useState<HTMLElement | null>(null);
@@ -153,7 +153,7 @@ You should now be set to use dDocs!
 - Give the editor a parent with a definite height (see Sizing). It no longer sizes itself from `100dvh`.
 - Put your footer after the editor in normal flow. `footerHeight` has no effect and can be removed.
 - The navbar and toolbars are no longer inside `#editor-canvas`. CSS that used `#editor-canvas` as their ancestor should use `.ddoc-editor-root`.
-- Without `renderNavbar` the editor renders no navbar element at all. The navbar's height now comes from its content; it was a fixed 64px, 46px below `lg`.
+- The editor no longer wraps your navbar in `<nav id="Navbar">`. It renders what `renderNavbar` returns, so move the wrapper's styling (`color-bg-default p-2 flex gap-10 items-center justify-between w-full border-b color-border-default`) and the `id`, if you select on it, onto your own element. The Escape-returns-focus-to-editor handler went with it, and a hidden navbar is unmounted, not hidden with CSS. Without `renderNavbar` nothing is rendered. The navbar's height comes from its content; it was a fixed 64px, 46px below `lg`.
 - `editorCanvasClassNames` should not set a height.
 - `zoomLevel`, `isNavbarVisible` and `isPreviewMode` are optional. Every UI state can be left out, or controlled with a value and an `onXChange` callback. The `setX` props still work and are deprecated.
 - Your Tailwind build needs no config change. The new `ddoc-*` variants (container-query breakpoints that follow the editor's width) come from the `@fileverse-dev/ddoc/tailwind` preset you already use.

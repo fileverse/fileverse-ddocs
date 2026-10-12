@@ -530,7 +530,7 @@ function App() {
     });
 
     return (
-      <>
+      <nav className="color-bg-default p-2 flex gap-10 items-center justify-between w-full shrink-0 border-b color-border-default z-[45]">
         {/* Split view's markdown pane is the sole input surface — the doc
             menus must not be reachable while it is active. */}
         {!isSplitView && (
@@ -734,7 +734,7 @@ function App() {
             </div>
           </div>
         </div>
-      </>
+      </nav>
     );
   };
 

@@ -1,17 +1,14 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import type { Editor } from '@tiptap/react';
 import { EditorNavbar } from './editor-navbar';
 
-const editor = {
-  getJSON: () => ({ type: 'doc' }),
-  commands: { focus: vi.fn() },
-} as unknown as Editor;
+const editor = { getJSON: () => ({ type: 'doc' }) } as unknown as Editor;
 
 const renderNavbar = () => <span>host navbar</span>;
 
 describe('EditorNavbar', () => {
-  it('renders in flow when no container prop is passed', () => {
+  it('renders the host navbar in flow with no wrapper', () => {
     const { container } = render(
       <EditorNavbar
         editor={editor}
@@ -19,15 +16,14 @@ describe('EditorNavbar', () => {
         isHidden={false}
       />,
     );
-    expect(container.querySelector('nav#Navbar')).not.toBeNull();
-    expect(screen.getByText('host navbar')).toBeTruthy();
+    expect(container.innerHTML).toBe('<span>host navbar</span>');
   });
 
   it('renders nothing without a renderer', () => {
     const { container } = render(
       <EditorNavbar editor={editor} isHidden={false} />,
     );
-    expect(container.querySelector('nav')).toBeNull();
+    expect(container.innerHTML).toBe('');
   });
 
   it('renders nothing while the container is null', () => {
@@ -54,8 +50,9 @@ describe('EditorNavbar', () => {
         isHidden={false}
       />,
     );
-    expect(container.querySelector('nav')).toBeNull();
-    expect(first.querySelector('nav#Navbar')).not.toBeNull();
+    expect(container.innerHTML).toBe('');
+    expect(first.innerHTML).toBe('<span>host navbar</span>');
+
     rerender(
       <EditorNavbar
         editor={editor}
@@ -64,26 +61,14 @@ describe('EditorNavbar', () => {
         isHidden={false}
       />,
     );
-    expect(first.querySelector('nav')).toBeNull();
-    expect(second.querySelector('nav#Navbar')).not.toBeNull();
+    expect(first.innerHTML).toBe('');
+    expect(second.innerHTML).toBe('<span>host navbar</span>');
   });
 
-  it('collapses when hidden', () => {
+  it('renders nothing when hidden', () => {
     const { container } = render(
       <EditorNavbar editor={editor} renderNavbar={renderNavbar} isHidden />,
     );
-    expect(container.querySelector('nav')?.className).toContain('hidden');
-  });
-
-  it('returns focus to the editor on Escape', () => {
-    const { container } = render(
-      <EditorNavbar
-        editor={editor}
-        renderNavbar={renderNavbar}
-        isHidden={false}
-      />,
-    );
-    fireEvent.keyDown(container.querySelector('nav')!, { key: 'Escape' });
-    expect(editor.commands.focus).toHaveBeenCalled();
+    expect(container.innerHTML).toBe('');
   });
 });

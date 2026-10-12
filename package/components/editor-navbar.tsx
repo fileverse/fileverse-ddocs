@@ -1,6 +1,5 @@
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
-import cn from 'classnames';
 import type { DdocProps } from '../types';
 
 type EditorNavbarProps = {
@@ -11,38 +10,21 @@ type EditorNavbarProps = {
   isHidden: boolean;
 };
 
+// Renders the host's navbar as given: no wrapper element, no styling.
 export const EditorNavbar = ({
   editor,
   renderNavbar,
   container,
   isHidden,
 }: EditorNavbarProps) => {
-  if (!renderNavbar || container === null) return null;
+  if (!renderNavbar || !editor || container === null || isHidden) return null;
 
-  const nav = (
-    <nav
-      id="Navbar"
-      onKeyDown={(e) => {
-        // Escape returns focus to the editor, as the formatting toolbar does.
-        if (e.key === 'Escape' && editor) {
-          e.preventDefault();
-          editor.commands.focus();
-        }
-      }}
-      className={cn(
-        'color-bg-default p-2 flex gap-10 items-center justify-between w-full shrink-0 border-b color-border-default z-[45]',
-        isHidden && 'hidden',
-      )}
-    >
-      {editor &&
-        renderNavbar({
-          get editor() {
-            return editor.getJSON();
-          },
-          liveEditor: editor,
-        })}
-    </nav>
-  );
+  const navbar = renderNavbar({
+    get editor() {
+      return editor.getJSON();
+    },
+    liveEditor: editor,
+  });
 
-  return container ? createPortal(nav, container) : nav;
+  return container ? createPortal(navbar, container) : navbar;
 };

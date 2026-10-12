@@ -40,7 +40,7 @@ Compatibility: the prop surface is additive, so existing consumer code compiles 
 
 ```
 root  .ddoc-editor-root   h-full w-full flex flex-col overflow-hidden
-├─ nav#Navbar             shrink-0, in flow, or createPortal → navbarContainer (§3)
+├─ renderNavbar() output  no wrapper; in flow, or createPortal → navbarContainer (§3)
 ├─ #toolbar / mobile      shrink-0, in flow
 ├─ #editor-canvas         flex: 1 1 0px, min-h-0, flex flex-col overflow-auto, [data-editor-scroll-container]
 │  ├─ drawer anchor       sticky top-0 left-0, full width, zero height (§2.5)
@@ -122,7 +122,7 @@ Stays viewport-level: presentation mode, fullscreen toolbar, mobile comment shee
 
 - Under the root, in `'contained'` layout, nothing uses `vh`, `dvh`, `vw`, `w-screen` or `h-screen`, and no chrome is `position: fixed`, except the viewport-level overlays in §2.7.
 - One document scroller in normal mode, `#editor-canvas`, carrying `data-editor-scroll-container` (§2.2).
-- `id="editor-canvas"`, `id="toolbar"` and `id="Navbar"` are kept.
+- `id="editor-canvas"` and `id="toolbar"` are kept. `id="Navbar"` is gone with the navbar wrapper (§3).
 
 ### 2.9 Responsive behaviour follows the editor
 
@@ -171,8 +171,8 @@ Today three things read the window: `useMediaQuery` (23 calls in 16 files, thres
   ```
 
 - Changing the target element, or switching between portalled and in-flow, remounts the navbar subtree and loses its local state.
-- The `<nav id="Navbar">` wrapper and its Escape-returns-focus-to-editor handler are kept in both cases. It loses `fixed`, `w-screen`, `top-0` and `h-[var(--navbar)]`; height comes from its content.
-- Visibility: hidden when `isNavbarVisible` is false, in focus mode and in presentation mode, as today. Hiding collapses the row (no translate), because a translated in-flow row leaves a gap. Exception: a portalled navbar is hidden only in presentation mode. It stays in focus mode and when `isNavbarVisible` is false, because its element belongs to the host's layout and hiding only its content leaves an empty host header. The host hides its own element from `onFocusModeChange` and `onNavbarVisibleChange` if it wants to.
+- No wrapper: the editor renders exactly what `renderNavbar` returns. The old `<nav id="Navbar">` element is gone, with its styling (background, `p-2`, bottom border, `flex gap-10 items-center justify-between`, `z-[45]`) and its Escape-returns-focus-to-editor handler. The host supplies its own element, styling and `id`. In flow the returned element is a direct flex child of the root, so it should be one element that does not shrink.
+- Visibility: hidden when `isNavbarVisible` is false, in focus mode and in presentation mode, as today. Hiding unmounts the navbar (there is no wrapper to hide), so its local state is lost; it also renders nothing until the editor exists. Exception: a portalled navbar is hidden only in presentation mode. It stays in focus mode and when `isNavbarVisible` is false, because its element belongs to the host's layout and hiding only its content leaves an empty host header. The host hides its own element from `onFocusModeChange` and `onNavbarVisibleChange` if it wants to.
 - New prop `showNavbarToggle?: boolean`, default `true`. `false` removes the collapse chevron from both toolbars. A host with a portalled navbar either wires the chevron through `onNavbarVisibleChange` or turns it off; otherwise the chevron changes nothing visible.
 
 ## 4. State
@@ -315,7 +315,7 @@ The lasting record of this revamp is the README and `AGENTS.md`, updated in the 
 | Area | Required evidence |
 |---|---|
 | Parent sizing | A short, offset host; host-only resize; content overflow confined to the canvas; no viewport fallback. |
-| Navbar | Omitted renderer, inline renderer, `null` portal target, attached target, target replacement, visibility toggle, Escape focus return. |
+| Navbar | Omitted renderer, inline renderer, `null` portal target, attached target, target replacement, visibility toggle, no wrapper element. |
 | Modes | Normal, preview through `DdocEditor`, focus, presentation and Split View; toolbar visibility rules and mounted editor / node-view identity preserved across mode switches. |
 | Width | A canvas-only resize updates the rail decision and the landscape clamp without a window resize. Shrink and grow the canvas across the page-fit threshold while staying on one side of the rail threshold: alignment switches between centred and start. Repeat after changing zoom and outline visibility. |
 | Responsive | With the window at 1600px, narrow the host from 1400px to 400px: the tab sidebar becomes the tab panel at 1280px, the desktop toolbar becomes the mobile toolbar at 960px, the comment UI and block chrome switch at their thresholds, each exactly where a window of that width switches today. Widen again: all reverse. At full-window width every breakpoint matches `main`. Preview, version history, presentation mode and dialogs still follow the window. No narrow-layout flash on load. In Chrome, Safari and Firefox, presentation mode, the fullscreen toolbar and the mobile comment sheet still cover the viewport from an editor in a small box, whether or not the root has `ddoc-editor-cq`. With the safety check forced to fail, the editor follows the window as on `main`. |
