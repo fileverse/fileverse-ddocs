@@ -828,7 +828,10 @@ function App() {
         documentStyling={documentStyling}
         onStylingChange={setDocumentStyling}
       />
-      <div ref={setNavbarHost} className="shrink-0" />
+      <div
+        ref={setNavbarHost}
+        className={isFocusMode ? 'hidden' : 'shrink-0'}
+      />
       <div className="flex-1 min-h-0">
         <DdocEditor
           ref={editorRef}

@@ -1615,7 +1615,13 @@ const DdocEditor = forwardRef(
                 editor={editor ?? null}
                 renderNavbar={renderNavbar}
                 container={navbarContainer}
-                isHidden={isFocusMode || !isNavbarVisible || isPresentationMode}
+                // A portalled navbar sits in the host's layout, so focus mode
+                // leaves it to the host (onFocusModeChange).
+                isHidden={
+                  (isFocusMode && !navbarContainer) ||
+                  !isNavbarVisible ||
+                  isPresentationMode
+                }
               />
               {!isSplitViewActive && editorToolbar}
               {mobileToolbar}

@@ -52,6 +52,27 @@ describe('DdocEditor mounted structure', () => {
     ).toBe(true);
   });
 
+  it('keeps a portalled navbar in focus mode and hides an in-flow one', async () => {
+    const host = document.body.appendChild(document.createElement('div'));
+    const renderNavbar = () => <span>nav</span>;
+
+    render(<DdocEditor isFocusMode renderNavbar={renderNavbar} />);
+    await act(async () => {});
+    expect(document.querySelector('#Navbar')?.classList).toContain('hidden');
+    cleanup();
+
+    render(
+      <DdocEditor
+        isFocusMode
+        renderNavbar={renderNavbar}
+        navbarContainer={host}
+      />,
+    );
+    await act(async () => {});
+    expect(host.querySelector('#Navbar')?.classList).not.toContain('hidden');
+    host.remove();
+  });
+
   it('is a query container only when the safety check passes', async () => {
     expect((await mount()).classList.contains('ddoc-editor-cq')).toBe(true);
     cleanup();

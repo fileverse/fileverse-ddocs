@@ -163,7 +163,7 @@ Behaviour that changes without a code change on your side:
 - UI features that did nothing without their `setX` prop now work on internal state. The Split View toggle shows whenever live collaboration is off (it needed `setIsSplitView` before), and the comment drawer, the outline and presentation mode open without a setter. To keep one fixed, pass its value with no callback, for example `isPresentationMode={false}`. For Split View, `isSplitView={false}` keeps the editor out of Split View, but the toolbar toggle is still shown and does nothing.
 - `onFocusModeChange` and the deprecated `onFocusMode` also fire when `isFocusMode` is not passed.
 - `#editor-canvas` is now the document scroller (it carries `data-editor-scroll-container`), and the root (`.ddoc-editor-root`) is `overflow: hidden`.
-- A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element.
+- A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element. Focus mode does not hide it: hide your own element from `onFocusModeChange` if you want that.
 - The navbar and toolbars no longer slide or fade when hidden; their rows are removed and the canvas takes the space.
 - The mobile tab panel sits at the editor's bottom edge. It no longer adds `24px + env(safe-area-inset-bottom)`, so your footer must carry the safe-area inset.
 - The editor's responsive classes use `:where()` in their window fallback, so they need Chrome 88+, Safari 14+ or Firefox 78+.
