@@ -76,6 +76,19 @@ describe('DdocEditor mounted structure', () => {
     host.remove();
   });
 
+  it('renders the collapse chevron unless showNavbarToggle is false', async () => {
+    const chevron = () => document.querySelector('.lucide-chevron-up');
+
+    render(<DdocEditor />);
+    await act(async () => {});
+    expect(chevron()).not.toBeNull();
+    cleanup();
+
+    render(<DdocEditor showNavbarToggle={false} />);
+    await act(async () => {});
+    expect(chevron()).toBeNull();
+  });
+
   it('is a query container only when the safety check passes', async () => {
     expect((await mount()).classList.contains('ddoc-editor-cq')).toBe(true);
     cleanup();

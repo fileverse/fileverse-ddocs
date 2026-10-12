@@ -103,6 +103,7 @@ const DdocEditor = forwardRef(
       setUsername,
       renderNavbar,
       navbarContainer,
+      showNavbarToggle,
       walletAddress,
       onChange,
       onCollaboratorChange,
@@ -879,6 +880,7 @@ const DdocEditor = forwardRef(
               setZoomLevel={setZoomLevel}
               isNavbarVisible={isNavbarVisible}
               setIsNavbarVisible={setIsNavbarVisible}
+              showNavbarToggle={showNavbarToggle}
               ipfsImageUploadFn={ipfsImageUploadFn}
               onMarkdownExport={onMarkdownExport}
               onMarkdownImport={onMarkdownImport}
@@ -929,6 +931,7 @@ const DdocEditor = forwardRef(
               isKeyboardVisible={isKeyboardVisible}
               isNavbarVisible={isNavbarVisible}
               setIsNavbarVisible={setIsNavbarVisible}
+              showNavbarToggle={showNavbarToggle}
               ipfsImageUploadFn={ipfsImageUploadFn}
               ipfsImageFetchFn={ipfsImageFetchFn}
               fetchV1ImageFn={fetchV1ImageFn}

@@ -163,7 +163,7 @@ Behaviour that changes without a code change on your side:
 - UI features that did nothing without their `setX` prop now work on internal state. The Split View toggle shows whenever live collaboration is off (it needed `setIsSplitView` before), and the comment drawer, the outline and presentation mode open without a setter. To keep one fixed, pass its value with no callback, for example `isPresentationMode={false}`. For Split View, `isSplitView={false}` keeps the editor out of Split View, but the toolbar toggle is still shown and does nothing.
 - `onFocusModeChange` and the deprecated `onFocusMode` also fire when `isFocusMode` is not passed.
 - `#editor-canvas` is now the document scroller (it carries `data-editor-scroll-container`), and the root (`.ddoc-editor-root`) is `overflow: hidden`.
-- A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element. Focus mode and the toolbar's collapse toggle do not hide it: hide your own element from `onFocusModeChange` and `onNavbarVisibleChange` if you want that.
+- A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element. Focus mode and the toolbar's collapse toggle do not hide it: hide your own element from `onFocusModeChange` and `onNavbarVisibleChange` if you want that, or pass `showNavbarToggle={false}` to remove the collapse toggle.
 - The navbar and toolbars no longer slide or fade when hidden; their rows are removed and the canvas takes the space.
 - The mobile tab panel sits at the editor's bottom edge. It no longer adds `24px + env(safe-area-inset-bottom)`, so your footer must carry the safe-area inset.
 - The editor's responsive classes use `:where()` in their window fallback, so they need Chrome 88+, Safari 14+ or Firefox 78+.
@@ -211,6 +211,7 @@ Every UI state can be left out (the editor keeps it internally), or controlled w
 | `setIsNavbarVisible`        | `React.Dispatch<SetStateAction<boolean>>` | Deprecated, use `onNavbarVisibleChange`                                             |
 | `renderNavbar`              | `() => JSX.Element`                       | Custom navbar renderer. Without it no navbar is rendered                            |
 | `navbarContainer`           | `HTMLElement \| null`                     | Element to render the navbar into. Omit for in-flow. `null` renders nothing until it attaches |
+| `showNavbarToggle`          | `boolean`                                 | Show the toolbar's navbar collapse chevron. Default `true`                          |
 | `renderThemeToggle`         | `() => JSX.Element`                       | Custom theme toggle renderer                                                        |
 | `showTOC`                   | `boolean`                                 | Controls the outline                                                                |
 | `onShowTOCChange`           | `(show: boolean) => void`                 | Outline shown or hidden                                                             |

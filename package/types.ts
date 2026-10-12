@@ -273,6 +273,8 @@ export interface DdocProps extends CommentAccountProps {
    * first row. Pass null while the element is not attached yet.
    */
   navbarContainer?: HTMLElement | null;
+  /** Show the toolbar's navbar collapse chevron. Default true. */
+  showNavbarToggle?: boolean;
   renderNavbar?: ({
     editor,
     liveEditor,

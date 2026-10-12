@@ -39,6 +39,7 @@ const TiptapToolBar = ({
   setZoomLevel,
   isNavbarVisible,
   setIsNavbarVisible,
+  showNavbarToggle = true,
   ipfsImageUploadFn,
   onMarkdownExport,
   onMarkdownImport,
@@ -68,6 +69,7 @@ const TiptapToolBar = ({
   setZoomLevel: (zoom: string) => void;
   isNavbarVisible: boolean;
   setIsNavbarVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  showNavbarToggle?: boolean;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
   onMarkdownExport?: () => void;
   onMarkdownImport?: () => void;
@@ -455,12 +457,14 @@ const TiptapToolBar = ({
             id="focus-mode-button"
           />
         </Tooltip>
-        <IconButton
-          size="sm"
-          variant="ghost"
-          icon={isNavbarVisible ? 'ChevronUp' : 'ChevronDown'}
-          onClick={handleNavbarVisibilityToggle}
-        />
+        {showNavbarToggle && (
+          <IconButton
+            size="sm"
+            variant="ghost"
+            icon={isNavbarVisible ? 'ChevronUp' : 'ChevronDown'}
+            onClick={handleNavbarVisibilityToggle}
+          />
+        )}
       </div>
     </div>
   );

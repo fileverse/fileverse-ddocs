@@ -173,6 +173,7 @@ Today three things read the window: `useMediaQuery` (23 calls in 16 files, thres
 - Changing the target element, or switching between portalled and in-flow, remounts the navbar subtree and loses its local state.
 - The `<nav id="Navbar">` wrapper and its Escape-returns-focus-to-editor handler are kept in both cases. It loses `fixed`, `w-screen`, `top-0` and `h-[var(--navbar)]`; height comes from its content.
 - Visibility: hidden when `isNavbarVisible` is false, in focus mode and in presentation mode, as today. Hiding collapses the row (no translate), because a translated in-flow row leaves a gap. Exception: a portalled navbar is hidden only in presentation mode. It stays in focus mode and when `isNavbarVisible` is false, because its element belongs to the host's layout and hiding only its content leaves an empty host header. The host hides its own element from `onFocusModeChange` and `onNavbarVisibleChange` if it wants to.
+- New prop `showNavbarToggle?: boolean`, default `true`. `false` removes the collapse chevron from both toolbars. A host with a portalled navbar either wires the chevron through `onNavbarVisibleChange` or turns it off; otherwise the chevron changes nothing visible.
 
 ## 4. State
 
