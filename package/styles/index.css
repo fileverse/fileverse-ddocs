@@ -602,7 +602,8 @@ div[data-type='page-break']:hover .remove-page-break-icon {
    A host with a portalled navbar can put these classes on its own element. */
 .ddoc-navbar-row {
   display: grid;
-  grid-template-rows: 1fr;
+  /* minmax(0, …): a plain fr track cannot shrink below the navbar's padding. */
+  grid-template-rows: minmax(0, 1fr);
   align-items: end;
   flex-shrink: 0;
   overflow: hidden;
@@ -612,12 +613,8 @@ div[data-type='page-break']:hover .remove-page-break-icon {
     visibility 0s;
 }
 
-.ddoc-navbar-row > * {
-  min-height: 0;
-}
-
 .ddoc-navbar-row--hidden {
-  grid-template-rows: 0fr;
+  grid-template-rows: minmax(0, 0fr);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
