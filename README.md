@@ -2,7 +2,7 @@
 [ddocs.new](http://ddocs.new/) is your privacy-focused, open-source alternative to Google Docs. It is an end-to-end encrypted document editor that is optimized for multiplayer collaboration without compromising on speed or people's control over their data.
 
 ## 𓆏 Features include:
-- End-to-end encryption
+- End-to-end encryption with post-quantum cryptography
 - Real-time and async collaboration
 - Suggestion mode (tracked changes) and commenting
 - Markdown and LaTeX support
