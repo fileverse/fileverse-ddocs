@@ -1604,11 +1604,10 @@ const DdocEditor = forwardRef(
                 renderNavbar={renderNavbar}
                 container={navbarContainer}
                 // A portalled navbar sits in the host's layout, so focus mode
-                // leaves it to the host (onFocusModeChange).
+                // and the collapse toggle leave it to the host's callbacks.
                 isHidden={
-                  (isFocusMode && !navbarContainer) ||
-                  !isNavbarVisible ||
-                  isPresentationMode
+                  isPresentationMode ||
+                  (!navbarContainer && (isFocusMode || !isNavbarVisible))
                 }
               />
               {!isSplitViewActive && editorToolbar}
