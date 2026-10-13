@@ -47,6 +47,7 @@ export const useDdocEditor = ({
   isPreviewEditor = false,
   fonts,
   preferredSchemaVersion,
+  onSchemaStampGuard,
   ...rest
 }: Partial<DdocProps> & {
   isFocusMode?: boolean;
@@ -147,6 +148,7 @@ export const useDdocEditor = ({
       !shouldWaitForIndexeddbBeforeCreatingDefaultTab ||
       yjsSetup.isIndexeddbSynced,
     preferredSchemaVersion,
+    onSchemaStampGuard,
   });
 
   const tabEditor = useTabEditor({
