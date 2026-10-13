@@ -346,7 +346,16 @@ export interface DdocProps extends CommentAccountProps {
    * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, corrupted DB), when a save is rejected (e.g., quota exceeded), when the browser closes or another tab deletes the database (the editor detaches from it), and when a corrupt store was repaired on load. The editor keeps working in memory; `refreshYjsIndexedDbProvider` attaches again and saves what it holds.
    */
   onIndexedDbError?: (error: Error) => void;
+  /**
+   * Called when the schema-version stamp was refused or reverted
+   * @description The editor stamps brand-new docs with the preferred schema. If the host passed an empty body for a doc that turns out to hold v1 content, the stamp is blocked (or reverted when the content arrived late). Hosts report these to see how often an existing doc is mounted without its body.
+   */
+  onSchemaStampGuard?: (event: SchemaStampGuardEvent) => void;
 }
+
+export type SchemaStampGuardEvent =
+  | { kind: 'blocked'; preferredSchemaVersion: number }
+  | { kind: 'reverted'; preferredSchemaVersion: number };
 
 export interface IEditorSelectionData {
   from: number;
