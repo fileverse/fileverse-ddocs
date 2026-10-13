@@ -105,6 +105,7 @@ export async function startImageUpload(
   view: EditorView,
   pos: number,
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>,
+  { replaceSelection = true }: { replaceSelection?: boolean } = {},
 ) {
   // check if the file is an image
   if (!file.type.includes('image/')) {
@@ -116,9 +117,10 @@ export async function startImageUpload(
   const id = {};
 
   try {
-    // Replace the selection with a placeholder
+    // Paste replaces the selection; a file drop inserts at its own position
+    // and must preserve any selected text elsewhere in the document.
     const tr = view.state.tr;
-    if (!tr.selection.empty) tr.deleteSelection();
+    if (replaceSelection && !tr.selection.empty) tr.deleteSelection();
 
     tr.setMeta(uploadKey, {
       add: {
