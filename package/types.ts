@@ -51,12 +51,7 @@ export type CommentMutationType =
 
 export type SuggestionType = 'add' | 'replace' | 'delete' | 'link';
 
-export type SuggestionStructureType =
-  | 'block'
-  | 'listItem'
-  | 'listExit'
-  | 'soft'
-  | 'text';
+export type SuggestionStructureType = 'block' | 'listItem' | 'soft' | 'text';
 
 export interface SuggestionMultilineStructure {
   version: 1;

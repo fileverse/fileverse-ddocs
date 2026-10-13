@@ -1800,42 +1800,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     line-height: 1.38;
   }
 
-  .suggestion-list-exit-line {
-    display: inline-block;
-    position: relative;
-    left: -2rem;
-
-    &:not([data-nested='true']) {
-      margin-top: 1em;
-    }
-
-    &[data-nested='true'] {
-      margin-top: 0.5rem;
-    }
-
-    &[data-task='true'] {
-      left: -1.75rem;
-    }
-  }
-
-  .suggestion-list-exit-marker {
-    position: absolute;
-    right: calc(100% + 0.25rem);
-    color: hsla(var(--color-text-default));
-    white-space: nowrap;
-
-    &[data-task='true'] {
-      top: 0.125em;
-      right: calc(100% + 0.5rem);
-      width: 1.25rem;
-      height: 1.25rem;
-      border: 2px solid hsla(var(--color-border-active));
-      border-radius: 4px;
-      background-color: hsla(var(--color-bg-default));
-      color: transparent;
-    }
-  }
-
   .suggestion-task-line {
     display: inline-block;
     margin-top: 0.5rem;
@@ -1927,17 +1891,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
       background-color: rgb(74 222 128 / 0.08);
     }
   }
-}
-
-.ProseMirror li:has(> p .suggestion-list-exit-line)::marker,
-.ProseMirror li:has(> p .suggestion-list-exit-line)::before {
-  color: transparent;
-}
-
-.ProseMirror ul[data-type='taskList']
-  li:has(> div > p .suggestion-list-exit-line)
-  > label {
-  visibility: hidden;
 }
 
 .suggestion-source-caret-hidden {

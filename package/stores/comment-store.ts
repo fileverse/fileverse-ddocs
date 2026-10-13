@@ -2685,6 +2685,26 @@ export const createCommentStore = () =>
       const selection = editor.state.selection;
       const hadSelection = selection.from < selection.to;
 
+      // A normal Enter would leave an empty list item. In suggestion mode it
+      // must neither edit the document nor create a draft for that exit.
+      if (
+        !shift &&
+        (hadSelection || !findDraftAtEditorCursor(get().drafts, editor.state))
+      ) {
+        const initialKind = resolveSuggestionStructureType(
+          editor,
+          selection.to,
+          undefined,
+          false,
+          {
+            from: selection.from,
+            to: selection.to,
+            insertedText: '',
+          },
+        );
+        if (initialKind === null) return;
+      }
+
       if (hadSelection) {
         get().startDeleteDraft(selection.from, selection.to);
       }
@@ -2736,6 +2756,7 @@ export const createCommentStore = () =>
           insertedText: activeDraft.insertedText,
         },
       );
+      if (kind === null) return;
       const appended = appendSuggestionStructureType(
         activeDraft.insertedText,
         activeDraft.multilineStructure,

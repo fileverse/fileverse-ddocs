@@ -481,6 +481,49 @@ describe('accepted suggestions', () => {
       ).not.toBeNull();
     });
 
+    it(`advances each proposed nested ordered marker in schema v${schemaVersion}`, () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent(
+        '<ol><li><p>Parent</p><ol><li><p>One</p></li><li><p>Two</p></li></ol></li></ol>',
+      );
+      const anchor: CommentAnchor = {
+        id: 'two-ordered-items',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'Two').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: '\nThree\nFour',
+        multilineStructure: {
+          version: 1,
+          insertedTexts: ['', 'Three', 'Four'],
+          structureType: ['listItem', 'listItem'],
+        },
+      };
+      harness.anchors.push(anchor);
+      triggerDecorationRebuild(editor);
+
+      const markers = Array.from(
+        editor.view.dom.querySelectorAll(
+          '[data-suggestion-id="two-ordered-items"] .suggestion-list-marker',
+        ),
+        (marker) => marker.textContent,
+      );
+      expect(markers).toEqual(['c. ', 'd. ']);
+      expect(applyAcceptedSuggestion(editor, anchor)).toBe(true);
+      const items: string[] = [];
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === 'listItem') {
+          items.push(node.firstChild?.textContent ?? '');
+        }
+      });
+      expect(items).toEqual(['Parent', 'One', 'Two', 'Three', 'Four']);
+    });
+
     it(`previews a suggested task as a native task row in schema v${schemaVersion}`, () => {
       const harness = makeCommentEditor(schemaVersion);
       editor = harness.editor;
@@ -564,94 +607,6 @@ describe('accepted suggestions', () => {
           ? json.content?.[0].content?.[0]
           : json.content?.[0];
       expect(taskList?.content?.[1].content?.[1].type).toBe('taskList');
-    });
-
-    it(`previews top-level and nested list exits at the lifted level in schema v${schemaVersion}`, () => {
-      const harness = makeCommentEditor(schemaVersion);
-      editor = harness.editor;
-      editor.commands.setContent(
-        '<ul><li><p>Outer</p><ul><li><p></p></li></ul></li></ul><ul><li><p>Last</p></li><li><p></p></li></ul>',
-      );
-      let count = 0;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name !== 'paragraph' || node.content.size !== 0) return;
-        const id = count++ === 0 ? 'nested-exit-preview' : 'top-exit-preview';
-        harness.anchors.push({
-          id,
-          ...createCommentAnchorPointFromEditor(editor!, pos + 1)!,
-          resolved: false,
-          deleted: false,
-          isSuggestion: true,
-          suggestionType: 'add',
-          suggestedContent: '\nAfter',
-          multilineStructure: {
-            version: 1,
-            insertedTexts: ['', 'After'],
-            structureType: ['listExit'],
-          },
-        });
-      });
-      triggerDecorationRebuild(editor);
-
-      const nested = editor.view.dom.querySelector(
-        '[data-suggestion-id="nested-exit-preview"]',
-      );
-      const top = editor.view.dom.querySelector(
-        '[data-suggestion-id="top-exit-preview"]',
-      );
-      expect(
-        nested?.querySelector('.suggestion-list-exit-marker')?.textContent,
-      ).toBe('• ');
-      expect(top?.querySelector('.suggestion-list-exit-marker')).toBeNull();
-      expect(
-        nested?.querySelector('br[data-suggestion-break="listExit"]')?.hidden,
-      ).toBe(true);
-      expect(
-        top?.querySelector('br[data-suggestion-break="listExit"]')?.hidden,
-      ).toBe(true);
-    });
-
-    it(`previews a nested task exit with a task checkbox in schema v${schemaVersion}`, () => {
-      const harness = makeCommentEditor(schemaVersion);
-      editor = harness.editor;
-      editor.commands.setContent(
-        '<ul data-type="taskList"><li data-type="taskItem"><p>Parent</p><ul data-type="taskList"><li data-type="taskItem"><p></p></li></ul></li></ul>',
-      );
-      let emptyPosition: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === 'paragraph' && node.content.size === 0) {
-          const $pos = editor!.state.doc.resolve(pos + 1);
-          const taskDepth = Array.from({ length: $pos.depth + 1 }, (_, depth) =>
-            $pos.node(depth),
-          ).filter((ancestor) => ancestor.type.name === 'taskItem').length;
-          if (taskDepth === 2) emptyPosition = pos + 1;
-        }
-      });
-      expect(emptyPosition).not.toBeNull();
-      harness.anchors.push({
-        id: 'task-exit-preview',
-        ...createCommentAnchorPointFromEditor(editor, emptyPosition!)!,
-        resolved: false,
-        deleted: false,
-        isSuggestion: true,
-        suggestionType: 'add',
-        suggestedContent: '\nAfter',
-        multilineStructure: {
-          version: 1,
-          insertedTexts: ['', 'After'],
-          structureType: ['listExit'],
-        },
-      });
-      triggerDecorationRebuild(editor);
-
-      const preview = editor.view.dom.querySelector(
-        '[data-suggestion-id="task-exit-preview"]',
-      );
-      expect(
-        preview
-          ?.querySelector('.suggestion-list-exit-marker')
-          ?.getAttribute('data-task'),
-      ).toBe('true');
     });
 
     it(`accepts a recorded block split in schema v${schemaVersion}`, () => {
@@ -789,42 +744,6 @@ describe('accepted suggestions', () => {
       ]);
     });
 
-    it(`exits an empty list item in schema v${schemaVersion}`, () => {
-      const harness = makeCommentEditor(schemaVersion);
-      editor = harness.editor;
-      editor.commands.setContent(
-        '<ul><li><p>ABC</p></li><li><p></p></li></ul>',
-      );
-      let emptyPosition: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (
-          emptyPosition === null &&
-          node.type.name === 'paragraph' &&
-          node.content.size === 0
-        ) {
-          emptyPosition = pos + 1;
-        }
-      });
-      expect(emptyPosition).not.toBeNull();
-      expect(
-        applyAcceptedSuggestion(editor, {
-          id: 'list-exit',
-          ...createCommentAnchorPointFromEditor(editor, emptyPosition!)!,
-          resolved: false,
-          deleted: false,
-          isSuggestion: true,
-          suggestionType: 'add',
-          suggestedContent: '\ny',
-          multilineStructure: {
-            version: 1,
-            insertedTexts: ['', 'y'],
-            structureType: ['listExit'],
-          },
-        }),
-      ).toBe(true);
-      expect(editor.state.doc.textContent).toBe('ABCy');
-    });
-
     it(`records a literal newline inside code in schema v${schemaVersion}`, () => {
       const harness = makeCommentEditor(schemaVersion);
       editor = harness.editor;
@@ -907,48 +826,6 @@ describe('accepted suggestions', () => {
           : json.content;
       expect(blocks?.[0]?.content?.[0].marks?.[0].type).toBe('bold');
       expect(blocks?.[1]?.content?.[0].marks?.[0].type).toBe('bold');
-    });
-
-    it(`exits an empty nested list item in schema v${schemaVersion}`, () => {
-      const harness = makeCommentEditor(schemaVersion);
-      editor = harness.editor;
-      editor.commands.setContent(
-        '<ul><li><p>Outer</p><ul><li><p>Inner</p></li><li><p></p></li></ul></li></ul>',
-      );
-      let position: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (
-          position === null &&
-          node.type.name === 'paragraph' &&
-          node.content.size === 0
-        ) {
-          position = pos + 1;
-        }
-      });
-      expect(position).not.toBeNull();
-      expect(
-        applyAcceptedSuggestion(editor, {
-          id: 'nested-exit',
-          ...createCommentAnchorPointFromEditor(editor, position!)!,
-          resolved: false,
-          deleted: false,
-          isSuggestion: true,
-          suggestionType: 'add',
-          suggestedContent: '\ny',
-          multilineStructure: {
-            version: 1,
-            insertedTexts: ['', 'y'],
-            structureType: ['listExit'],
-          },
-        }),
-      ).toBe(true);
-      expect(editor.state.doc.textContent).toContain('y');
-      const json = editor.state.doc.toJSON();
-      const list =
-        schemaVersion === 1
-          ? json.content?.[0].content?.[0]
-          : json.content?.[0];
-      expect(list?.content).toHaveLength(2);
     });
 
     it(`rejects stale target text without changing the document in v${schemaVersion}`, () => {

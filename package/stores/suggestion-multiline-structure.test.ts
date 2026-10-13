@@ -167,7 +167,7 @@ describe('suggestion draft breaks', () => {
           to: from + 6,
           insertedText: '',
         }),
-      ).toBe('listExit');
+      ).toBeNull();
       expect(
         resolveSuggestionStructureType(
           editor!,
@@ -185,6 +185,70 @@ describe('suggestion draft breaks', () => {
           },
         ),
       ).toBe('listItem');
+    });
+
+    it(`blocks Enter on an empty list item without creating a draft in v${schemaVersion}`, () => {
+      const { store } = setup();
+      for (const html of [
+        '<ul><li><p></p></li></ul>',
+        '<ul><li><p>Outer</p><ul><li><p></p></li></ul></li></ul>',
+        '<ul data-type="taskList"><li data-type="taskItem"><p></p></li></ul>',
+      ]) {
+        editor!.commands.setContent(html);
+        let emptyPosition: number | null = null;
+        editor!.state.doc.descendants((node, pos) => {
+          if (
+            emptyPosition === null &&
+            node.type.name === 'paragraph' &&
+            node.content.size === 0
+          ) {
+            emptyPosition = pos + 1;
+          }
+        });
+        expect(emptyPosition).not.toBeNull();
+        editor!.commands.setTextSelection(emptyPosition!);
+        const before = editor!.state.doc.toJSON();
+
+        store.getState().appendBreakToDraftAtCursor(false);
+
+        expect(store.getState().drafts).toEqual({});
+        expect(editor!.state.doc.toJSON()).toEqual(before);
+      }
+    });
+
+    it(`blocks a second Enter that would exit a proposed empty list item in v${schemaVersion}`, () => {
+      const { store } = setup();
+      editor!.commands.setContent('<ul><li><p>Item</p></li></ul>');
+      let position = 0;
+      editor!.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Item') position = pos + 4;
+      });
+      editor!.commands.setTextSelection(position);
+      const before = editor!.state.doc.toJSON();
+
+      store.getState().appendBreakToDraftAtCursor(false);
+      store.getState().appendBreakToDraftAtCursor(false);
+
+      const drafts = Object.values(store.getState().drafts);
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0].multilineStructure?.structureType).toEqual(['listItem']);
+      expect(editor!.state.doc.toJSON()).toEqual(before);
+    });
+
+    it(`does not create a Replace draft when Enter would empty a list item in v${schemaVersion}`, () => {
+      const { store } = setup();
+      editor!.commands.setContent('<ul><li><p>Item</p></li></ul>');
+      let from = 0;
+      editor!.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Item') from = pos;
+      });
+      editor!.commands.setTextSelection({ from, to: from + 4 });
+      const before = editor!.state.doc.toJSON();
+
+      store.getState().appendBreakToDraftAtCursor(false);
+
+      expect(store.getState().drafts).toEqual({});
+      expect(editor!.state.doc.toJSON()).toEqual(before);
     });
   }
 });

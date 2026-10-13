@@ -14,7 +14,7 @@ export function validMultilineStructure(
     Array.isArray(value.structureType) &&
     value.insertedTexts.every((part) => typeof part === 'string') &&
     value.structureType.every((kind) =>
-      ['block', 'listItem', 'listExit', 'soft', 'text'].includes(kind),
+      ['block', 'listItem', 'soft', 'text'].includes(kind),
     ) &&
     value.structureType.length === value.insertedTexts.length - 1 &&
     value.insertedTexts.join('\n') === content
@@ -22,31 +22,27 @@ export function validMultilineStructure(
 }
 
 /** Resolve the next key against the proposed cursor context, not just the
- * unchanged document. A list exit changes the context for later breaks. */
+ * unchanged document. Enter on an empty list item is blocked. */
 export function resolveSuggestionStructureType(
   editor: Editor,
   position: number,
   existing: SuggestionMultilineStructure | undefined,
   shift: boolean,
   context?: { from: number; to: number; insertedText: string },
-): SuggestionStructureType {
+): SuggestionStructureType | null {
   const $pos = editor.state.doc.resolve(position);
   if ($pos.parent.type.name === 'codeBlock') return 'text';
   if (shift) return 'soft';
 
-  let listDepth = 0;
-  for (let depth = $pos.depth; depth >= 0; depth--) {
-    if (['listItem', 'taskItem'].includes($pos.node(depth).type.name)) {
-      listDepth++;
-    }
-  }
-  for (const kind of existing?.structureType ?? []) {
-    if (kind === 'listExit') listDepth = Math.max(0, listDepth - 1);
-  }
-  if (listDepth === 0) return 'block';
+  const inList = Array.from({ length: $pos.depth + 1 }, (_, depth) =>
+    $pos.node(depth),
+  ).some(
+    (node) => node.type.name === 'listItem' || node.type.name === 'taskItem',
+  );
+  if (!inList) return 'block';
 
   if (!context) {
-    return $pos.parent.content.size === 0 ? 'listExit' : 'listItem';
+    return $pos.parent.content.size === 0 ? null : 'listItem';
   }
   const $start = editor.state.doc.resolve(context.from);
   const $end = editor.state.doc.resolve(context.to);
@@ -55,7 +51,7 @@ export function resolveSuggestionStructureType(
   const structureTypes = existing?.structureType ?? [];
   let lastStructuralBreak = -1;
   structureTypes.forEach((kind, index) => {
-    if (kind === 'block' || kind === 'listItem' || kind === 'listExit') {
+    if (kind === 'block' || kind === 'listItem') {
       lastStructuralBreak = index;
     }
   });
@@ -73,7 +69,7 @@ export function resolveSuggestionStructureType(
   const hasSoftBreak = structureTypes
     .slice(lastStructuralBreak + 1)
     .some((kind) => kind === 'soft');
-  return prefix || proposed || suffix || hasSoftBreak ? 'listItem' : 'listExit';
+  return prefix || proposed || suffix || hasSoftBreak ? 'listItem' : null;
 }
 
 export function appendSuggestionText(

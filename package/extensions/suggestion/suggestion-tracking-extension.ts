@@ -44,7 +44,7 @@ export interface SuggestionTrackingOptions {
 
   /** Viewer types text with a collapsed cursor (Add gesture). */
   onTextInput: (text: string) => void;
-  /** Enter or Shift+Enter contributes a proposed break, never a doc edit. */
+  /** Enter or Shift+Enter may contribute a proposed break, never a doc edit. */
   onBreak: (shift: boolean) => void;
 
   /** Viewer types text over a non-empty selection (Replace gesture). */

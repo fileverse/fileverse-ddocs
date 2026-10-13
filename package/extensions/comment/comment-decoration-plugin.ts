@@ -13,7 +13,7 @@ import {
   type Editor,
 } from '@tiptap/core';
 import { type EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
-import { canSplit, liftTarget, type Transform } from '@tiptap/pm/transform';
+import { canSplit, type Transform } from '@tiptap/pm/transform';
 import { TextSelection } from '@tiptap/pm/state';
 import { type ResolvedPos } from '@tiptap/pm/model';
 import { getSplittedAttributes } from '@tiptap/core';
@@ -27,8 +27,6 @@ import * as Y from 'yjs';
 import { SuggestionMultilineStructure, SuggestionType } from '../../types';
 import { validMultilineStructure } from '../suggestion/multiline-structure';
 import { captureSplit, declareSplit } from '../caret-marks/split-declaration';
-import { sharedList } from '../list-toggle/shared';
-import { toggleOffTopLevel } from '../list-toggle/toggle-off';
 import { suggestionTrackingPluginKey } from '../suggestion/suggestion-tracking-extension';
 
 // ---------------------------------------------------------------------------
@@ -589,7 +587,7 @@ function createSuggestionWidget(
   paragraphAfterHeading = false,
   asFollowingListItem = false,
   visualCaret = false,
-  listExitMarker?: string,
+  listMarkerAt?: (nextItem: number) => string,
 ): HTMLElement {
   if (asFollowingListItem && multilineStructure) {
     const item = document.createElement('li');
@@ -644,10 +642,7 @@ function createSuggestionWidget(
           markerAnchor.className = 'suggestion-list-marker-anchor';
           const marker = document.createElement('span');
           marker.className = 'suggestion-list-marker';
-          const orderedStart = Number.parseInt(listMarker, 10);
-          marker.textContent = Number.isNaN(orderedStart)
-            ? listMarker
-            : `${orderedStart + listItemCount}. `;
+          marker.textContent = listMarkerAt?.(listItemCount + 1) ?? listMarker;
           if (listMarker === '• ') marker.dataset.bullet = 'disc';
           if (listMarker === '◦ ') marker.dataset.bullet = 'circle';
           if (listMarker === '▪ ') marker.dataset.bullet = 'square';
@@ -666,21 +661,6 @@ function createSuggestionWidget(
           currentLine.className = 'suggestion-paragraph-line';
           if (paragraphAfterHeading) {
             currentLine.classList.add('suggestion-paragraph-after-heading');
-          }
-          span.append(currentLine);
-        } else if (kind === 'listExit') {
-          breakNode.hidden = true;
-          span.append(breakNode);
-          currentLine = document.createElement('span');
-          currentLine.className = 'suggestion-list-exit-line';
-          if (listMarker === '☐ ') currentLine.dataset.task = 'true';
-          if (listExitMarker) {
-            currentLine.dataset.nested = 'true';
-            const marker = document.createElement('span');
-            marker.className = 'suggestion-list-exit-marker';
-            marker.textContent = listExitMarker;
-            if (listExitMarker === '☐ ') marker.dataset.task = 'true';
-            currentLine.append(marker);
           }
           span.append(currentLine);
         } else {
@@ -711,7 +691,7 @@ const createSuggestionWidgetRenderer =
     paragraphAfterHeading?: boolean,
     asFollowingListItem?: boolean,
     visualCaret?: boolean,
-    listExitMarker?: string,
+    listMarkerAt?: (nextItem: number) => string,
   ) =>
   () =>
     createSuggestionWidget(
@@ -723,7 +703,7 @@ const createSuggestionWidgetRenderer =
       paragraphAfterHeading,
       asFollowingListItem,
       visualCaret,
-      listExitMarker,
+      listMarkerAt,
     );
 
 function breaksIntoParagraphAfterHeading(
@@ -765,20 +745,6 @@ function followingListItemPreviewPosition(
   return null;
 }
 
-function suggestionListExitMarker(state: EditorState, pos: number): string {
-  const $pos = state.doc.resolve(pos);
-  let itemCount = 0;
-  for (let depth = $pos.depth; depth >= 0; depth--) {
-    if (!['listItem', 'taskItem'].includes($pos.node(depth).type.name))
-      continue;
-    itemCount++;
-    if (itemCount === 2) {
-      return suggestionListMarker(state, $pos.before(depth) + 1);
-    }
-  }
-  return '';
-}
-
 function hasOnlyHardBreaksAfterCursor($pos: ResolvedPos): boolean {
   let onlyHardBreaks = true;
   $pos.parent.content.cut($pos.parentOffset).forEach((node) => {
@@ -787,7 +753,11 @@ function hasOnlyHardBreaksAfterCursor($pos: ResolvedPos): boolean {
   return onlyHardBreaks;
 }
 
-function suggestionListMarker(state: EditorState, pos: number): string {
+function suggestionListMarker(
+  state: EditorState,
+  pos: number,
+  nextItem = 1,
+): string {
   const $pos = state.doc.resolve(pos);
   let listDepth = 0;
   for (let depth = $pos.depth; depth >= 0; depth--) {
@@ -799,7 +769,7 @@ function suggestionListMarker(state: EditorState, pos: number): string {
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
     if (node.type.name === 'orderedList') {
-      const number = (node.attrs.start ?? 1) + $pos.index(depth) + 1;
+      const number = (node.attrs.start ?? 1) + $pos.index(depth) + nextItem;
       if (depth < 2 || $pos.node(depth - 1).type.name !== 'listItem') {
         return `${number}. `;
       }
@@ -944,7 +914,7 @@ function buildDecorations(
             ),
             followingItemPos !== null,
             Boolean(visualCaret),
-            suggestionListExitMarker(state, insertPoint),
+            (nextItem) => suggestionListMarker(state, insertPoint, nextItem),
           ),
           {
             commentId: anchor.id,
@@ -1036,7 +1006,7 @@ function buildDecorations(
               ),
               followingItemPos !== null,
               false,
-              suggestionListExitMarker(state, range.to),
+              (nextItem) => suggestionListMarker(state, range.from, nextItem),
             ),
             {
               commentId: anchor.id,
@@ -1453,107 +1423,74 @@ export function applyAcceptedSuggestion(
               (item || $cursor.parent.type.name === 'codeBlock')
             )
               return false;
-            if ((kind === 'listItem' || kind === 'listExit') && !item)
-              return false;
-            if (kind === 'listExit') {
-              if ($cursor.parent.content.size !== 0) return false;
-              const list = sharedList($cursor, $cursor);
-              if (!list) return false;
-              const itemIndex = $cursor.index(list.depth);
-              const outer = $cursor.node(list.depth - 1);
-              if (
-                outer.type.name === 'listItem' ||
-                outer.type.name === 'taskItem'
-              ) {
-                const range = $cursor.blockRange(
-                  $cursor,
-                  (node) => node.firstChild?.type === item?.type,
-                );
-                const target = range && liftTarget(range);
-                if (!range || target === null || target === undefined)
-                  return false;
-                tr.lift(range, target);
-              } else {
-                toggleOffTopLevel(
-                  tr,
-                  list,
-                  itemIndex,
-                  itemIndex,
-                  state.schema.nodes.dBlock,
-                );
-              }
-              const mapped = tr.mapping.map(position, 1);
-              tr.setSelection(TextSelection.near(tr.doc.resolve(mapped)));
-              if (!tr.selection.$from.parent.isTextblock) return false;
+            if (kind === 'listItem' && !item) return false;
+            const capture = captureSplit(tr, editor);
+            const itemDepth =
+              kind === 'listItem'
+                ? Array.from(
+                    { length: $cursor.depth + 1 },
+                    (_, offset) => $cursor.depth - offset,
+                  ).find(
+                    (depth) => $cursor.node(depth).type.name === 'listItem',
+                  )
+                : undefined;
+            const depth =
+              kind === 'listItem' || $cursor.node(-1).type.name === 'dBlock'
+                ? 2
+                : 1;
+            const block = $cursor.parent;
+            const nextBlockType =
+              kind === 'block' &&
+              block.type.name === 'heading' &&
+              $cursor.parentOffset === block.content.size
+                ? state.schema.nodes.paragraph
+                : block.type;
+            if (!nextBlockType) return false;
+            const blockAttrs = getSplittedAttributes(
+              editor.extensionManager.attributes,
+              block.type.name,
+              block.attrs,
+            );
+            const wrapperAttrs =
+              kind === 'listItem' && item
+                ? getSplittedAttributes(
+                    editor.extensionManager.attributes,
+                    item.type.name,
+                    item.attrs,
+                  )
+                : $cursor.node(-1).attrs;
+            const types =
+              depth === 2
+                ? [
+                    {
+                      type: $cursor.node(-1).type,
+                      attrs: wrapperAttrs,
+                    },
+                    { type: nextBlockType, attrs: blockAttrs },
+                  ]
+                : [{ type: nextBlockType, attrs: blockAttrs }];
+            if (
+              itemDepth !== undefined &&
+              hasOnlyHardBreaksAfterCursor($cursor) &&
+              $cursor.index(itemDepth) < item!.childCount - 1
+            ) {
+              // Splitting the paragraph here moves its trailing sublist to
+              // the new item. Keep that sublist on the original item and
+              // insert the proposed sibling after the complete item.
+              const sibling = item!.type.create(wrapperAttrs, [
+                nextBlockType.create(blockAttrs),
+              ]);
+              const afterItem = $cursor.after(itemDepth);
+              tr.insert(afterItem, sibling);
+              tr.setSelection(TextSelection.create(tr.doc, afterItem + 2));
+              if (capture) declareSplit(tr, capture);
             } else {
-              const capture = captureSplit(tr, editor);
-              const itemDepth =
-                kind === 'listItem'
-                  ? Array.from(
-                      { length: $cursor.depth + 1 },
-                      (_, offset) => $cursor.depth - offset,
-                    ).find(
-                      (depth) => $cursor.node(depth).type.name === 'listItem',
-                    )
-                  : undefined;
-              const depth =
-                kind === 'listItem' || $cursor.node(-1).type.name === 'dBlock'
-                  ? 2
-                  : 1;
-              const block = $cursor.parent;
-              const nextBlockType =
-                kind === 'block' &&
-                block.type.name === 'heading' &&
-                $cursor.parentOffset === block.content.size
-                  ? state.schema.nodes.paragraph
-                  : block.type;
-              if (!nextBlockType) return false;
-              const blockAttrs = getSplittedAttributes(
-                editor.extensionManager.attributes,
-                block.type.name,
-                block.attrs,
+              if (!canSplit(tr.doc, position, depth, types)) return false;
+              tr.split(position, depth, types);
+              tr.setSelection(
+                TextSelection.create(tr.doc, position + depth * 2),
               );
-              const wrapperAttrs =
-                kind === 'listItem' && item
-                  ? getSplittedAttributes(
-                      editor.extensionManager.attributes,
-                      item.type.name,
-                      item.attrs,
-                    )
-                  : $cursor.node(-1).attrs;
-              const types =
-                depth === 2
-                  ? [
-                      {
-                        type: $cursor.node(-1).type,
-                        attrs: wrapperAttrs,
-                      },
-                      { type: nextBlockType, attrs: blockAttrs },
-                    ]
-                  : [{ type: nextBlockType, attrs: blockAttrs }];
-              if (
-                itemDepth !== undefined &&
-                hasOnlyHardBreaksAfterCursor($cursor) &&
-                $cursor.index(itemDepth) < item!.childCount - 1
-              ) {
-                // Splitting the paragraph here moves its trailing sublist to
-                // the new item. Keep that sublist on the original item and
-                // insert the proposed sibling after the complete item.
-                const sibling = item!.type.create(wrapperAttrs, [
-                  nextBlockType.create(blockAttrs),
-                ]);
-                const afterItem = $cursor.after(itemDepth);
-                tr.insert(afterItem, sibling);
-                tr.setSelection(TextSelection.create(tr.doc, afterItem + 2));
-                if (capture) declareSplit(tr, capture);
-              } else {
-                if (!canSplit(tr.doc, position, depth, types)) return false;
-                tr.split(position, depth, types);
-                tr.setSelection(
-                  TextSelection.create(tr.doc, position + depth * 2),
-                );
-                if (capture) declareSplit(tr, capture);
-              }
+              if (capture) declareSplit(tr, capture);
             }
           }
         }
