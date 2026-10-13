@@ -10,9 +10,20 @@ export const getSerializedCommentAnchorsKey = (
   }
 
   return anchors
-    .map(
-      (anchor) =>
-        `${anchor.id}:${anchor.anchorFrom}:${anchor.anchorTo}:${anchor.resolved}:${anchor.deleted}`,
+    .map((anchor) =>
+      JSON.stringify([
+        anchor.id,
+        anchor.anchorFrom,
+        anchor.anchorTo,
+        anchor.resolved,
+        anchor.deleted,
+        anchor.isSuggestion,
+        anchor.suggestionType,
+        anchor.originalContent,
+        anchor.suggestedContent,
+        anchor.lineInsertion,
+        anchor.followsSuggestionId,
+      ]),
     )
     .join(',');
 };
@@ -51,6 +62,8 @@ export const deserializeCommentAnchors = (
           base.suggestionType = anchor.suggestionType;
           base.originalContent = anchor.originalContent;
           base.suggestedContent = anchor.suggestedContent;
+          base.lineInsertion = anchor.lineInsertion;
+          base.followsSuggestionId = anchor.followsSuggestionId;
         }
 
         return base;

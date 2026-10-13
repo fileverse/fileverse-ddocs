@@ -213,6 +213,7 @@ export const CommentStoreProvider = ({
             .filter(
               (anchor) =>
                 !anchor.deleted &&
+                !(anchor.isSuggestion && anchor.resolved) &&
                 hasResolvableCommentAnchorInState(anchor, editor.state),
             )
             .map((anchor) => anchor.id)
@@ -437,6 +438,34 @@ export const CommentStoreProvider = ({
     editor,
     refreshCommentAnchorState,
   ]);
+
+  // Some consumers keep suggestion metadata and resolution status on the
+  // comment while their serialized anchor record contains the original
+  // positions. Reconcile those fields without changing the anchor positions.
+  useEffect(() => {
+    if (!commentAnchorsRef) return;
+    const commentsById = new Map(initialComments.map((comment) => [comment.id, comment]));
+    let changed = false;
+    commentAnchorsRef.current = commentAnchorsRef.current.map((anchor) => {
+      const comment = commentsById.get(anchor.id);
+      if (!comment?.isSuggestion) return anchor;
+      const lineInsertion = anchor.lineInsertion ?? comment.lineInsertion;
+      const followsSuggestionId =
+        anchor.followsSuggestionId ?? comment.followsSuggestionId;
+      const resolved = comment.resolved ?? anchor.resolved;
+      const deleted = comment.deleted ?? anchor.deleted;
+      if (
+        lineInsertion === anchor.lineInsertion &&
+        followsSuggestionId === anchor.followsSuggestionId &&
+        resolved === anchor.resolved &&
+        deleted === anchor.deleted
+      )
+        return anchor;
+      changed = true;
+      return { ...anchor, lineInsertion, followsSuggestionId, resolved, deleted };
+    });
+    if (changed && editor) triggerDecorationRebuild(editor);
+  }, [initialComments, commentAnchorsRef, editor]);
 
   useEffect(() => {
     store.getState().setUsername(username);
@@ -810,7 +839,9 @@ export const CommentStoreProvider = ({
           const restoredAnchors: CommentAnchor[] = [];
 
           removedAnchorsRef.current.forEach((removedAnchor, commentId) => {
-            if (hasResolvableCommentAnchorInState(removedAnchor, editor.state)) {
+            if (
+              hasResolvableCommentAnchorInState(removedAnchor, editor.state)
+            ) {
               restoredAnchors.push(removedAnchor);
               removedAnchorsRef.current.delete(commentId);
             }
@@ -848,9 +879,9 @@ export const CommentStoreProvider = ({
               return false;
             }
 
-            if (anchor.isSuggestion && anchor.suggestionType === 'add') {
-              return true;
-            }
+            // Submitted suggestions retain their original relative positions.
+            // Acceptance validates them against the document at that time.
+            if (anchor.isSuggestion) return false;
 
             return (
               resolveCommentAnchorRangeForAnalysis(anchor, oldState) !== null

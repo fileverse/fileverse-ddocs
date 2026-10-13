@@ -1,4 +1,5 @@
 import { Editor } from '@tiptap/react';
+import { toast } from '@fileverse/ui';
 import {
   createContext,
   useCallback,
@@ -16,7 +17,14 @@ import {
   resolveCommentAnchorRangeInState,
   triggerDecorationRebuild,
 } from '../extensions/comment/comment-decoration-plugin';
-import { SuggestionType } from '../types';
+import { SuggestionLineInsertion, SuggestionType } from '../types';
+import {
+  appendSuggestionBreak,
+  appendSuggestionText,
+  resolveSuggestionBreak,
+  undoSuggestionInput,
+  validLineInsertion,
+} from '../extensions/suggestion/line-insertion';
 import uuid from 'react-uuid';
 import { createStore, useStore } from 'zustand';
 import { fromUint8Array } from 'js-base64';
@@ -98,6 +106,10 @@ export interface DraftSuggestion {
   originalContent: string;
   /** Accumulated text the viewer has typed. Empty for a pure Delete draft. */
   insertedText: string;
+  lineInsertion?: SuggestionLineInsertion;
+  followsSuggestionId?: string;
+  /** A selected-range Enter owns its break; the next text starts an Add. */
+  followUpAddAfterBreak?: boolean;
   /** Per-keystroke history for undo — each entry is one typed character. */
   keystrokes: string[];
   /** True when the draft was created via select+delete or select+type. */
@@ -130,9 +142,12 @@ function deriveDraftAnchor(draft: DraftSuggestion): CommentAnchor {
     resolved: false,
     deleted: false,
     isSuggestion: true,
+    isDraft: true,
     suggestionType: deriveDraftSuggestionType(draft),
     originalContent: draft.originalContent,
     suggestedContent: draft.linkHref ?? draft.insertedText,
+    lineInsertion: draft.lineInsertion,
+    followsSuggestionId: draft.followsSuggestionId,
   };
 }
 
@@ -141,12 +156,23 @@ function findDraftAtEditorCursor(
   state: EditorState,
 ): DraftSuggestion | null {
   const { from, to } = state.selection;
+  // A new Add at the end of a Replace takes the next keystrokes.
+  for (const draft of Object.values(drafts)) {
+    if (isRangeDraft(draft)) continue;
+    const point = resolveCommentAnchorPointInState(draft, state);
+    if (point !== null && from === to && from === point) return draft;
+  }
   for (const draft of Object.values(drafts)) {
     if (isRangeDraft(draft)) {
       // Delete / Replace / Link draft: cursor must be within [anchorFrom, anchorTo]
       const range = resolveCommentAnchorRangeInState(draft, state);
       if (!range) continue;
-      if (from >= range.from && to <= range.to) return draft;
+      if (
+        from >= range.from &&
+        to <= range.to &&
+        !(draft.followUpAddAfterBreak && from === to && from === range.to)
+      )
+        return draft;
     } else {
       // Add draft: point anchor — cursor must be exactly at the anchor point
       const point = resolveCommentAnchorPointInState(draft, state);
@@ -857,6 +883,7 @@ export interface CommentStoreState {
    * Creates a new Add draft if no draft exists at the cursor.
    */
   appendToDraftAtCursor: (text: string) => void;
+  appendBreakToDraftAtCursor: (shift: boolean) => void;
   /**
    * Create a Delete (or pending Replace) draft from a selection range.
    * Captures originalContent, leaves insertedText empty; type becomes 'replace'
@@ -1064,6 +1091,9 @@ export const createCommentStore = () =>
           originalContent: comment.originalContent ?? previous.originalContent,
           suggestedContent:
             comment.suggestedContent ?? previous.suggestedContent,
+          lineInsertion: comment.lineInsertion ?? previous.lineInsertion,
+          followsSuggestionId:
+            comment.followsSuggestionId ?? previous.followsSuggestionId,
           deleted: comment.deleted || previous.deleted || false,
           resolved: comment.resolved || previous.resolved || false,
         };
@@ -2509,13 +2539,24 @@ export const createCommentStore = () =>
         (a) => a.id === commentId && a.isSuggestion,
       );
 
-      if (!anchor || !commentAnchorsRef) return;
+      if (!anchor || anchor.resolved || anchor.deleted || !commentAnchorsRef)
+        return;
 
-      const applied = applyAcceptedSuggestion(editor, anchor);
-      if (!applied) return;
+      const applied = applyAcceptedSuggestion(
+        editor,
+        anchor,
+        commentAnchorsRef.current,
+      );
+      if (!applied) {
+        toast({
+          title: 'This suggestion cannot be applied to the current document.',
+          toastType: 'mini',
+        });
+        return;
+      }
 
-      commentAnchorsRef.current = commentAnchorsRef.current.filter(
-        (a) => a.id !== commentId,
+      commentAnchorsRef.current = commentAnchorsRef.current.map((entry) =>
+        entry.id === commentId ? { ...entry, resolved: true } : entry,
       );
       triggerDecorationRebuild(editor);
 
@@ -2524,6 +2565,8 @@ export const createCommentStore = () =>
         suggestionType: anchor.suggestionType,
         originalContent: anchor.originalContent,
         suggestedContent: anchor.suggestedContent,
+        lineInsertion: anchor.lineInsertion,
+        followsSuggestionId: anchor.followsSuggestionId,
       });
 
       set((state) => ({
@@ -2561,9 +2604,15 @@ export const createCommentStore = () =>
       let activeSuggestionDraftIdAtCursor: string;
 
       if (activeDraft) {
+        const appended = appendSuggestionText(
+          activeDraft.insertedText,
+          activeDraft.lineInsertion,
+          text,
+        );
         const extended: DraftSuggestion = {
           ...activeDraft,
-          insertedText: activeDraft.insertedText + text,
+          insertedText: appended.content,
+          lineInsertion: appended.lineInsertion,
           keystrokes: [...activeDraft.keystrokes, text],
         };
         nextDrafts = { ...currentDrafts, [activeDraft.id]: extended };
@@ -2576,7 +2625,17 @@ export const createCommentStore = () =>
         activeSuggestionDraftIdAtCursor = activeDraft.id;
       } else {
         const { from } = editor.state.selection;
-        const anchorPoint = createCommentAnchorPointFromEditor(editor, from);
+        const parentReplace = Object.values(currentDrafts).find((draft) => {
+          if (!draft.hadDeletion || !draft.followUpAddAfterBreak) return false;
+          return (
+            resolveCommentAnchorRangeInState(draft, editor.state)?.to === from
+          );
+        });
+        const anchorPoint = createCommentAnchorPointFromEditor(
+          editor,
+          from,
+          parentReplace && !parentReplace.lineInsertion ? 1 : -1,
+        );
         if (!anchorPoint) return;
 
         const id = `suggestion-${uuid()}`;
@@ -2588,6 +2647,7 @@ export const createCommentStore = () =>
           insertedText: text,
           keystrokes: [text],
           hadDeletion: false,
+          followsSuggestionId: parentReplace?.id,
         };
         nextDrafts = { ...currentDrafts, [id]: newDraft };
 
@@ -2615,6 +2675,91 @@ export const createCommentStore = () =>
         draftAnchorsRef.current =
           Object.values(nextDrafts).map(deriveDraftAnchor);
       }
+      triggerDecorationRebuild(editor);
+    },
+
+    appendBreakToDraftAtCursor: (shift) => {
+      const { editor, draftAnchorsRef } = getExtDeps(get);
+      if (!editor) return;
+      const selection = editor.state.selection;
+      const hadSelection = selection.from < selection.to;
+
+      if (hadSelection) {
+        get().startDeleteDraft(selection.from, selection.to);
+      }
+
+      let activeDraft = findDraftAtEditorCursor(get().drafts, editor.state);
+      if (activeDraft?.linkHref) return;
+
+      if (
+        activeDraft?.hadDeletion &&
+        activeDraft.insertedText &&
+        !hadSelection
+      ) {
+        // The typed Replace is complete. Its original range stays pending;
+        // a point-anchored Add owns this and subsequent breaks/text.
+        const nextDrafts = {
+          ...get().drafts,
+          [activeDraft.id]: { ...activeDraft, followUpAddAfterBreak: true },
+        };
+        syncSuggestionDraftState(
+          set,
+          nextDrafts,
+          get().floatingCards,
+          draftAnchorsRef,
+          null,
+        );
+        get().appendToDraftAtCursor('');
+        activeDraft = findDraftAtEditorCursor(get().drafts, editor.state);
+      } else if (!activeDraft) {
+        get().appendToDraftAtCursor('');
+        activeDraft = findDraftAtEditorCursor(get().drafts, editor.state);
+      }
+      if (!activeDraft) return;
+
+      const activeRange = activeDraft.hadDeletion
+        ? resolveCommentAnchorRangeInState(activeDraft, editor.state)
+        : null;
+      const position =
+        activeRange?.to ??
+        resolveCommentAnchorPointInState(activeDraft, editor.state);
+      if (position === null || position === undefined) return;
+      const kind = resolveSuggestionBreak(
+        editor,
+        position,
+        activeDraft.lineInsertion,
+        shift,
+        {
+          from: activeRange?.from ?? position,
+          to: position,
+          insertedText: activeDraft.insertedText,
+        },
+      );
+      const appended = appendSuggestionBreak(
+        activeDraft.insertedText,
+        activeDraft.lineInsertion,
+        kind,
+      );
+      const updated: DraftSuggestion = {
+        ...activeDraft,
+        insertedText: appended.content,
+        lineInsertion: appended.lineInsertion,
+        followUpAddAfterBreak: activeDraft.hadDeletion || undefined,
+        keystrokes: [...activeDraft.keystrokes, '\n'],
+      };
+      const nextDrafts = { ...get().drafts, [updated.id]: updated };
+      const nextCards = get().floatingCards.map((card) =>
+        card.type === 'suggestion-draft' && card.suggestionId === updated.id
+          ? { ...card, insertedText: updated.insertedText }
+          : card,
+      );
+      syncSuggestionDraftState(
+        set,
+        nextDrafts,
+        nextCards,
+        draftAnchorsRef,
+        updated.id,
+      );
       triggerDecorationRebuild(editor);
     },
 
@@ -2818,7 +2963,11 @@ export const createCommentStore = () =>
       if (!activeDraft) return;
 
       const nextKeystrokes = activeDraft.keystrokes.slice(0, -1);
-      const nextInsertedText = nextKeystrokes.join('');
+      const undone = undoSuggestionInput(
+        activeDraft.insertedText,
+        activeDraft.lineInsertion,
+        activeDraft.keystrokes[activeDraft.keystrokes.length - 1] ?? '',
+      );
 
       // When no keystrokes remain (pure Add / Replace undone to empty, or
       // pure Delete with no keystrokes ever), discard the draft.
@@ -2830,12 +2979,15 @@ export const createCommentStore = () =>
       const updated: DraftSuggestion = {
         ...activeDraft,
         keystrokes: nextKeystrokes,
-        insertedText: nextInsertedText,
+        insertedText: undone.content,
+        lineInsertion: undone.lineInsertion,
+        followUpAddAfterBreak:
+          activeDraft.hadDeletion && Boolean(undone.lineInsertion),
       };
       const nextDrafts = { ...get().drafts, [activeDraft.id]: updated };
       const nextCards = get().floatingCards.map((c) =>
         c.type === 'suggestion-draft' && c.suggestionId === activeDraft.id
-          ? { ...c, insertedText: nextInsertedText }
+          ? { ...c, insertedText: undone.content }
           : c,
       );
 
@@ -2859,7 +3011,18 @@ export const createCommentStore = () =>
       if (!currentDrafts[suggestionId]) return;
 
       const nextDrafts = { ...currentDrafts };
+      const parentId = nextDrafts[suggestionId].followsSuggestionId;
       delete nextDrafts[suggestionId];
+      if (
+        parentId &&
+        nextDrafts[parentId] &&
+        !nextDrafts[parentId].lineInsertion
+      ) {
+        nextDrafts[parentId] = {
+          ...nextDrafts[parentId],
+          followUpAddAfterBreak: false,
+        };
+      }
 
       const nextCards = get().floatingCards.filter(
         (c) =>
@@ -2958,10 +3121,21 @@ export const createCommentStore = () =>
       }
 
       const suggestionType = deriveDraftSuggestionType(draftToSubmit);
+      if (
+        draftToSubmit.lineInsertion &&
+        !validLineInsertion(
+          draftToSubmit.insertedText,
+          draftToSubmit.lineInsertion,
+        )
+      )
+        return;
 
       // Promote draft anchor into commentAnchorsRef so the decoration layer
       // reads it from the "submitted" source henceforth.
-      const submittedAnchor: CommentAnchor = deriveDraftAnchor(draftToSubmit);
+      const submittedAnchor: CommentAnchor = {
+        ...deriveDraftAnchor(draftToSubmit),
+        isDraft: false,
+      };
       commentAnchorsRef.current = [
         ...commentAnchorsRef.current,
         submittedAnchor,
@@ -3001,6 +3175,8 @@ export const createCommentStore = () =>
         suggestionType,
         originalContent: draftToSubmit.originalContent,
         suggestedContent: draftToSubmit.linkHref ?? draftToSubmit.insertedText,
+        lineInsertion: draftToSubmit.lineInsertion,
+        followsSuggestionId: draftToSubmit.followsSuggestionId,
         resolved: false,
         deleted: false,
         createdAt: new Date(),
@@ -3036,6 +3212,8 @@ export const createCommentStore = () =>
         suggestionType,
         originalContent: draftToSubmit.originalContent,
         suggestedContent: draftToSubmit.linkHref ?? draftToSubmit.insertedText,
+        lineInsertion: draftToSubmit.lineInsertion,
+        followsSuggestionId: draftToSubmit.followsSuggestionId,
       };
 
       onNewComment?.(newComment, meta);

@@ -51,6 +51,19 @@ export type CommentMutationType =
 
 export type SuggestionType = 'add' | 'replace' | 'delete' | 'link';
 
+export type SuggestionBreak =
+  | 'block'
+  | 'listItem'
+  | 'listExit'
+  | 'soft'
+  | 'text';
+
+export interface SuggestionLineInsertion {
+  version: 1;
+  parts: string[];
+  breaks: SuggestionBreak[];
+}
+
 export interface CommentMutationMeta {
   type: CommentMutationType;
   updateChunk?: string;
@@ -61,6 +74,8 @@ export interface CommentMutationMeta {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  lineInsertion?: SuggestionLineInsertion;
+  followsSuggestionId?: string;
 }
 
 export interface SerializedCommentAnchor {
@@ -73,6 +88,8 @@ export interface SerializedCommentAnchor {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  lineInsertion?: SuggestionLineInsertion;
+  followsSuggestionId?: string;
 }
 
 export interface CommentAccountProps {
