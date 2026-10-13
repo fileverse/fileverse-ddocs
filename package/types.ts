@@ -328,7 +328,16 @@ export interface DdocProps extends CommentAccountProps {
    * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, quota exceeded, corrupted DB). The editor will continue to function without local persistence.
    */
   onIndexedDbError?: (error: Error) => void;
+  /**
+   * Called when the schema-version stamp was refused or reverted
+   * @description The editor stamps brand-new docs with the preferred schema. If the host passed an empty body for a doc that turns out to hold v1 content, the stamp is blocked (or reverted when the content arrived late). Hosts report these to see how often an existing doc is mounted without its body.
+   */
+  onSchemaStampGuard?: (event: SchemaStampGuardEvent) => void;
 }
+
+export type SchemaStampGuardEvent =
+  | { kind: 'blocked'; preferredSchemaVersion: number }
+  | { kind: 'reverted'; preferredSchemaVersion: number };
 
 export interface IEditorSelectionData {
   from: number;
