@@ -290,6 +290,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
     <BubbleMenu
       ref={handleBubbleMenuRef}
       editor={editor}
+      data-editor-bubble-menu=""
       appendTo={
         isBelow1280px
           ? undefined
