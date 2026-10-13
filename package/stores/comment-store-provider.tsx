@@ -444,25 +444,34 @@ export const CommentStoreProvider = ({
   // positions. Reconcile those fields without changing the anchor positions.
   useEffect(() => {
     if (!commentAnchorsRef) return;
-    const commentsById = new Map(initialComments.map((comment) => [comment.id, comment]));
+    const commentsById = new Map(
+      initialComments.map((comment) => [comment.id, comment]),
+    );
     let changed = false;
     commentAnchorsRef.current = commentAnchorsRef.current.map((anchor) => {
       const comment = commentsById.get(anchor.id);
       if (!comment?.isSuggestion) return anchor;
-      const lineInsertion = anchor.lineInsertion ?? comment.lineInsertion;
+      const multilineStructure =
+        anchor.multilineStructure ?? comment.multilineStructure;
       const followsSuggestionId =
         anchor.followsSuggestionId ?? comment.followsSuggestionId;
       const resolved = comment.resolved ?? anchor.resolved;
       const deleted = comment.deleted ?? anchor.deleted;
       if (
-        lineInsertion === anchor.lineInsertion &&
+        multilineStructure === anchor.multilineStructure &&
         followsSuggestionId === anchor.followsSuggestionId &&
         resolved === anchor.resolved &&
         deleted === anchor.deleted
       )
         return anchor;
       changed = true;
-      return { ...anchor, lineInsertion, followsSuggestionId, resolved, deleted };
+      return {
+        ...anchor,
+        multilineStructure,
+        followsSuggestionId,
+        resolved,
+        deleted,
+      };
     });
     if (changed && editor) triggerDecorationRebuild(editor);
   }, [initialComments, commentAnchorsRef, editor]);

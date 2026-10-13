@@ -21,7 +21,7 @@ export const getSerializedCommentAnchorsKey = (
         anchor.suggestionType,
         anchor.originalContent,
         anchor.suggestedContent,
-        anchor.lineInsertion,
+        anchor.multilineStructure,
         anchor.followsSuggestionId,
       ]),
     )
@@ -62,7 +62,7 @@ export const deserializeCommentAnchors = (
           base.suggestionType = anchor.suggestionType;
           base.originalContent = anchor.originalContent;
           base.suggestedContent = anchor.suggestedContent;
-          base.lineInsertion = anchor.lineInsertion;
+          base.multilineStructure = anchor.multilineStructure;
           base.followsSuggestionId = anchor.followsSuggestionId;
         }
 

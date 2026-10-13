@@ -5,7 +5,7 @@ import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 import { createCommentStore } from './comment-store';
 import type { CommentAnchor } from '../extensions/comment/comment-decoration-plugin';
 import { SuggestionTrackingExtension } from '../extensions/suggestion/suggestion-tracking-extension';
-import { resolveSuggestionBreak } from '../extensions/suggestion/line-insertion';
+import { resolveSuggestionStructureType } from '../extensions/suggestion/multiline-structure';
 
 describe('suggestion draft breaks', () => {
   let editor: Editor | null = null;
@@ -50,9 +50,9 @@ describe('suggestion draft breaks', () => {
       const drafts = Object.values(store.getState().drafts);
       expect(drafts).toHaveLength(2);
       expect(drafts[0].insertedText).toBe('xxxx');
-      expect(drafts[0].lineInsertion).toBeUndefined();
+      expect(drafts[0].multilineStructure).toBeUndefined();
       expect(drafts[1].insertedText).toBe('\nyyy');
-      expect(drafts[1].lineInsertion?.breaks).toEqual(['block']);
+      expect(drafts[1].multilineStructure?.structureType).toEqual(['block']);
       expect(drafts[1].followsSuggestionId).toBe(drafts[0].id);
       expect(editor!.state.doc.textContent).toBe('ABColdDEF');
       store.getState().discardDraft(drafts[1].id);
@@ -69,9 +69,9 @@ describe('suggestion draft breaks', () => {
       const drafts = Object.values(store.getState().drafts);
       expect(drafts).toHaveLength(2);
       expect(drafts[0].insertedText).toBe('\n');
-      expect(drafts[0].lineInsertion?.breaks).toEqual(['block']);
+      expect(drafts[0].multilineStructure?.structureType).toEqual(['block']);
       expect(drafts[1].insertedText).toBe('yyy');
-      expect(drafts[1].lineInsertion).toBeUndefined();
+      expect(drafts[1].multilineStructure).toBeUndefined();
       expect(drafts[1].followsSuggestionId).toBe(drafts[0].id);
       expect(editor!.state.doc.textContent).toBe('ABColdDEF');
     });
@@ -85,11 +85,11 @@ describe('suggestion draft breaks', () => {
       store.getState().undoLastKeystrokeInActiveDraft();
       let draft = Object.values(store.getState().drafts)[0];
       expect(draft.insertedText).toBe('x\n');
-      expect(draft.lineInsertion?.parts).toEqual(['x', '']);
+      expect(draft.multilineStructure?.insertedTexts).toEqual(['x', '']);
       store.getState().undoLastKeystrokeInActiveDraft();
       draft = Object.values(store.getState().drafts)[0];
       expect(draft.insertedText).toBe('x');
-      expect(draft.lineInsertion).toBeUndefined();
+      expect(draft.multilineStructure).toBeUndefined();
     });
 
     it(`routes Enter and Shift+Enter without editing the document in v${schemaVersion}`, () => {
@@ -137,8 +137,13 @@ describe('suggestion draft breaks', () => {
       store.getState().submitDraft(draft.id);
       expect(deps.commentAnchorsRef?.current[0].isDraft).toBe(false);
       expect(created).toHaveLength(1);
-      expect(created[0].comment.lineInsertion?.parts).toEqual(['x', 'y']);
-      expect(created[0].meta?.lineInsertion?.breaks).toEqual(['block']);
+      expect(created[0].comment.multilineStructure?.insertedTexts).toEqual([
+        'x',
+        'y',
+      ]);
+      expect(created[0].meta?.multilineStructure?.structureType).toEqual([
+        'block',
+      ]);
       expect(store.getState().drafts).toEqual({});
     });
 
@@ -150,27 +155,27 @@ describe('suggestion draft breaks', () => {
         if (node.isText && node.text?.includes('old')) from = pos;
       });
       expect(
-        resolveSuggestionBreak(editor!, from + 3, undefined, false, {
+        resolveSuggestionStructureType(editor!, from + 3, undefined, false, {
           from,
           to: from + 3,
           insertedText: '',
         }),
       ).toBe('listItem');
       expect(
-        resolveSuggestionBreak(editor!, from + 6, undefined, false, {
+        resolveSuggestionStructureType(editor!, from + 6, undefined, false, {
           from,
           to: from + 6,
           insertedText: '',
         }),
       ).toBe('listExit');
       expect(
-        resolveSuggestionBreak(
+        resolveSuggestionStructureType(
           editor!,
           from + 3,
           {
             version: 1,
-            parts: ['x', ''],
-            breaks: ['listItem'],
+            insertedTexts: ['x', ''],
+            structureType: ['listItem'],
           },
           false,
           {

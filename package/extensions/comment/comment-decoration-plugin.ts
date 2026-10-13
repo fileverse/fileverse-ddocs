@@ -24,8 +24,8 @@ import {
   relativePositionToAbsolutePosition,
 } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
-import { SuggestionLineInsertion, SuggestionType } from '../../types';
-import { validLineInsertion } from '../suggestion/line-insertion';
+import { SuggestionMultilineStructure, SuggestionType } from '../../types';
+import { validMultilineStructure } from '../suggestion/multiline-structure';
 import { captureSplit, declareSplit } from '../caret-marks/split-declaration';
 import { sharedList } from '../list-toggle/shared';
 import { toggleOffTopLevel } from '../list-toggle/toggle-off';
@@ -45,7 +45,7 @@ export interface CommentAnchor {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
-  lineInsertion?: SuggestionLineInsertion;
+  multilineStructure?: SuggestionMultilineStructure;
   followsSuggestionId?: string;
   isDraft?: boolean;
 }
@@ -163,16 +163,19 @@ export function resolveSuggestionAddPointInState(
   const parent = anchors.find(
     (entry) => entry.id === anchor.followsSuggestionId,
   );
-  if (!parent?.resolved || !parent.lineInsertion) return point;
+  if (!parent?.resolved || !parent.multilineStructure) return point;
   if (
-    !validLineInsertion(parent.suggestedContent, parent.lineInsertion) ||
-    parent.lineInsertion.parts.some(Boolean) ||
-    parent.lineInsertion.breaks.length !== 1
+    !validMultilineStructure(
+      parent.suggestedContent,
+      parent.multilineStructure,
+    ) ||
+    parent.multilineStructure.insertedTexts.some(Boolean) ||
+    parent.multilineStructure.structureType.length !== 1
   )
     return null;
   const parentPoint = resolveCommentAnchorPointInState(parent, state);
   if (parentPoint === null) return null;
-  const kind = parent.lineInsertion.breaks[0];
+  const kind = parent.multilineStructure.structureType[0];
   if (kind === 'soft' || kind === 'text') return parentPoint + 1;
   const currentBlockEnd = state.doc.resolve(parentPoint).after();
   let nextTextblock: number | null = null;
@@ -581,18 +584,18 @@ function createSuggestionWidget(
   text: string,
   commentId: string,
   isActive: boolean,
-  lineInsertion?: SuggestionLineInsertion,
+  multilineStructure?: SuggestionMultilineStructure,
   listMarker = '• ',
   paragraphAfterHeading = false,
   asFollowingListItem = false,
   visualCaret = false,
   listExitMarker?: string,
 ): HTMLElement {
-  if (asFollowingListItem && lineInsertion) {
+  if (asFollowingListItem && multilineStructure) {
     const item = document.createElement('li');
     item.className = 'suggestion-add suggestion-list-item-preview';
     const paragraph = document.createElement('p');
-    paragraph.textContent = lineInsertion.parts[1] || '\u200b';
+    paragraph.textContent = multilineStructure.insertedTexts[1] || '\u200b';
     if (listMarker === '☐ ') {
       item.classList.add('grid', 'task-item');
       item.dataset.checked = 'false';
@@ -621,11 +624,11 @@ function createSuggestionWidget(
   const appendPart = (part: string) => {
     currentLine.append(document.createTextNode(part));
   };
-  if (lineInsertion && validLineInsertion(text, lineInsertion)) {
+  if (multilineStructure && validMultilineStructure(text, multilineStructure)) {
     let listItemCount = 0;
-    lineInsertion.parts.forEach((part, index) => {
+    multilineStructure.insertedTexts.forEach((part, index) => {
       if (index > 0) {
-        const kind = lineInsertion.breaks[index - 1];
+        const kind = multilineStructure.structureType[index - 1];
         const breakNode = document.createElement('br');
         breakNode.dataset.suggestionBreak = kind;
         if (kind === 'listItem') {
@@ -703,7 +706,7 @@ const createSuggestionWidgetRenderer =
     text: string,
     commentId: string,
     isActive: boolean,
-    lineInsertion?: SuggestionLineInsertion,
+    multilineStructure?: SuggestionMultilineStructure,
     listMarker?: string,
     paragraphAfterHeading?: boolean,
     asFollowingListItem?: boolean,
@@ -715,7 +718,7 @@ const createSuggestionWidgetRenderer =
       text,
       commentId,
       isActive,
-      lineInsertion,
+      multilineStructure,
       listMarker,
       paragraphAfterHeading,
       asFollowingListItem,
@@ -726,9 +729,9 @@ const createSuggestionWidgetRenderer =
 function breaksIntoParagraphAfterHeading(
   state: EditorState,
   position: number,
-  lineInsertion?: SuggestionLineInsertion,
+  multilineStructure?: SuggestionMultilineStructure,
 ): boolean {
-  if (!lineInsertion?.breaks.includes('block')) return false;
+  if (!multilineStructure?.structureType.includes('block')) return false;
   const $position = state.doc.resolve(position);
   return (
     $position.parent.type.name === 'heading' &&
@@ -739,12 +742,12 @@ function breaksIntoParagraphAfterHeading(
 function followingListItemPreviewPosition(
   state: EditorState,
   pos: number,
-  lineInsertion?: SuggestionLineInsertion,
+  multilineStructure?: SuggestionMultilineStructure,
 ): number | null {
   if (
-    lineInsertion?.parts.length !== 2 ||
-    lineInsertion.parts[0] !== '' ||
-    lineInsertion.breaks[0] !== 'listItem'
+    multilineStructure?.insertedTexts.length !== 2 ||
+    multilineStructure.insertedTexts[0] !== '' ||
+    multilineStructure.structureType[0] !== 'listItem'
   )
     return null;
   const $pos = state.doc.resolve(pos);
@@ -909,7 +912,7 @@ function buildDecorations(
       const followingItemPos = followingListItemPreviewPosition(
         state,
         insertPoint,
-        anchor.lineInsertion,
+        anchor.multilineStructure,
       );
       const visualCaret =
         followingItemPos !== null &&
@@ -932,12 +935,12 @@ function buildDecorations(
             anchor.suggestedContent,
             anchor.id,
             isActive,
-            anchor.lineInsertion,
+            anchor.multilineStructure,
             suggestionListMarker(state, insertPoint),
             breaksIntoParagraphAfterHeading(
               state,
               insertPoint,
-              anchor.lineInsertion,
+              anchor.multilineStructure,
             ),
             followingItemPos !== null,
             Boolean(visualCaret),
@@ -948,7 +951,7 @@ function buildDecorations(
             active: isActive,
             suggestion: true,
             side: -1,
-            key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${JSON.stringify(anchor.lineInsertion)}-${suggestionListMarker(state, insertPoint)}-${visualCaret ? 'caret' : 'no-caret'}-${
+            key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, insertPoint)}-${visualCaret ? 'caret' : 'no-caret'}-${
               isActive ? 'active' : 'inactive'
             }`,
           },
@@ -1015,7 +1018,7 @@ function buildDecorations(
         const followingItemPos = followingListItemPreviewPosition(
           state,
           range.to,
-          anchor.lineInsertion,
+          anchor.multilineStructure,
         );
         decorations.push(
           Decoration.widget(
@@ -1024,12 +1027,12 @@ function buildDecorations(
               suggestedContent,
               anchor.id,
               isActive,
-              anchor.lineInsertion,
+              anchor.multilineStructure,
               suggestionListMarker(state, range.from),
               breaksIntoParagraphAfterHeading(
                 state,
                 range.to,
-                anchor.lineInsertion,
+                anchor.multilineStructure,
               ),
               followingItemPos !== null,
               false,
@@ -1040,7 +1043,7 @@ function buildDecorations(
               active: isActive,
               suggestion: true,
               side: -1,
-              key: `suggestion-insert-${anchor.id}-${suggestedContent}-${JSON.stringify(anchor.lineInsertion)}-${suggestionListMarker(state, range.from)}-${
+              key: `suggestion-insert-${anchor.id}-${suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, range.from)}-${
                 isActive ? 'active' : 'inactive'
               }`,
             },
@@ -1396,10 +1399,10 @@ export function applyAcceptedSuggestion(
 
     const { suggestionType, suggestedContent } = anchor;
 
-    if (anchor.lineInsertion) {
+    if (anchor.multilineStructure) {
       if (
         (suggestionType !== 'add' && suggestionType !== 'replace') ||
-        !validLineInsertion(suggestedContent, anchor.lineInsertion) ||
+        !validMultilineStructure(suggestedContent, anchor.multilineStructure) ||
         (suggestionType === 'add' && from !== to) ||
         (suggestionType === 'replace' && from >= to)
       )
@@ -1416,10 +1419,10 @@ export function applyAcceptedSuggestion(
       const tr = state.tr;
       if (suggestionType === 'replace') tr.delete(from, to);
       tr.setSelection(TextSelection.create(tr.doc, from));
-      const line = anchor.lineInsertion;
-      for (let index = 0; index < line.parts.length; index++) {
+      const line = anchor.multilineStructure;
+      for (let index = 0; index < line.insertedTexts.length; index++) {
         if (index > 0) {
-          const kind = line.breaks[index - 1];
+          const kind = line.structureType[index - 1];
           const position = tr.selection.from;
           const $cursor = tr.doc.resolve(position);
           if (kind === 'text') {
@@ -1554,7 +1557,7 @@ export function applyAcceptedSuggestion(
             }
           }
         }
-        const part = line.parts[index];
+        const part = line.insertedTexts[index];
         if (part) tr.insertText(part);
       }
       if (!tr.docChanged) return false;

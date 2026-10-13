@@ -290,10 +290,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: 'x\ny\nz',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['x', 'y', 'z'],
-          breaks: ['block', 'soft'],
+          insertedTexts: ['x', 'y', 'z'],
+          structureType: ['block', 'soft'],
         },
       });
       triggerDecorationRebuild(editor);
@@ -318,10 +318,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nHeading 1',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['', 'Heading 1'],
-          breaks: ['block'],
+          insertedTexts: ['', 'Heading 1'],
+          structureType: ['block'],
         },
       });
       triggerDecorationRebuild(editor);
@@ -353,10 +353,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nAfter',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['', 'After'],
-          breaks: ['block'],
+          insertedTexts: ['', 'After'],
+          structureType: ['block'],
         },
       });
       triggerDecorationRebuild(editor);
@@ -395,10 +395,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\nyes',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'yes'],
-            breaks: ['listItem'],
+            insertedTexts: ['', 'yes'],
+            structureType: ['listItem'],
           },
         });
       }
@@ -443,10 +443,10 @@ describe('accepted suggestions', () => {
           isDraft: id === 'alpha-preview',
           suggestionType: 'add',
           suggestedContent: '\nNew',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'New'],
-            breaks: ['listItem'],
+            insertedTexts: ['', 'New'],
+            structureType: ['listItem'],
           },
         });
       }
@@ -498,10 +498,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nNext',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['', 'Next'],
-          breaks: ['listItem'],
+          insertedTexts: ['', 'Next'],
+          structureType: ['listItem'],
         },
       });
       triggerDecorationRebuild(editor);
@@ -539,10 +539,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nNew parent',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['', 'New parent'],
-          breaks: ['listItem'],
+          insertedTexts: ['', 'New parent'],
+          structureType: ['listItem'],
         },
       };
       harness.anchors.push(anchor);
@@ -584,10 +584,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\nAfter',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'After'],
-            breaks: ['listExit'],
+            insertedTexts: ['', 'After'],
+            structureType: ['listExit'],
           },
         });
       });
@@ -636,10 +636,10 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nAfter',
-        lineInsertion: {
+        multilineStructure: {
           version: 1,
-          parts: ['', 'After'],
-          breaks: ['listExit'],
+          insertedTexts: ['', 'After'],
+          structureType: ['listExit'],
         },
       });
       triggerDecorationRebuild(editor);
@@ -670,10 +670,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'xxxx\nyyy',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['xxxx', 'yyy'],
-            breaks: ['block'],
+            insertedTexts: ['xxxx', 'yyy'],
+            structureType: ['block'],
           },
         }),
       ).toBe(true);
@@ -698,10 +698,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'x\n\ny\nz',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['x', '', 'y', 'z'],
-            breaks: ['block', 'block', 'soft'],
+            insertedTexts: ['x', '', 'y', 'z'],
+            structureType: ['block', 'block', 'soft'],
           },
         }),
       ).toBe(true);
@@ -732,10 +732,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'x\ny',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['x', 'y'],
-            breaks: ['listItem'],
+            insertedTexts: ['x', 'y'],
+            structureType: ['listItem'],
           },
         }),
       ).toBe(true);
@@ -764,10 +764,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\nNew',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'New'],
-            breaks: ['listItem'],
+            insertedTexts: ['', 'New'],
+            structureType: ['listItem'],
           },
         }),
       ).toBe(true);
@@ -815,10 +815,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\ny',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'y'],
-            breaks: ['listExit'],
+            insertedTexts: ['', 'y'],
+            structureType: ['listExit'],
           },
         }),
       ).toBe(true);
@@ -839,10 +839,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'x\ny',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['x', 'y'],
-            breaks: ['text'],
+            insertedTexts: ['x', 'y'],
+            structureType: ['text'],
           },
         }),
       ).toBe(true);
@@ -863,10 +863,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'x\ny',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['x', 'y'],
-            breaks: ['block'],
+            insertedTexts: ['x', 'y'],
+            structureType: ['block'],
           },
         }),
       ).toBe(true);
@@ -893,7 +893,11 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: 'x\ny',
-          lineInsertion: { version: 1, parts: ['x', 'y'], breaks: ['block'] },
+          multilineStructure: {
+            version: 1,
+            insertedTexts: ['x', 'y'],
+            structureType: ['block'],
+          },
         }),
       ).toBe(true);
       const json = editor.state.doc.toJSON();
@@ -931,7 +935,11 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\ny',
-          lineInsertion: { version: 1, parts: ['', 'y'], breaks: ['listExit'] },
+          multilineStructure: {
+            version: 1,
+            insertedTexts: ['', 'y'],
+            structureType: ['listExit'],
+          },
         }),
       ).toBe(true);
       expect(editor.state.doc.textContent).toContain('y');
@@ -957,7 +965,11 @@ describe('accepted suggestions', () => {
         suggestionType: 'replace',
         originalContent: 'old',
         suggestedContent: '\n',
-        lineInsertion: { version: 1, parts: ['', ''], breaks: ['block'] },
+        multilineStructure: {
+          version: 1,
+          insertedTexts: ['', ''],
+          structureType: ['block'],
+        },
       };
       editor.commands.insertContentAt(range.from, { type: 'text', text: 'X' });
       const before = editor.state.doc.toJSON();
@@ -989,10 +1001,10 @@ describe('accepted suggestions', () => {
           isSuggestion: true,
           suggestionType: 'add',
           suggestedContent: '\nyyy',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', 'yyy'],
-            breaks: ['block'],
+            insertedTexts: ['', 'yyy'],
+            structureType: ['block'],
           },
         };
         expect(editor.state.doc.textContent).toBe('ABColdDEF');
@@ -1019,10 +1031,10 @@ describe('accepted suggestions', () => {
           suggestionType: 'replace',
           originalContent: 'old',
           suggestedContent: '\n',
-          lineInsertion: {
+          multilineStructure: {
             version: 1,
-            parts: ['', ''],
-            breaks: ['block'],
+            insertedTexts: ['', ''],
+            structureType: ['block'],
           },
         };
         const add: CommentAnchor = {
@@ -1079,7 +1091,11 @@ describe('accepted suggestions', () => {
         isSuggestion: true,
         suggestionType: 'add',
         suggestedContent: '\nyyy',
-        lineInsertion: { version: 1, parts: ['', 'yyy'], breaks: ['block'] },
+        multilineStructure: {
+          version: 1,
+          insertedTexts: ['', 'yyy'],
+          structureType: ['block'],
+        },
         followsSuggestionId: replace.id,
       };
       expect(applyAcceptedSuggestion(editor, replace)).toBe(true);

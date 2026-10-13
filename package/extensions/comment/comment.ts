@@ -11,7 +11,7 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import * as Y from 'yjs';
-import { SuggestionLineInsertion, SuggestionType } from '../../types';
+import { SuggestionMultilineStructure, SuggestionType } from '../../types';
 import {
   createCommentAnchorFromEditor,
   resolveCommentAnchorRangeInState,
@@ -429,7 +429,7 @@ export interface IComment {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
-  lineInsertion?: SuggestionLineInsertion;
+  multilineStructure?: SuggestionMultilineStructure;
   followsSuggestionId?: string;
 }
 

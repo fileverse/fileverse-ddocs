@@ -17,14 +17,14 @@ import {
   resolveCommentAnchorRangeInState,
   triggerDecorationRebuild,
 } from '../extensions/comment/comment-decoration-plugin';
-import { SuggestionLineInsertion, SuggestionType } from '../types';
+import { SuggestionMultilineStructure, SuggestionType } from '../types';
 import {
-  appendSuggestionBreak,
+  appendSuggestionStructureType,
   appendSuggestionText,
-  resolveSuggestionBreak,
+  resolveSuggestionStructureType,
   undoSuggestionInput,
-  validLineInsertion,
-} from '../extensions/suggestion/line-insertion';
+  validMultilineStructure,
+} from '../extensions/suggestion/multiline-structure';
 import uuid from 'react-uuid';
 import { createStore, useStore } from 'zustand';
 import { fromUint8Array } from 'js-base64';
@@ -106,7 +106,7 @@ export interface DraftSuggestion {
   originalContent: string;
   /** Accumulated text the viewer has typed. Empty for a pure Delete draft. */
   insertedText: string;
-  lineInsertion?: SuggestionLineInsertion;
+  multilineStructure?: SuggestionMultilineStructure;
   followsSuggestionId?: string;
   /** A selected-range Enter owns its break; the next text starts an Add. */
   followUpAddAfterBreak?: boolean;
@@ -146,7 +146,7 @@ function deriveDraftAnchor(draft: DraftSuggestion): CommentAnchor {
     suggestionType: deriveDraftSuggestionType(draft),
     originalContent: draft.originalContent,
     suggestedContent: draft.linkHref ?? draft.insertedText,
-    lineInsertion: draft.lineInsertion,
+    multilineStructure: draft.multilineStructure,
     followsSuggestionId: draft.followsSuggestionId,
   };
 }
@@ -1091,7 +1091,8 @@ export const createCommentStore = () =>
           originalContent: comment.originalContent ?? previous.originalContent,
           suggestedContent:
             comment.suggestedContent ?? previous.suggestedContent,
-          lineInsertion: comment.lineInsertion ?? previous.lineInsertion,
+          multilineStructure:
+            comment.multilineStructure ?? previous.multilineStructure,
           followsSuggestionId:
             comment.followsSuggestionId ?? previous.followsSuggestionId,
           deleted: comment.deleted || previous.deleted || false,
@@ -2565,7 +2566,7 @@ export const createCommentStore = () =>
         suggestionType: anchor.suggestionType,
         originalContent: anchor.originalContent,
         suggestedContent: anchor.suggestedContent,
-        lineInsertion: anchor.lineInsertion,
+        multilineStructure: anchor.multilineStructure,
         followsSuggestionId: anchor.followsSuggestionId,
       });
 
@@ -2606,13 +2607,13 @@ export const createCommentStore = () =>
       if (activeDraft) {
         const appended = appendSuggestionText(
           activeDraft.insertedText,
-          activeDraft.lineInsertion,
+          activeDraft.multilineStructure,
           text,
         );
         const extended: DraftSuggestion = {
           ...activeDraft,
           insertedText: appended.content,
-          lineInsertion: appended.lineInsertion,
+          multilineStructure: appended.multilineStructure,
           keystrokes: [...activeDraft.keystrokes, text],
         };
         nextDrafts = { ...currentDrafts, [activeDraft.id]: extended };
@@ -2634,7 +2635,7 @@ export const createCommentStore = () =>
         const anchorPoint = createCommentAnchorPointFromEditor(
           editor,
           from,
-          parentReplace && !parentReplace.lineInsertion ? 1 : -1,
+          parentReplace && !parentReplace.multilineStructure ? 1 : -1,
         );
         if (!anchorPoint) return;
 
@@ -2724,10 +2725,10 @@ export const createCommentStore = () =>
         activeRange?.to ??
         resolveCommentAnchorPointInState(activeDraft, editor.state);
       if (position === null || position === undefined) return;
-      const kind = resolveSuggestionBreak(
+      const kind = resolveSuggestionStructureType(
         editor,
         position,
-        activeDraft.lineInsertion,
+        activeDraft.multilineStructure,
         shift,
         {
           from: activeRange?.from ?? position,
@@ -2735,15 +2736,15 @@ export const createCommentStore = () =>
           insertedText: activeDraft.insertedText,
         },
       );
-      const appended = appendSuggestionBreak(
+      const appended = appendSuggestionStructureType(
         activeDraft.insertedText,
-        activeDraft.lineInsertion,
+        activeDraft.multilineStructure,
         kind,
       );
       const updated: DraftSuggestion = {
         ...activeDraft,
         insertedText: appended.content,
-        lineInsertion: appended.lineInsertion,
+        multilineStructure: appended.multilineStructure,
         followUpAddAfterBreak: activeDraft.hadDeletion || undefined,
         keystrokes: [...activeDraft.keystrokes, '\n'],
       };
@@ -2965,7 +2966,7 @@ export const createCommentStore = () =>
       const nextKeystrokes = activeDraft.keystrokes.slice(0, -1);
       const undone = undoSuggestionInput(
         activeDraft.insertedText,
-        activeDraft.lineInsertion,
+        activeDraft.multilineStructure,
         activeDraft.keystrokes[activeDraft.keystrokes.length - 1] ?? '',
       );
 
@@ -2980,9 +2981,9 @@ export const createCommentStore = () =>
         ...activeDraft,
         keystrokes: nextKeystrokes,
         insertedText: undone.content,
-        lineInsertion: undone.lineInsertion,
+        multilineStructure: undone.multilineStructure,
         followUpAddAfterBreak:
-          activeDraft.hadDeletion && Boolean(undone.lineInsertion),
+          activeDraft.hadDeletion && Boolean(undone.multilineStructure),
       };
       const nextDrafts = { ...get().drafts, [activeDraft.id]: updated };
       const nextCards = get().floatingCards.map((c) =>
@@ -3016,7 +3017,7 @@ export const createCommentStore = () =>
       if (
         parentId &&
         nextDrafts[parentId] &&
-        !nextDrafts[parentId].lineInsertion
+        !nextDrafts[parentId].multilineStructure
       ) {
         nextDrafts[parentId] = {
           ...nextDrafts[parentId],
@@ -3122,10 +3123,10 @@ export const createCommentStore = () =>
 
       const suggestionType = deriveDraftSuggestionType(draftToSubmit);
       if (
-        draftToSubmit.lineInsertion &&
-        !validLineInsertion(
+        draftToSubmit.multilineStructure &&
+        !validMultilineStructure(
           draftToSubmit.insertedText,
-          draftToSubmit.lineInsertion,
+          draftToSubmit.multilineStructure,
         )
       )
         return;
@@ -3175,7 +3176,7 @@ export const createCommentStore = () =>
         suggestionType,
         originalContent: draftToSubmit.originalContent,
         suggestedContent: draftToSubmit.linkHref ?? draftToSubmit.insertedText,
-        lineInsertion: draftToSubmit.lineInsertion,
+        multilineStructure: draftToSubmit.multilineStructure,
         followsSuggestionId: draftToSubmit.followsSuggestionId,
         resolved: false,
         deleted: false,
@@ -3212,7 +3213,7 @@ export const createCommentStore = () =>
         suggestionType,
         originalContent: draftToSubmit.originalContent,
         suggestedContent: draftToSubmit.linkHref ?? draftToSubmit.insertedText,
-        lineInsertion: draftToSubmit.lineInsertion,
+        multilineStructure: draftToSubmit.multilineStructure,
         followsSuggestionId: draftToSubmit.followsSuggestionId,
       };
 
