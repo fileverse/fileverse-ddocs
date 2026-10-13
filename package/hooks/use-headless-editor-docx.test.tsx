@@ -120,3 +120,46 @@ describe('headless DOCX import (homepage bulk upload)', () => {
     expect(xml.match(/spaceAfter=/g) ?? []).toHaveLength(3);
   });
 });
+
+describe('headless DOCX import schema version (homepage bulk upload)', () => {
+  const importDocxDoc = async (options?: { schemaVersion?: number }) => {
+    const buffer = await buildDocx(
+      `<w:p><w:r><w:t>docx text</w:t></w:r></w:p>`,
+    );
+    const file = new File([buffer], 'fixture.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (file as any).arrayBuffer = async () => buffer;
+    const { result } = renderHook(() => useHeadlessEditor());
+    const blob = await result.current.getYjsContentFromDocx(
+      file,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async () => ({}) as any,
+      options,
+    );
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, toUint8Array(blob as string));
+    const fragment = doc.getXmlFragment('default');
+    const topLevelTypes: string[] = [];
+    for (let i = 0; i < fragment.length; i++) {
+      topLevelTypes.push((fragment.get(i) as Y.XmlElement).nodeName);
+    }
+    return { doc, topLevelTypes };
+  };
+
+  it('imports as schema 2 when asked: stamped, flat, text kept', async () => {
+    const { doc, topLevelTypes } = await importDocxDoc({ schemaVersion: 2 });
+
+    expect(doc.getMap('ddocMeta').get('schemaVersion')).toBe(2);
+    expect(topLevelTypes).not.toContain('dBlock');
+    expect(doc.getXmlFragment('default').toString()).toContain('docx text');
+  });
+
+  it('keeps the default import on schema 1, as before', async () => {
+    const { doc, topLevelTypes } = await importDocxDoc();
+
+    expect(topLevelTypes[0]).toBe('dBlock');
+    expect(doc.getMap('ddocMeta').get('schemaVersion')).toBeUndefined();
+  });
+});
