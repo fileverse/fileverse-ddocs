@@ -144,14 +144,9 @@ export const useDdocEditor = ({
   const { docSchemaVersion, isSchemaUnsupported } = useDocSchemaVersion({
     ydoc: yjsSetup.ydoc,
     isNewDdoc: Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent),
-    // null is the host's "body still loading" (same convention as
-    // useTabManager's isInitialContentResolved): a published doc whose IPFS
-    // body has not landed yet is not a new doc, however fast the local
-    // store syncs. undefined / '' stay "no content" for brand-new docs.
     isContentResolved:
-      ddocContent !== null &&
-      (!shouldWaitForIndexeddbBeforeCreatingDefaultTab ||
-        yjsSetup.isIndexeddbSynced),
+      !shouldWaitForIndexeddbBeforeCreatingDefaultTab ||
+      yjsSetup.isIndexeddbSynced,
     preferredSchemaVersion,
     onSchemaStampGuard,
   });
