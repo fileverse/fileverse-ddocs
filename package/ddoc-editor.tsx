@@ -67,6 +67,7 @@ import {
 } from './utils/document-styling';
 import { sanitizeCustomCss } from './utils/sanitize-css';
 import { useFocusMode } from './hooks/use-focus-mode';
+import { isFocusModeCanvasClick } from './utils/focus-mode-canvas-click';
 import { FullScreenToolbar } from './components/fullscreen-toolbar';
 import { mergeTabAwareYjsUpdates } from './components/tabs/utils/tab-utils';
 import { DBlockToolbarProvider } from './extensions/d-block/dblock-toolbar';
@@ -736,28 +737,17 @@ const DdocEditor = forwardRef(
     const handleFocusModeMouseDown = (event: React.MouseEvent) => {
       if (!isFocusMode || !editor || event.button !== 0) return;
 
-      const target = event.target as HTMLElement;
+      // Clicks in the editor or on floating UI (bubble menu, dialogs,
+      // popovers) keep the selection; only the bare canvas moves the caret.
+      if (
+        !isFocusModeCanvasClick(
+          event.target as Element,
+          editorContentRef.current,
+        )
+      ) {
+        return;
+      }
 
-      // 1. Ignore clicks inside editor
-      const clickedInsideEditor = editorContentRef.current?.contains(target);
-
-      if (clickedInsideEditor) return;
-
-      // 2. Ignore clicks inside ANY modal / portal
-      const clickedInsideModal = target.closest(
-        '[data-radix-dialog-content], [role="dialog"], [data-modal], [data-overlay]',
-      );
-
-      if (clickedInsideModal) return;
-
-      // 3. Ignore dropdowns / popovers (important for your comment system)
-      const clickedInsideFloatingUI = target.closest(
-        '[data-radix-popper-content-wrapper], [data-floating-ui-portal]',
-      );
-
-      if (clickedInsideFloatingUI) return;
-
-      // 4. Only now treat as canvas click
       event.preventDefault();
 
       editor.commands.focus('end', { scrollIntoView: false });
