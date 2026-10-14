@@ -604,6 +604,8 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   display: grid;
   /* minmax(0, …): a plain fr track cannot shrink below the navbar's padding. */
   grid-template-rows: minmax(0, 1fr);
+  /* An auto column grows to the navbar's min-content, so a long title would widen the row. */
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
   flex-shrink: 0;
   overflow: hidden;
