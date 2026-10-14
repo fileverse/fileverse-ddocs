@@ -149,18 +149,19 @@ export function resolveCommentAnchorPointInState(
   }
 }
 
-/** A break-only Replace can move its following Add across a block boundary.
- * Keep the Add's stored anchor intact and derive its visual/apply position. */
+const ACCEPTED_BREAK_POINTS = 'acceptedSuggestionBreakPoints';
+
+/** Resolve following Adds against the accepted break's persisted Yjs position. */
 export function resolveSuggestionAddPointInState(
   anchor: CommentAnchor,
   state: EditorState,
-  anchors: CommentAnchor[],
+  anchors: CommentAnchor[] | ReadonlyMap<string, CommentAnchor>,
 ): number | null {
   const point = resolveCommentAnchorPointInState(anchor, state);
   if (point === null || !anchor.followsSuggestionId) return point;
-  const parent = anchors.find(
-    (entry) => entry.id === anchor.followsSuggestionId,
-  );
+  const parent = Array.isArray(anchors)
+    ? anchors.find((entry) => entry.id === anchor.followsSuggestionId)
+    : anchors.get(anchor.followsSuggestionId);
   if (!parent?.resolved || !parent.multilineStructure) return point;
   if (
     !validMultilineStructure(
@@ -171,6 +172,17 @@ export function resolveSuggestionAddPointInState(
     parent.multilineStructure.structureType.length !== 1
   )
     return null;
+  const acceptedPoint: Uint8Array | undefined = ySyncPluginKey
+    .getState(state)
+    ?.doc.getMap(ACCEPTED_BREAK_POINTS)
+    .get(parent.id);
+  if (acceptedPoint) {
+    return resolveCommentAnchorPointInState(
+      { ...anchor, anchorFrom: Y.decodeRelativePosition(acceptedPoint) },
+      state,
+    );
+  }
+  // Compatibility for breaks accepted before their positions were persisted.
   const parentPoint = resolveCommentAnchorPointInState(parent, state);
   if (parentPoint === null) return null;
   const kind = parent.multilineStructure.structureType[0];
@@ -842,6 +854,7 @@ function buildDecorations(
   }
 
   const decorations: Decoration[] = [];
+  const anchorsById = new Map(anchors.map((anchor) => [anchor.id, anchor]));
   for (const anchor of anchors) {
     // Skip deleted anchors entirely.
     if (anchor.deleted) continue;
@@ -867,11 +880,11 @@ function buildDecorations(
       const directPoint = resolveSuggestionAddPointInState(
         anchor,
         state,
-        anchors,
+        anchorsById,
       );
-      const resolvedParent = anchors.some(
-        (entry) => entry.id === anchor.followsSuggestionId && entry.resolved,
-      );
+      const resolvedParent = anchor.followsSuggestionId
+        ? anchorsById.get(anchor.followsSuggestionId)?.resolved
+        : false;
       const fallbackPoint = resolveCommentAnchorPointFromDecorationSet(
         anchor.id,
         previousDecorations ?? undefined,
@@ -1379,7 +1392,7 @@ export function applyAcceptedSuggestion(
         return false;
       const $from = state.doc.resolve(from);
       const $to = state.doc.resolve(to);
-      if (!$from.parent.isTextblock || !$from.sameParent($to)) return false;
+      if (!$from.parent.isTextblock || !$to.parent.isTextblock) return false;
       if (
         suggestionType === 'replace' &&
         state.doc.textBetween(from, to, '\n') !== anchor.originalContent
@@ -1499,7 +1512,28 @@ export function applyAcceptedSuggestion(
       }
       if (!tr.docChanged) return false;
       tr.setMeta(suggestionTrackingPluginKey, true);
-      editor.view.dispatch(tr);
+      if (
+        suggestionType === 'replace' &&
+        line.structureType.length === 1 &&
+        !line.insertedTexts.some(Boolean)
+      ) {
+        // Persist with the edit so peers and reloads use the actual break endpoint,
+        // even if later owner edits move it away from the original Replace anchor.
+        doc.transact(() => {
+          editor.view.dispatch(tr);
+          const point = createCommentAnchorPointFromEditor(
+            editor,
+            editor.state.selection.from,
+          );
+          if (point) {
+            doc
+              .getMap(ACCEPTED_BREAK_POINTS)
+              .set(anchor.id, Y.encodeRelativePosition(point.anchorFrom));
+          }
+        }, ySyncPluginKey);
+      } else {
+        editor.view.dispatch(tr);
+      }
       return true;
     }
 

@@ -76,6 +76,52 @@ describe('suggestion draft breaks', () => {
       expect(editor!.state.doc.textContent).toBe('ABColdDEF');
     });
 
+    for (const shift of [false, true]) {
+      for (const middle of ['', '<p>middle</p>']) {
+        it(`accepts ${shift ? 'Shift+Enter' : 'Enter'} across paragraphs (middle=${!!middle}, v${schemaVersion})`, () => {
+          const { store } = setup();
+          editor!.commands.setContent(
+            `<p>ABCfirst</p>${middle}<p>secondDEF</p>`,
+          );
+          let from = 0;
+          let to = 0;
+          editor!.state.doc.descendants((node, pos) => {
+            if (node.isText && node.text === 'ABCfirst') from = pos + 3;
+            if (node.isText && node.text === 'secondDEF') to = pos + 6;
+          });
+          editor!.commands.setTextSelection({ from, to });
+          const before = editor!.state.doc.toJSON();
+          store.getState().appendBreakToDraftAtCursor(shift);
+          const draft = Object.values(store.getState().drafts)[0];
+          expect(draft).toBeDefined();
+          store.getState().submitDraft(draft.id);
+          expect(editor!.state.doc.toJSON()).toEqual(before);
+
+          store.getState().acceptSuggestion(draft.id);
+
+          const anchor = store.getState()._externalDepsRef!.current!
+            .commentAnchorsRef!.current[0];
+          expect(anchor.resolved).toBe(true);
+          expect(
+            editor!.state.doc.textBetween(
+              0,
+              editor!.state.doc.content.size,
+              '\n',
+              '\n',
+            ),
+          ).toBe('ABC\nDEF');
+          let paragraphs = 0;
+          let hardBreaks = 0;
+          editor!.state.doc.descendants((node) => {
+            if (node.type.name === 'paragraph') paragraphs++;
+            if (node.type.name === 'hardBreak') hardBreaks++;
+          });
+          expect(paragraphs).toBe(shift ? 1 : 2);
+          expect(hardBreaks).toBe(shift ? 1 : 0);
+        });
+      }
+    }
+
     it(`undoes text and breaks without losing the remaining parts in v${schemaVersion}`, () => {
       const { store, start } = setup();
       editor!.commands.setTextSelection(start);

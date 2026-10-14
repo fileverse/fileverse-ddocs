@@ -11,11 +11,11 @@ import {
   createCommentAnchorFromEditor,
   createCommentAnchorPointFromEditor,
   triggerDecorationRebuild,
+  resolveSuggestionAddPointInState,
   type CommentAnchor,
 } from './comment-decoration-plugin';
 
-const makeCommentEditor = (schemaVersion = 1) => {
-  const ydoc = new Y.Doc();
+const makeCommentEditor = (schemaVersion = 1, ydoc = new Y.Doc()) => {
   const anchors: CommentAnchor[] = [];
   const editor = new Editor({
     extensions: [
@@ -88,6 +88,49 @@ describe('comment decoration anchoring', () => {
     editor?.destroy();
     editor = null;
   });
+
+  for (const schemaVersion of [1, 2]) {
+    for (const followsParent of [false, true]) {
+      it(`uses linear parent lookups for Add decorations (parent=${followsParent}, v${schemaVersion})`, () => {
+        const harness = makeCommentEditor(schemaVersion);
+        editor = harness.editor;
+        editor.commands.setContent('<p>ABC</p>');
+        const point = createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'ABC').from,
+        )!;
+        let idReads = 0;
+        for (let index = 0; index < 500; index++) {
+          harness.anchors.push({
+            ...point,
+            get id() {
+              idReads++;
+              return `add-${index}`;
+            },
+            resolved: false,
+            deleted: false,
+            isSuggestion: true,
+            suggestionType: 'add',
+            suggestedContent: 'x',
+            followsSuggestionId: followsParent ? 'parent' : undefined,
+          });
+        }
+        harness.anchors.push({
+          ...point,
+          id: 'parent',
+          resolved: true,
+          deleted: false,
+        });
+
+        triggerDecorationRebuild(editor);
+
+        expect(idReads).toBeLessThan(500 * 20);
+        expect(
+          editor.view.dom.querySelectorAll('[data-suggestion-id]'),
+        ).toHaveLength(500);
+      });
+    }
+  }
 
   it('keeps the highlight on the anchored text when text is inserted before it', () => {
     const harness = makeCommentEditor();
@@ -943,6 +986,103 @@ describe('accepted suggestions', () => {
           editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n'),
         ).toBe('ABC\nyyyDEF');
       });
+    }
+
+    for (const kind of ['block', 'soft', 'text'] as const) {
+      for (const suffix of ['DEF', '']) {
+        it(`keeps the Add at the accepted ${kind} after reload and owner edits (suffix=${suffix}, v${schemaVersion})`, () => {
+          const harness = makeCommentEditor(schemaVersion);
+          editor = harness.editor;
+          editor.commands.setContent(
+            kind === 'text'
+              ? `<pre><code>ABCold${suffix}</code></pre>`
+              : `<p>ABCold${suffix}</p>`,
+          );
+          const range = findRange(editor, 'old');
+          const replace: CommentAnchor = {
+            id: 'replace',
+            ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+            resolved: false,
+            deleted: false,
+            isSuggestion: true,
+            suggestionType: 'replace',
+            originalContent: 'old',
+            suggestedContent: '\n',
+            multilineStructure: {
+              version: 1,
+              insertedTexts: ['', ''],
+              structureType: [kind],
+            },
+          };
+          const add: CommentAnchor = {
+            id: 'add',
+            ...createCommentAnchorPointFromEditor(editor, range.to)!,
+            resolved: false,
+            deleted: false,
+            isSuggestion: true,
+            suggestionType: 'add',
+            suggestedContent: 'yyy',
+            followsSuggestionId: replace.id,
+          };
+          expect(applyAcceptedSuggestion(editor, replace)).toBe(true);
+          replace.resolved = true;
+          const reloaded = deserializeCommentAnchors(
+            [replace, add].map((entry) => ({
+              ...entry,
+              anchorFrom: fromUint8Array(
+                Y.encodeRelativePosition(entry.anchorFrom),
+              ),
+              anchorTo: fromUint8Array(
+                Y.encodeRelativePosition(entry.anchorTo),
+              ),
+            })),
+          );
+          const reloadedDoc = new Y.Doc();
+          Y.applyUpdate(reloadedDoc, Y.encodeStateAsUpdate(harness.ydoc));
+          editor.destroy();
+          editor = makeCommentEditor(schemaVersion, reloadedDoc).editor;
+          const prefix = findRange(editor, 'ABC');
+          if (kind === 'block') {
+            editor.view.dispatch(
+              editor.state.tr.split(
+                prefix.from + 1,
+                schemaVersion === 1 ? 2 : 1,
+              ),
+            );
+          } else {
+            editor.commands.insertContentAt(prefix.to, {
+              type: 'text',
+              text: 'XX',
+            });
+          }
+          const point = resolveSuggestionAddPointInState(
+            reloaded[1],
+            editor.state,
+            reloaded,
+          )!;
+          // The preview and acceptance must agree on the real break endpoint.
+          expect(
+            editor.state.doc.textBetween(
+              point,
+              editor.state.doc.content.size,
+              '\n',
+            ),
+          ).toBe(kind === 'text' ? `${suffix}\n` : suffix);
+          expect(applyAcceptedSuggestion(editor, reloaded[1], reloaded)).toBe(
+            true,
+          );
+          expect(
+            editor.state.doc.textBetween(
+              0,
+              editor.state.doc.content.size,
+              '\n',
+              '\n',
+            ),
+          ).toBe(
+            kind === 'block' ? `A\nBC\nyyy${suffix}` : `ABCXX\nyyy${suffix}${kind === 'text' ? '\n' : ''}`,
+          );
+        });
+      }
     }
 
     it(`keeps a following Add after a Replace at the document end in v${schemaVersion}`, () => {
