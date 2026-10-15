@@ -1,6 +1,10 @@
 import { EditorContent, isTextSelection } from '@tiptap/react';
 import { EditorBubbleMenu } from './components/editor-bubble-menu/editor-bubble-menu';
 import { DdocProps } from './types';
+import {
+  resolveImageFetchFn,
+  resolveImageUploadFn,
+} from './utils/storage-adapter';
 import type { CollaborationProps } from './sync-local/types';
 
 // A LIVE collaboration session (peers/presence — what users know as "real-time
@@ -68,6 +72,7 @@ import {
 } from './utils/document-styling';
 import { sanitizeCustomCss } from './utils/sanitize-css';
 import { useFocusMode } from './hooks/use-focus-mode';
+import { isFocusModeCanvasClick } from './utils/focus-mode-canvas-click';
 import { FullScreenToolbar } from './components/fullscreen-toolbar';
 import { mergeTabAwareYjsUpdates } from './components/tabs/utils/tab-utils';
 import { DBlockToolbarProvider } from './extensions/d-block/dblock-toolbar';
@@ -112,7 +117,8 @@ const DdocEditor = forwardRef(
       handleCommentButtonClick,
       showCommentButton,
       ensResolutionUrl,
-      ipfsImageUploadFn,
+      imageUploadFn,
+      ipfsImageUploadFn: ipfsImageUploadFnProp,
       disableBottomToolbar,
       enableFanficTemplate = false,
       onError,
@@ -191,7 +197,8 @@ const DdocEditor = forwardRef(
       extensions,
       onCopyHeadingLink,
       tabConfig,
-      ipfsImageFetchFn,
+      imageFetchFn,
+      ipfsImageFetchFn: ipfsImageFetchFnProp,
       fetchV1ImageFn,
       activeModel,
       maxTokens,
@@ -238,6 +245,16 @@ const DdocEditor = forwardRef(
       false,
       onSplitViewChange,
       setIsSplitViewProp,
+    );
+    // Resolve the storage-agnostic image fns (preferred) against the
+    // deprecated ipfs-prefixed ones; internals keep the legacy interface.
+    const ipfsImageUploadFn = useMemo(
+      () => resolveImageUploadFn(imageUploadFn, ipfsImageUploadFnProp),
+      [imageUploadFn, ipfsImageUploadFnProp],
+    );
+    const ipfsImageFetchFn = useMemo(
+      () => resolveImageFetchFn(imageFetchFn, ipfsImageFetchFnProp),
+      [imageFetchFn, ipfsImageFetchFnProp],
     );
     const { isFocusMode, toggleFocusMode } = useFocusMode({
       isFocusMode: isFocusModeProp,
@@ -826,28 +843,17 @@ const DdocEditor = forwardRef(
     const handleFocusModeMouseDown = (event: React.MouseEvent) => {
       if (!isFocusMode || !editor || event.button !== 0) return;
 
-      const target = event.target as HTMLElement;
+      // Clicks in the editor or on floating UI (bubble menu, dialogs,
+      // popovers) keep the selection; only the bare canvas moves the caret.
+      if (
+        !isFocusModeCanvasClick(
+          event.target as Element,
+          editorContentRef.current,
+        )
+      ) {
+        return;
+      }
 
-      // 1. Ignore clicks inside editor
-      const clickedInsideEditor = editorContentRef.current?.contains(target);
-
-      if (clickedInsideEditor) return;
-
-      // 2. Ignore clicks inside ANY modal / portal
-      const clickedInsideModal = target.closest(
-        '[data-radix-dialog-content], [role="dialog"], [data-modal], [data-overlay]',
-      );
-
-      if (clickedInsideModal) return;
-
-      // 3. Ignore dropdowns / popovers (important for your comment system)
-      const clickedInsideFloatingUI = target.closest(
-        '[data-radix-popper-content-wrapper], [data-floating-ui-portal]',
-      );
-
-      if (clickedInsideFloatingUI) return;
-
-      // 4. Only now treat as canvas click
       event.preventDefault();
 
       editor.commands.focus('end', { scrollIntoView: false });

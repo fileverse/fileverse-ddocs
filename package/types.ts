@@ -191,6 +191,15 @@ export interface DdocProps extends CommentAccountProps {
   };
   tabSectionContainer?: HTMLElement;
   isCollabDocumentPublished?: boolean;
+  /**
+   * Storage-agnostic image fetch function. Receives the stored location of an
+   * encrypted image (`url` + `contentRef`, e.g. an IPFS gateway URL + CID or a
+   * Swarm URL + reference) along with its decryption parameters, and returns
+   * the decrypted image. Preferred over the deprecated `ipfsImageFetchFn`;
+   * when both are provided, `imageFetchFn` wins.
+   */
+  imageFetchFn?: ImageFetchFn;
+  /** @deprecated Use the storage-agnostic `imageFetchFn` instead. */
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
@@ -255,6 +264,15 @@ export interface DdocProps extends CommentAccountProps {
   isPreviewMode?: boolean;
   viewerMode?: 'suggest' | 'view-only';
   ensResolutionUrl?: string;
+  /**
+   * Storage-agnostic image upload function. Encrypts and stores the file on
+   * the host's storage backend (IPFS, Swarm, ...) and returns its location
+   * (`url` + `contentRef`) plus the decryption parameters. Preferred over the
+   * deprecated `ipfsImageUploadFn`; when both are provided, `imageUploadFn`
+   * wins.
+   */
+  imageUploadFn?: ImageUploadFn;
+  /** @deprecated Use the storage-agnostic `imageUploadFn` instead. */
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
   enableIndexeddbSync?: boolean;
   ddocId?: string;
@@ -365,7 +383,16 @@ export interface DdocProps extends CommentAccountProps {
    * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, quota exceeded, corrupted DB). The editor will continue to function without local persistence.
    */
   onIndexedDbError?: (error: Error) => void;
+  /**
+   * Called when the schema-version stamp was refused or reverted
+   * @description The editor stamps brand-new docs with the preferred schema. If the host passed an empty body for a doc that turns out to hold v1 content, the stamp is blocked (or reverted when the content arrived late). Hosts report these to see how often an existing doc is mounted without its body.
+   */
+  onSchemaStampGuard?: (event: SchemaStampGuardEvent) => void;
 }
+
+export type SchemaStampGuardEvent =
+  | { kind: 'blocked'; preferredSchemaVersion: number }
+  | { kind: 'reverted'; preferredSchemaVersion: number };
 
 export interface IEditorSelectionData {
   from: number;
@@ -384,6 +411,38 @@ export interface IUser {
 }
 
 export { type IComment };
+/**
+ * Storage-agnostic result of an image upload. The editor treats both fields
+ * as opaque: `url` is a fetchable location of the encrypted blob (e.g. an
+ * IPFS gateway URL or a Swarm `/bytes` URL) and `contentRef` is the backend's
+ * content address (IPFS CID, Swarm reference, ...). Both are stored in the
+ * document and handed back verbatim to `imageFetchFn`.
+ */
+export interface StorageImageUploadResponse {
+  encryptionKey: string;
+  nonce: string;
+  authTag: string;
+  url: string;
+  contentRef: string;
+}
+/**
+ * Storage-agnostic payload handed to `imageFetchFn`: the `url`/`contentRef`
+ * returned by `imageUploadFn` at upload time, plus the parameters needed to
+ * decrypt the blob.
+ */
+export interface StorageImageFetchPayload {
+  encryptionKey: string;
+  nonce: string;
+  authTag: string;
+  mimeType: string;
+  url: string;
+  contentRef: string;
+}
+export type ImageUploadFn = (file: File) => Promise<StorageImageUploadResponse>;
+export type ImageFetchFn = (
+  _data: StorageImageFetchPayload,
+) => Promise<{ url: string; file: File }>;
+/** @deprecated Use the storage-agnostic {@link StorageImageUploadResponse} instead. */
 export interface IpfsImageUploadResponse {
   encryptionKey: string;
   nonce: string;
@@ -391,6 +450,7 @@ export interface IpfsImageUploadResponse {
   ipfsHash: string;
   authTag: string;
 }
+/** @deprecated Use the storage-agnostic {@link StorageImageFetchPayload} instead. */
 export interface IpfsImageFetchPayload {
   encryptionKey: string;
   nonce: string;
