@@ -1893,7 +1893,7 @@ async function recreateNodeWithImageContent(
 
   try {
     if (version == '2' && ipfsImageFetchFn) {
-      const { encryptionKey, url: ipfsUrl, nonce, authTag } = attrs as any;
+      const { encryptionKey, ipfsUrl, nonce, authTag } = attrs;
       const result = await ipfsImageFetchFn({
         encryptionKey,
         ipfsUrl,
