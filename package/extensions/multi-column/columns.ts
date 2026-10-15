@@ -25,7 +25,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     columns: {
       unsetColumns: () => ReturnType;
-      setColumns: (columns: number) => ReturnType;
+      setColumns: (columns: number, keepContent?: boolean) => ReturnType;
       setLayout: (layout: ColumnLayout) => ReturnType;
     };
   }
