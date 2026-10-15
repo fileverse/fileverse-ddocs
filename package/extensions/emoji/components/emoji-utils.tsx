@@ -1,12 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import emojiData from 'emojibase-data/en/data.json';
+import type { Emoji } from 'emojibase';
+
+// ~880 KB of JSON: load it on the first emoji query, not with the editor.
+let emojiData: Promise<Emoji[]> | undefined;
+const loadEmojiData = () =>
+  (emojiData ??= import('emojibase-data/en/data.json').then(
+    (m) => m.default as Emoji[],
+  ));
 
 function isRegionalIndicator(emoji: any) {
   return emoji.label.includes('regional');
 }
 
-export function emojiSearch(query: string): { name: string; emoji: string }[] {
-  const filteredEmojiData = emojiData.filter(
+export async function emojiSearch(
+  query: string,
+): Promise<{ name: string; emoji: string }[]> {
+  const filteredEmojiData = (await loadEmojiData()).filter(
     (emoji) => !isRegionalIndicator(emoji),
   );
 
