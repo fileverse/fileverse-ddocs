@@ -1,5 +1,6 @@
 import cn from 'classnames';
 import { useState, type Dispatch, type SetStateAction } from 'react';
+import { createPortal } from 'react-dom';
 import { LucideIcon } from '@fileverse/ui';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
@@ -32,6 +33,8 @@ export interface DocumentMobileTabPanelProps {
   isVersionHistoryMode: boolean;
   isConnected?: boolean;
   isFocusMode?: boolean;
+  layout?: DocumentOutlineProps['layout'];
+  tabPanelSlot?: HTMLElement | null;
 }
 
 export const DocumentMobileTabPanel = ({
@@ -53,6 +56,8 @@ export const DocumentMobileTabPanel = ({
   isVersionHistoryMode,
   isConnected,
   isFocusMode,
+  layout = 'viewport',
+  tabPanelSlot,
 }: DocumentMobileTabPanelProps) => {
   const [showContent, setShowContent] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState<Tab | null>(null);
@@ -154,20 +159,29 @@ export const DocumentMobileTabPanel = ({
   const shouldShowTabNav = isVersionHistoryMode || isPreviewMode;
   const showTabList = showContent && !isVersionHistoryMode;
 
-  return (
+  const isContained = layout === 'contained';
+
+  const panel = (
     <div
       data-testid="mobile-tab-panel"
-      className={cn('fixed w-full flex flex-col z-[9] color-bg-secondary')}
-      style={{
-        // 24px = the consumer app's footer height; the env() term keeps the
-        // panel above the iOS home indicator in home-screen (standalone)
-        // installs, where the footer grows by the same inset (0 elsewhere).
-        bottom: isVersionHistoryMode
-          ? 'var(--version-sheet-bottom, 24px)'
-          : isFocusMode
-            ? 'env(safe-area-inset-bottom, 0px)'
-            : 'calc(24px + env(safe-area-inset-bottom, 0px))',
-      }}
+      className={cn(
+        'w-full flex flex-col z-[9] color-bg-secondary',
+        isContained ? 'absolute bottom-0 left-0' : 'fixed',
+      )}
+      style={
+        isContained
+          ? undefined
+          : {
+              // 24px = the consumer app's footer height; the env() term keeps the
+              // panel above the iOS home indicator in home-screen (standalone)
+              // installs, where the footer grows by the same inset (0 elsewhere).
+              bottom: isVersionHistoryMode
+                ? 'var(--version-sheet-bottom, 24px)'
+                : isFocusMode
+                  ? 'env(safe-area-inset-bottom, 0px)'
+                  : 'calc(24px + env(safe-area-inset-bottom, 0px))',
+            }
+      }
     >
       <div
         className={cn(
@@ -402,4 +416,7 @@ export const DocumentMobileTabPanel = ({
       />
     </div>
   );
+
+  if (!isContained) return panel;
+  return tabPanelSlot ? createPortal(panel, tabPanelSlot) : null;
 };

@@ -25,6 +25,7 @@ const MobileToolbar = ({
   isKeyboardVisible,
   isNavbarVisible,
   setIsNavbarVisible,
+  showNavbarToggle = true,
   ipfsImageUploadFn,
   ipfsImageFetchFn,
   fetchV1ImageFn,
@@ -35,6 +36,7 @@ const MobileToolbar = ({
   isKeyboardVisible: boolean;
   isNavbarVisible: boolean;
   setIsNavbarVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  showNavbarToggle?: boolean;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
@@ -185,7 +187,7 @@ const MobileToolbar = ({
 
   return (
     <Drawer>
-      <div className="flex w-full justify-between sm:justify-evenly items-center select-none">
+      <div className="flex w-full justify-between ddoc-sm:justify-evenly items-center select-none">
         {bottomToolbar.map((tool, _index) => {
           if (tool) {
             return (
@@ -222,14 +224,18 @@ const MobileToolbar = ({
             );
           }
         })}
-        <div className="w-[1px] h-4 vertical-divider mx-2"></div>
-        <div className="w-9 h-9 flex justify-center items-center">
-          <LucideIcon
-            size={'md'}
-            name={isNavbarVisible ? 'ChevronUp' : 'ChevronDown'}
-            onClick={handleNavbarVisibilityToggle}
-          />
-        </div>
+        {showNavbarToggle && (
+          <>
+            <div className="w-[1px] h-4 vertical-divider mx-2"></div>
+            <div className="w-9 h-9 flex justify-center items-center">
+              <LucideIcon
+                size={'md'}
+                name={isNavbarVisible ? 'ChevronUp' : 'ChevronDown'}
+                onClick={handleNavbarVisibilityToggle}
+              />
+            </div>
+          </>
+        )}
       </div>
       <TextFormatingPopup
         editor={editor}

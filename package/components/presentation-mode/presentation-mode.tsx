@@ -391,7 +391,7 @@ export const PresentationMode = ({
   return (
     <div
       className={cn(
-        'fixed inset-0 color-bg-secondary flex z-50',
+        'ddoc-presentation-overlay fixed inset-0 color-bg-secondary flex z-50',
         isNativeMobile ? 'flex-col' : 'flex-col xl:flex-row',
         'items-center justify-center w-screen h-screen',
       )}

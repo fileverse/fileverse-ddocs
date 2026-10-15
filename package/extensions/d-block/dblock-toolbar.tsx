@@ -279,7 +279,7 @@ export const DBlockTemplateOverlay = ({
     <div
       data-template-overlay="true"
       contentEditable={false}
-      className="top-[66px] right-20 w-max absolute z-10 max-md:right-[unset] max-md:left-9"
+      className="top-[66px] right-20 w-max absolute z-10 ddoc-max-md:right-[unset] ddoc-max-md:left-9"
     >
       {renderTemplateButtons(
         templateButtons,

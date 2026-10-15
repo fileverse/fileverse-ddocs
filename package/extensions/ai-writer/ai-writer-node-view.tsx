@@ -663,7 +663,7 @@ export const AIWriterNodeView = memo(
                 hasGenerated && 'px-3 pb-2',
               )}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex flex-col ddoc-sm:flex-row ddoc-sm:items-center gap-2">
                 <Select
                   value={modelContext?.activeModel?.modelName ?? ''}
                   onValueChange={handleModelChange}
@@ -704,7 +704,7 @@ export const AIWriterNodeView = memo(
                   <label
                     htmlFor="include-context"
                     className={cn(
-                      'text-xs md:text-sm color-text-default',
+                      'text-xs ddoc-md:text-sm color-text-default',
                       isLoading && 'color-text-disabled',
                     )}
                   >
@@ -732,7 +732,7 @@ export const AIWriterNodeView = memo(
                   onClick={handleDiscard}
                   className="min-w-fit gap-2 !bg-transparent color-text-secondary text-body-sm !px-3"
                 >
-                  <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden sm:block">
+                  <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden ddoc-sm:block">
                     Esc
                   </span>
                   Discard
@@ -744,7 +744,7 @@ export const AIWriterNodeView = memo(
                       onClick={handleEdit}
                       className="min-w-fit gap-2 !bg-transparent color-text-secondary text-body-sm !px-3"
                     >
-                      <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden sm:block">
+                      <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden ddoc-sm:block">
                         {shortcutKey} + E
                       </span>
                       Edit
@@ -756,7 +756,7 @@ export const AIWriterNodeView = memo(
                     className="min-w-fit gap-2 !bg-transparent color-text-secondary text-body-sm !px-3"
                     disabled={isLoading || isEditing}
                   >
-                    <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden sm:block">
+                    <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden ddoc-sm:block">
                       {shortcutKey} + R
                     </span>
                     Try again
@@ -767,7 +767,7 @@ export const AIWriterNodeView = memo(
                     className="min-w-fit gap-2 !bg-transparent color-text-secondary text-body-sm !px-3"
                     disabled={isEditing}
                   >
-                    <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden sm:block">
+                    <span className="text-helper-text-sm border color-border-default rounded-lg px-1.5 py-1 hidden ddoc-sm:block">
                       {shortcutKey} + Enter
                     </span>
                     Accept
