@@ -64,7 +64,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 - The package ships only the CSS it owns (`package/styles/index.css`, `editor.css`, a few component sheets; build is autoprefixer only, no `@tailwind` directives, no ui/KaTeX imports). `package/styles/css-ownership.test.ts` fails when a rule is not anchored to an editor-owned selector; run it before touching CSS. Class names in TSX rely on the consumer's Tailwind build: `tailwind.preset.cjs` (exported as `./tailwind`) composes the `@fileverse/ui` preset and adds the `mobile` breakpoint (960px).
 - Consumers run one Tailwind build with `presets: [require('@fileverse-dev/ddoc/tailwind')]`, scan `node_modules/@fileverse-dev/ddoc/dist/**/*.{js,mjs}` (the dist is chunked; a single `index.es.js` entry misses classes) and `@fileverse/ui/dist/**/*.{js,mjs}`, and import stylesheets in this order: their Tailwind output, `@fileverse/ui/styles/base`, `katex/dist/katex.min.css`, `@fileverse-dev/ddoc/styles`. See the README's 5.0 setup and migration notes.
 - Use `@fileverse/ui` primitives and its `LucideIcon` / `IconButton` for icons; do not hand-roll SVGs.
-- `vite.config.ts` externalizes react, `@fileverse/ui`, framer-motion, frimousse, mermaid, yjs, `@fileverse/crypto`, `@dnd-kit/*` and viem. A new peer dependency must be added to both `peerDependencies` and that `external` list. `yjs` must remain a single instance (`resolve.dedupe`).
+- `vite.config.ts` derives `external` from `dependencies` + `peerDependencies`, except the Tiptap/ProseMirror engine, `react-tweet` and `mammoth`, which stay bundled; JSON and CSS imports are always bundled. Every runtime import must be declared in `package.json`. Read `docs/DIST_BUNDLING.md` before changing that list. `yjs` must remain a single instance (`resolve.dedupe`).
 
 ## Testing conventions
 
@@ -77,7 +77,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 
 - Branch names and PR titles are Linear ticket ids (`TEC-1234`).
 - Prettier through eslint: single quotes, trailing commas, semicolons, 2-space indent.
-- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`). Read the relevant one before changing that area.
+- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`, `DIST_BUNDLING.md`). Read the relevant one before changing that area.
 
 ## Consumer repo: ddocs.new
 
