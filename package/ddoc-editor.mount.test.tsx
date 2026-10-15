@@ -91,6 +91,24 @@ describe('DdocEditor mounted structure', () => {
     expect(chevron()).toBeNull();
   });
 
+  it('hides the Split View toggle when isSplitView is fixed with no callback', async () => {
+    const toggle = () => document.querySelector('#split-view-button');
+
+    render(<DdocEditor />);
+    await act(async () => {});
+    expect(toggle()).not.toBeNull();
+    cleanup();
+
+    render(<DdocEditor isSplitView={false} />);
+    await act(async () => {});
+    expect(toggle()).toBeNull();
+    cleanup();
+
+    render(<DdocEditor isSplitView={false} onSplitViewChange={vi.fn()} />);
+    await act(async () => {});
+    expect(toggle()).not.toBeNull();
+  });
+
   it('is a query container only when the safety check passes', async () => {
     expect((await mount()).classList.contains('ddoc-editor-cq')).toBe(true);
     cleanup();

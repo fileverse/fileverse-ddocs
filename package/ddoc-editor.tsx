@@ -903,8 +903,13 @@ const DdocEditor = forwardRef(
               toggleFocusMode={toggleFocusMode}
               isSplitView={isSplitView}
               onToggleSplitView={
-                // Hidden during collaboration — Split View is solo-only in v1.
-                !isCollabEnabled
+                // Hidden during collaboration (Split View is solo-only in v1)
+                // and when the host fixed `isSplitView` with no callback: the
+                // toggle would compute a new value and notify nobody.
+                !isCollabEnabled &&
+                (isSplitViewProp === undefined ||
+                  onSplitViewChange ||
+                  setIsSplitViewProp)
                   ? () => setIsSplitView((open) => !open)
                   : undefined
               }

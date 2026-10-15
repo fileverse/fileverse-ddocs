@@ -160,7 +160,7 @@ You should now be set to use dDocs!
 
 Behaviour that changes without a code change on your side:
 
-- UI features that did nothing without their `setX` prop now work on internal state. The Split View toggle shows whenever live collaboration is off (it needed `setIsSplitView` before), and the comment drawer, the outline and presentation mode open without a setter. To keep one fixed, pass its value with no callback, for example `isPresentationMode={false}`. For Split View, `isSplitView={false}` keeps the editor out of Split View, but the toolbar toggle is still shown and does nothing.
+- UI features that did nothing without their `setX` prop now work on internal state. The Split View toggle shows whenever live collaboration is off (it needed `setIsSplitView` before), and the comment drawer, the outline and presentation mode open without a setter. To keep one fixed, pass its value with no callback, for example `isPresentationMode={false}`. For Split View, `isSplitView={false}` with no callback also hides the toolbar toggle.
 - `onFocusModeChange` and the deprecated `onFocusMode` also fire when `isFocusMode` is not passed.
 - `#editor-canvas` is now the document scroller (it carries `data-editor-scroll-container`), and the root (`.ddoc-editor-root`) is `overflow: hidden`.
 - A navbar portalled with `navbarContainer` is positioned and layered by you; the editor only renders into the element. Focus mode and the toolbar's collapse toggle do not hide it: hide your own element from `onFocusModeChange` and `onNavbarVisibleChange` if you want that, or pass `showNavbarToggle={false}` to remove the collapse toggle.
