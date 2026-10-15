@@ -704,7 +704,7 @@ does):
   (font commands over a range are unchanged).
 - `styles/css-ownership.test.ts` untouched (no CSS change).
 
-Manual QA in the demo (`?v2=1` for v2, plain new doc for v1), a lean
+Manual QA in the demo (`?v1=1` for v1, plain new doc for v2), a lean
 checklist: the section 4 table row by row, plus the reported repro (Pretend to
 work template, select all, custom spacing 0, Enter twice at the end of the
 quote), and a collab pair check that a stamp written by one client renders

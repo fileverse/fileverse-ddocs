@@ -98,7 +98,7 @@ async function main() {
 
   for (const schema of ['v1', 'v2']) {
     const v2 = schema === 'v2';
-    const url = (slug) => `${BASE}?doc=${schema}-${slug}-${RUN}${v2 ? '&v2=1' : ''}`;
+    const url = (slug) => `${BASE}?doc=${schema}-${slug}-${RUN}${v2 ? '' : '&v1=1'}`;
     const r = out[schema];
 
     // --- 1. cluster: hover, hit-test, collapse, grip menu ---
@@ -230,7 +230,7 @@ async function main() {
 
     // --- 4. multi-tab reload must not paint a stale tab ---
     const tabDoc = `${schema}-tabs-${RUN}`;
-    await nav(`${BASE}?doc=${tabDoc}${v2 ? '&v2=1' : ''}`);
+    await nav(`${BASE}?doc=${tabDoc}${v2 ? '' : '&v1=1'}`);
     const built = await ev(`(async () => {
       const e = window.__ddoc.current.getEditor();
       e.commands.insertContent('<p>tab one</p>');
@@ -263,7 +263,7 @@ async function main() {
           } catch (e) {}
           setTimeout(tick, 40);
         })();` });
-      await send('Page.navigate', { url: `${BASE}?doc=${tabDoc}${v2 ? '&v2=1' : ''}` });
+      await send('Page.navigate', { url: `${BASE}?doc=${tabDoc}${v2 ? '' : '&v1=1'}` });
       await ready(); await sleep(5000);
       const seen = await ev(`window.__seen || []`);
       r.staleTab = { paintedSequence: seen,

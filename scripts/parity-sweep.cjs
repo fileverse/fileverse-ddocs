@@ -457,7 +457,7 @@ async function main() {
   for (const schema of ['v1', 'v2']) {
     for (const check of CHECKS) {
       // Fresh document per check so they cannot contaminate each other.
-      await nav(`${BASE}?doc=${schema}-${check.name}-${RUN}${schema === 'v2' ? '&v2=1' : ''}`);
+      await nav(`${BASE}?doc=${schema}-${check.name}-${RUN}${schema === 'v2' ? '' : '&v1=1'}`);
       results[schema][check.name] = await ev(check.script);
     }
   }

@@ -850,9 +850,9 @@ function App() {
           ddocId={docId}
           // Only consulted at doc creation; existing docs follow their marker.
           preferredSchemaVersion={
-            new URLSearchParams(window.location.search).get('v2') === '1'
-              ? 2
-              : undefined
+            new URLSearchParams(window.location.search).get('v1') === '1'
+              ? 1
+              : 2
           }
           tabConfig={tabConfig}
           onError={(error) => {
