@@ -17,7 +17,6 @@ import { handleMarkdownContent } from '../extensions/mardown-paste-handler';
 import { DOCX_STYLE_MAP } from '../extensions/docx/docx-import';
 import { readDocxSpacingFromArchive } from '../extensions/docx/docx-spacing';
 import { IpfsImageUploadResponse } from '../types';
-import mammoth from 'mammoth';
 import { CommentExtension as Comment } from '../extensions/comment';
 import {
   ACTIVE_TAB_STATE_KEY,
@@ -357,6 +356,7 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
     ) {
       try {
         const arrayBuffer = await file.arrayBuffer();
+        const { default: mammoth } = await import('mammoth');
 
         // Same mammoth configuration as the in-editor import
         // (extensions/docx/docx-import.tsx): the style map is what carries
