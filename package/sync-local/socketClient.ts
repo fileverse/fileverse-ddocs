@@ -22,6 +22,7 @@ import { IDocCollabUsers } from '../types';
 import { generateKeyPairFromSeed } from '@stablelib/ed25519';
 import { fromUint8Array, toUint8Array } from 'js-base64';
 import { crypto } from './crypto';
+import { ServerClock } from './server-clock';
 import {
   Awareness,
   applyAwarenessUpdate,
@@ -36,6 +37,7 @@ interface ISocketClientConfig {
   ownerEdSecret?: string;
   contractAddress?: string;
   ownerAddress?: string;
+  ddocId?: string;
   editLock?: string;
   encryptedTitle?: string;
   identityToken?: string;
@@ -116,7 +118,9 @@ export class SocketClient {
   private contractAddress?: string;
   private ownerUcan?: ucans.Ucan;
   private collaborationUcan?: ucans.Ucan;
+  private serverClock = new ServerClock();
   private ownerAddress?: string;
+  private ddocId?: string;
   private editLock?: string;
   private encryptedTitle?: string;
   private identityToken?: string;
@@ -176,6 +180,7 @@ export class SocketClient {
 
     if (config.contractAddress) this.contractAddress = config.contractAddress;
     if (config.ownerAddress) this.ownerAddress = config.ownerAddress;
+    if (config.ddocId) this.ddocId = config.ddocId;
     if (config.editLock) this.editLock = config.editLock;
     if (config.identityToken) this.identityToken = config.identityToken;
     if (config.editUcan) this.editUcan = config.editUcan;
@@ -375,6 +380,7 @@ export class SocketClient {
       documentId: this.roomId,
       editLock: this.editLock ?? null,
       title: this.encryptedTitle ?? null,
+      ...(this.ddocId ? { ddocId: this.ddocId } : {}),
     });
   }
 
@@ -392,6 +398,7 @@ export class SocketClient {
       documentId: this.roomId,
       editLock: this.editLock ?? null,
       title: args.encryptedTitle,
+      ...(this.ddocId ? { ddocId: this.ddocId } : {}),
     });
   }
 
@@ -565,30 +572,18 @@ export class SocketClient {
     return this.collaborationKeyPair;
   }
 
-  private isUcanValid(ucan: ucans.Ucan) {
-    const payload = ucan.payload;
-    const now = Math.floor(Date.now() / 1000);
-    const bufferSeconds = 60;
-
-    return (
-      (!payload.nbf || payload.nbf <= now) &&
-      (!payload.exp || payload.exp > now + bufferSeconds)
-    );
-  }
-
   private async getOwnerToken() {
     if (!this.ownerKeyPair || !this.contractAddress)
       throw new Error('SocketClient: No owner key pair or contract address');
 
-    if (this.ownerUcan && this.isUcanValid(this.ownerUcan)) {
+    if (this.ownerUcan && this.serverClock.isUsable(this.ownerUcan)) {
       return ucans.encode(this.ownerUcan);
     }
 
     this.ownerUcan = await ucans.build({
       audience: this._websocketServiceDid,
       issuer: this.ownerKeyPair,
-      lifetimeInSeconds: 3600, // 1 Hour
-      notBefore: Math.floor(Date.now() / 1000) - 60,
+      ...this.serverClock.ucanWindow(),
       capabilities: [
         {
           with: {
@@ -609,7 +604,10 @@ export class SocketClient {
         'SocketClient: Server did not response with the server DID',
       );
     }
-    if (this.collaborationUcan && this.isUcanValid(this.collaborationUcan)) {
+    if (
+      this.collaborationUcan &&
+      this.serverClock.isUsable(this.collaborationUcan)
+    ) {
       this._lastSessionToken = ucans.encode(this.collaborationUcan);
       return this._lastSessionToken;
     }
@@ -618,8 +616,7 @@ export class SocketClient {
     this.collaborationUcan = await ucans.build({
       audience: this._websocketServiceDid,
       issuer: keyPair,
-      lifetimeInSeconds: 3600, // 1 Hour
-      notBefore: Math.floor(Date.now() / 1000) - 60,
+      ...this.serverClock.ucanWindow(),
       capabilities: [
         {
           with: {
@@ -661,6 +658,7 @@ export class SocketClient {
     if (this.ownerKeyPair) args.ownerToken = await this.getOwnerToken();
     if (this.ownerAddress) args.ownerAddress = this.ownerAddress;
     if (this.contractAddress) args.contractAddress = this.contractAddress;
+    if (this.ddocId) args.ddocId = this.ddocId;
     if (this.identityToken) args.identityToken = this.identityToken;
 
     // Re-mint on every /auth (incl. reconnect, rekey). ok → use + cache the fresh token;
@@ -703,10 +701,11 @@ export class SocketClient {
   };
 
   private _handleHandShake = async (
-    message: { server_did: string; message: string },
+    message: { server_did: string; message: string; server_time?: number },
     config: ISocketInitConfig,
   ) => {
     this._websocketServiceDid = message.server_did;
+    this.serverClock.sync(message.server_time);
 
     if (this._webSocketStatus === SocketStatusEnum.CLOSED || !this.roomId) {
       throw new Error(

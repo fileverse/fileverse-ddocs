@@ -78,6 +78,8 @@ export interface CollabConnectionConfig {
   ownerEdSecret?: string;
   contractAddress?: string;
   ownerAddress?: string;
+  /** Host signal (opaque-link docs): the on-chain ddocId, sent to the server alongside the public room id. */
+  ddocId?: string;
   roomInfo?: {
     documentTitle: string;
     portalAddress: string;
@@ -197,6 +199,8 @@ export interface SyncManagerConfig {
     updatedDocContent: Data['editorJSONData'],
     updateChunk: string,
   ) => void;
+  /** Like `onLocalUpdate` but without arguments, so no full-document encode. */
+  onLocalChange?: () => void;
   /** Origins to ignore in the ydoc update handler (e.g. IndexedDB provider) */
   ignoredOrigins?: Array<{ current: unknown }>;
 }
@@ -313,6 +317,7 @@ export interface IAuthArgs {
   ownerToken?: string;
   ownerAddress?: string;
   contractAddress?: string;
+  ddocId?: string;
   sessionDid?: string;
   roomInfo?: string;
   identityToken?: string;
