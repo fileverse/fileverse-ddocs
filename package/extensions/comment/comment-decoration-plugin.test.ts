@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
+import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import { fromUint8Array } from 'js-base64';
 import { deserializeCommentAnchors } from '../../utils/comment-anchor-serialization';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
@@ -280,6 +281,435 @@ describe('accepted suggestions', () => {
   afterEach(() => {
     editor?.destroy();
     editor = null;
+  });
+
+  it('keeps a pending Add in the moved suffix of a v1 dBlock', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const firstPosition = findRange(editor, 'Alpha base').to;
+    const laterPosition = findRange(editor, 'Beta base').to;
+    const first: CommentAnchor = {
+      id: 'first',
+      ...createCommentAnchorPointFromEditor(editor, firstPosition)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const later: CommentAnchor = {
+      id: 'later',
+      ...createCommentAnchorPointFromEditor(editor, laterPosition)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' SECOND\n\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' SECOND', '', ''],
+        structureType: ['soft', 'block'],
+      },
+    };
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    const immutableAnchor = Y.encodeRelativePosition(later.anchorFrom);
+
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    first.resolved = true;
+    expect(
+      resolveSuggestionAddPointInState(later, editor.state, harness.anchors),
+    ).toBe(findRange(editor, 'Beta base').to);
+    expect(Y.encodeRelativePosition(later.anchorFrom)).toEqual(immutableAnchor);
+    expect(
+      commentDecorationPluginKey
+        .getState(editor.state)
+        ?.decorations.find(
+          undefined,
+          undefined,
+          (spec) => spec?.commentId === later.id,
+        )[0]?.from,
+    ).toBe(findRange(editor, 'Beta base').to);
+
+    const clone = new Y.Doc();
+    Y.applyUpdate(clone, Y.encodeStateAsUpdate(harness.ydoc));
+    const reloaded = makeCommentEditor(1, clone);
+    expect(
+      resolveSuggestionAddPointInState(
+        later,
+        reloaded.editor.state,
+        harness.anchors,
+      ),
+    ).toBe(findRange(reloaded.editor, 'Beta base').to);
+    reloaded.editor.destroy();
+
+    expect(applyAcceptedSuggestion(editor, later, harness.anchors)).toBe(true);
+    const paragraphs: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'paragraph') paragraphs.push(node.textContent);
+    });
+    expect(paragraphs).toContain('Beta base SECOND');
+    expect(editor.state.doc.toJSON()).toEqual(
+      expect.objectContaining({ type: 'doc' }),
+    );
+  });
+
+  it('keeps the effective point aligned through undo and redo of the v1 split', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const first: CommentAnchor = {
+      id: 'undo-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const later: CommentAnchor = {
+      id: 'undo-later',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Beta base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' SECOND',
+    };
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    const undoManager = yUndoPluginKey.getState(editor.state)?.undoManager;
+    expect(undoManager).toBeDefined();
+    undoManager!.stopCapturing();
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    expect(
+      resolveSuggestionAddPointInState(later, editor.state, harness.anchors),
+    ).toBe(findRange(editor, 'Beta base').to);
+    expect(editor.commands.undo()).toBe(true);
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default')
+        ?.has(later.id),
+    ).toBe(false);
+    expect(
+      resolveSuggestionAddPointInState(later, editor.state, harness.anchors),
+    ).toBe(findRange(editor, 'Beta base').to);
+    expect(editor.commands.redo()).toBe(true);
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default')
+        ?.has(later.id),
+    ).toBe(true);
+    expect(
+      resolveSuggestionAddPointInState(later, editor.state, harness.anchors),
+    ).toBe(findRange(editor, 'Beta base').to);
+  });
+
+  it('leaves Adds in other v1 dBlocks untouched', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent(
+      '<p>Alpha base</p><p>Beta base</p><p>Gamma base</p>',
+    );
+    const first: CommentAnchor = {
+      id: 'separate-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const others = ['Beta base', 'Gamma base'].map((text) => ({
+      id: text,
+      ...createCommentAnchorPointFromEditor(
+        editor!,
+        findRange(editor!, text).to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add' as const,
+      suggestedContent: ' LATER',
+    }));
+    harness.anchors.push(first, ...others);
+    triggerDecorationRebuild(editor);
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    for (const other of others) {
+      expect(
+        resolveSuggestionAddPointInState(other, editor.state, harness.anchors),
+      ).toBe(findRange(editor, other.id).to);
+    }
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default'),
+    ).toBeUndefined();
+  });
+
+  it('does not write a v2 override for an independent Add', () => {
+    const harness = makeCommentEditor(2);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const first: CommentAnchor = {
+      id: 'v2-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const later: CommentAnchor = {
+      id: 'v2-later',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Beta base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' LATER',
+    };
+    harness.anchors.push(first, later);
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default'),
+    ).toBeUndefined();
+  });
+
+  it('updates a remote peer from the v1 split and override together', async () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const first: CommentAnchor = {
+      id: 'peer-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const later: CommentAnchor = {
+      id: 'peer-later',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Beta base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' LATER',
+    };
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    const peerDoc = new Y.Doc();
+    Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(harness.ydoc));
+    const peer = makeCommentEditor(1, peerDoc);
+    peer.anchors.push(first, later);
+    triggerDecorationRebuild(peer.editor);
+
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    first.resolved = true;
+    Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(harness.ydoc));
+    await Promise.resolve();
+    expect(
+      resolveSuggestionAddPointInState(later, peer.editor.state, peer.anchors),
+    ).toBe(findRange(peer.editor, 'Beta base').to);
+    expect(
+      commentDecorationPluginKey
+        .getState(peer.editor.state)
+        ?.decorations.find(
+          undefined,
+          undefined,
+          (spec) => spec?.commentId === later.id,
+        )[0]?.from,
+    ).toBe(findRange(peer.editor, 'Beta base').to);
+
+    // A map-only update has no document step to trigger ProseMirror's normal
+    // remote decoration rebuild.
+    const changedPoint = createCommentAnchorPointFromEditor(
+      editor,
+      findRange(editor, 'Beta base').from,
+    )!;
+    harness.ydoc
+      .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+      .get('default')!
+      .set(later.id, Y.encodeRelativePosition(changedPoint.anchorFrom));
+    Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(harness.ydoc));
+    await Promise.resolve();
+    expect(
+      commentDecorationPluginKey
+        .getState(peer.editor.state)
+        ?.decorations.find(
+          undefined,
+          undefined,
+          (spec) => spec?.commentId === later.id,
+        )[0]?.from,
+    ).toBe(findRange(peer.editor, 'Beta base').from);
+    peer.editor.destroy();
+  });
+
+  it('does not rebase an Add point deleted by the accepted v1 replacement', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha target<br><br>Beta base</p>');
+    const target = findRange(editor, 'target');
+    const first: CommentAnchor = {
+      id: 'delete-first',
+      ...createCommentAnchorFromEditor(editor, target.from, target.to)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'replace',
+      originalContent: 'target',
+      suggestedContent: 'X\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: ['X', ''],
+        structureType: ['block'],
+      },
+    };
+    const later: CommentAnchor = {
+      id: 'deleted-point',
+      ...createCommentAnchorPointFromEditor(editor, target.from + 3)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' LATER',
+    };
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default')
+        ?.has(later.id),
+    ).not.toBe(true);
+  });
+
+  it('ignores an Add anchor that cannot resolve in the active v1 tab', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const first: CommentAnchor = {
+      id: 'invalid-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    const unrelatedDoc = new Y.Doc();
+    const foreignPoint = Y.createRelativePositionFromTypeIndex(
+      unrelatedDoc.getXmlFragment('foreign'),
+      0,
+    );
+    const invalid: CommentAnchor = {
+      id: 'invalid-later',
+      anchorFrom: foreignPoint,
+      anchorTo: foreignPoint,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' LATER',
+    };
+    harness.anchors.push(first, invalid);
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    expect(
+      harness.ydoc
+        .getMap<Y.Map<Uint8Array>>('suggestionAddPointOverrides')
+        .get('default')
+        ?.has(invalid.id),
+    ).not.toBe(true);
+  });
+
+  it('rejects repeated acceptance of an already resolved suggestion', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base</p>');
+    const first: CommentAnchor = {
+      id: 'repeat-first',
+      ...createCommentAnchorPointFromEditor(
+        editor,
+        findRange(editor, 'Alpha base').to,
+      )!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add',
+      suggestedContent: ' FIRST\n',
+      multilineStructure: {
+        version: 1,
+        insertedTexts: [' FIRST', ''],
+        structureType: ['block'],
+      },
+    };
+    expect(applyAcceptedSuggestion(editor, first, [first])).toBe(true);
+    first.resolved = true;
+    const acceptedDoc = editor.state.doc.toJSON();
+    expect(applyAcceptedSuggestion(editor, first, [first])).toBe(false);
+    expect(editor.state.doc.toJSON()).toEqual(acceptedDoc);
   });
 
   it('removes one surrounding space when deleting a middle word', () => {
@@ -1079,7 +1509,9 @@ describe('accepted suggestions', () => {
               '\n',
             ),
           ).toBe(
-            kind === 'block' ? `A\nBC\nyyy${suffix}` : `ABCXX\nyyy${suffix}${kind === 'text' ? '\n' : ''}`,
+            kind === 'block'
+              ? `A\nBC\nyyy${suffix}`
+              : `ABCXX\nyyy${suffix}${kind === 'text' ? '\n' : ''}`,
           );
         });
       }

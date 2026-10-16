@@ -41,6 +41,70 @@ describe('suggestion draft breaks', () => {
       return { store, start };
     };
 
+    for (const [direction, html] of [
+      [
+        'paragraph to list',
+        '<p>ABCfirst</p><ul><li><p>secondDEF</p></li></ul>',
+      ],
+      [
+        'list to paragraph',
+        '<ul><li><p>ABCfirst</p></li></ul><p>secondDEF</p>',
+      ],
+    ] as const) {
+      it(`blocks selected Enter from ${direction} before creating a draft in v${schemaVersion}`, () => {
+        const { store } = setup();
+        editor!.commands.setContent(html);
+        let from = -1;
+        let to = -1;
+        editor!.state.doc.descendants((node, pos) => {
+          if (node.isText && node.text?.startsWith('ABC')) from = pos + 3;
+          if (node.isText && node.text?.startsWith('second')) to = pos + 6;
+        });
+        editor!.commands.setTextSelection({ from, to });
+        const before = editor!.state.doc.toJSON();
+        const selection = {
+          from: editor!.state.selection.from,
+          to: editor!.state.selection.to,
+        };
+
+        store.getState().appendBreakToDraftAtCursor(false);
+
+        expect(store.getState().drafts).toEqual({});
+        expect(editor!.state.doc.toJSON()).toEqual(before);
+        expect({
+          from: editor!.state.selection.from,
+          to: editor!.state.selection.to,
+        }).toEqual(selection);
+      });
+
+      it(`leaves an existing ${direction} deletion draft unchanged on Enter in v${schemaVersion}`, () => {
+        const { store } = setup();
+        editor!.commands.setContent(html);
+        let from = -1;
+        let to = -1;
+        editor!.state.doc.descendants((node, pos) => {
+          if (node.isText && node.text?.startsWith('ABC')) from = pos + 3;
+          if (node.isText && node.text?.startsWith('second')) to = pos + 6;
+        });
+        store.getState().startDeleteDraft(from, to);
+        const drafts = store.getState().drafts;
+        const selection = {
+          from: editor!.state.selection.from,
+          to: editor!.state.selection.to,
+        };
+        const before = editor!.state.doc.toJSON();
+
+        store.getState().appendBreakToDraftAtCursor(false);
+
+        expect(store.getState().drafts).toEqual(drafts);
+        expect(editor!.state.doc.toJSON()).toEqual(before);
+        expect({
+          from: editor!.state.selection.from,
+          to: editor!.state.selection.to,
+        }).toEqual(selection);
+      });
+    }
+
     it(`keeps typed Replace and break-owning Add separate in v${schemaVersion}`, () => {
       const { store, start } = setup();
       store.getState().startDeleteDraft(start, start + 3);
@@ -99,8 +163,9 @@ describe('suggestion draft breaks', () => {
 
           store.getState().acceptSuggestion(draft.id);
 
-          const anchor = store.getState()._externalDepsRef!.current!
-            .commentAnchorsRef!.current[0];
+          const anchor =
+            store.getState()._externalDepsRef!.current!.commentAnchorsRef!
+              .current[0];
           expect(anchor.resolved).toBe(true);
           expect(
             editor!.state.doc.textBetween(

@@ -4,6 +4,32 @@ import type {
   SuggestionStructureType,
 } from '../../types';
 
+/** The selected Enter cannot split at its start if only its end is in a list. */
+export function crossesStandaloneParagraphAndListItem(
+  editor: Editor,
+  from: number,
+  to: number,
+): boolean {
+  if (from >= to) return false;
+  const doc = editor.state.doc;
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  const context = ($pos: typeof $from) => {
+    if ($pos.parent.type.name !== 'paragraph' || $pos.depth < 1) return null;
+    const parentName = $pos.node($pos.depth - 1).type.name;
+    if (parentName === 'doc' || parentName === 'dBlock') return 'standalone';
+    if (parentName === 'listItem' || parentName === 'taskItem')
+      return 'listItem';
+    return null;
+  };
+  const start = context($from);
+  const end = context($to);
+  return (
+    (start === 'standalone' && end === 'listItem') ||
+    (start === 'listItem' && end === 'standalone')
+  );
+}
+
 export function validMultilineStructure(
   content: string | undefined,
   value: SuggestionMultilineStructure | undefined,

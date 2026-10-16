@@ -20,6 +20,7 @@ import { getSplittedAttributes } from '@tiptap/core';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   ySyncPluginKey,
+  yUndoPluginKey,
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
 } from '@tiptap/y-tiptap';
@@ -150,6 +151,45 @@ export function resolveCommentAnchorPointInState(
 }
 
 const ACCEPTED_BREAK_POINTS = 'acceptedSuggestionBreakPoints';
+const SUGGESTION_ADD_POINT_OVERRIDES = 'suggestionAddPointOverrides';
+
+/** Each tab has its own Yjs fragment and its own pending Add overrides. */
+function getSuggestionAddPointOverrides(
+  state: EditorState,
+  create = false,
+): Y.Map<Uint8Array> | null {
+  const syncState = ySyncPluginKey.getState(state);
+  if (!syncState?.binding) return null;
+  const field = [...syncState.doc.share].find(
+    ([, sharedType]) => sharedType === syncState.type,
+  )?.[0];
+  if (!field) return null;
+  const root = syncState.doc.getMap(SUGGESTION_ADD_POINT_OVERRIDES) as Y.Map<
+    Y.Map<Uint8Array>
+  >;
+  let tabPoints = root.get(field);
+  if (!tabPoints && create) {
+    tabPoints = new Y.Map<Uint8Array>();
+    root.set(field, tabPoints);
+  }
+  return tabPoints instanceof Y.Map ? tabPoints : null;
+}
+
+function resolveSuggestionAddPointOverride(
+  anchor: CommentAnchor,
+  state: EditorState,
+): number | null {
+  const encoded = getSuggestionAddPointOverrides(state)?.get(anchor.id);
+  if (!(encoded instanceof Uint8Array)) return null;
+  try {
+    return resolveCommentAnchorPointInState(
+      { anchorFrom: Y.decodeRelativePosition(encoded) },
+      state,
+    );
+  } catch {
+    return null;
+  }
+}
 
 /** Resolve following Adds against the accepted break's persisted Yjs position. */
 export function resolveSuggestionAddPointInState(
@@ -157,7 +197,11 @@ export function resolveSuggestionAddPointInState(
   state: EditorState,
   anchors: CommentAnchor[] | ReadonlyMap<string, CommentAnchor>,
 ): number | null {
-  const point = resolveCommentAnchorPointInState(anchor, state);
+  const point =
+    (anchor.followsSuggestionId
+      ? null
+      : resolveSuggestionAddPointOverride(anchor, state)) ??
+    resolveCommentAnchorPointInState(anchor, state);
   if (point === null || !anchor.followsSuggestionId) return point;
   const parent = Array.isArray(anchors)
     ? anchors.find((entry) => entry.id === anchor.followsSuggestionId)
@@ -1155,6 +1199,37 @@ export const CommentDecorationExtension =
               );
             },
           },
+
+          view(editorView) {
+            const syncState = ySyncPluginKey.getState(editorView.state);
+            const overrides = syncState?.doc.getMap(
+              SUGGESTION_ADD_POINT_OVERRIDES,
+            );
+            let disposed = false;
+            let rebuildQueued = false;
+            const onOverridesChanged = () => {
+              if (disposed || rebuildQueued) return;
+              rebuildQueued = true;
+              // Yjs observers run during synchronization. Rebuild only after
+              // the editor state and Y.Doc have both settled.
+              queueMicrotask(() => {
+                rebuildQueued = false;
+                if (disposed) return;
+                editorView.dispatch(
+                  editorView.state.tr.setMeta(commentDecorationPluginKey, {
+                    rebuild: true,
+                  }),
+                );
+              });
+            };
+            overrides?.observeDeep(onOverridesChanged);
+            return {
+              destroy() {
+                disposed = true;
+                overrides?.unobserveDeep(onOverridesChanged);
+              },
+            };
+          },
         }),
       ];
     },
@@ -1334,6 +1409,47 @@ function resolveAcceptedDeleteRange(
   return spaceBefore && spaceAfter ? { from, to: to + 1 } : { from, to };
 }
 
+function dBlockStartAt(state: EditorState, position: number): number | null {
+  const $position = state.doc.resolve(position);
+  for (let depth = $position.depth; depth > 0; depth--) {
+    if ($position.node(depth).type.name === 'dBlock') {
+      return $position.before(depth);
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the block we are about to split. Keep only unfinished additions that
+ * sit in that same block now; saved comments cannot reliably tell us this.
+ */
+function pendingIndependentAddsInDBlock(
+  state: EditorState,
+  sourcePoint: number,
+  acceptedId: string,
+  relatedAnchors: CommentAnchor[],
+) {
+  const sourceBlock = dBlockStartAt(state, sourcePoint);
+  if (sourceBlock === null) return [];
+  return relatedAnchors.flatMap((candidate) => {
+    if (
+      candidate.id === acceptedId ||
+      !candidate.isSuggestion ||
+      candidate.suggestionType !== 'add' ||
+      candidate.isDraft ||
+      candidate.resolved ||
+      candidate.deleted ||
+      candidate.followsSuggestionId
+    )
+      return [];
+    const point = resolveCommentAnchorPointForAnalysis(candidate, state);
+    if (point === null || dBlockStartAt(state, point) !== sourceBlock) {
+      return [];
+    }
+    return [{ anchor: candidate, point }];
+  });
+}
+
 /**
  * Apply the accepted suggestion's change to the document.
  * Called by the store's acceptSuggestion action before resolving on-chain.
@@ -1344,7 +1460,7 @@ export function applyAcceptedSuggestion(
   anchor: CommentAnchor,
   relatedAnchors: CommentAnchor[] = [],
 ): boolean {
-  if (!anchor.isSuggestion) return false;
+  if (!anchor.isSuggestion || anchor.resolved || anchor.deleted) return false;
 
   const state = editor.state;
   const syncState = ySyncPluginKey.getState(state);
@@ -1369,7 +1485,7 @@ export function applyAcceptedSuggestion(
     if (from === null || to === null) return false;
     if (from < 0 || to > state.doc.content.size) return false;
 
-    if (anchor.suggestionType === 'add' && anchor.followsSuggestionId) {
+    if (anchor.suggestionType === 'add') {
       const logicalPoint = resolveSuggestionAddPointInState(
         anchor,
         state,
@@ -1398,6 +1514,18 @@ export function applyAcceptedSuggestion(
         state.doc.textBetween(from, to, '\n') !== anchor.originalContent
       )
         return false;
+
+      // Check where additions are before the split. Leave other blocks alone.
+      const pendingAdds =
+        state.schema.nodes.dBlock &&
+        anchor.multilineStructure.structureType.includes('block')
+          ? pendingIndependentAddsInDBlock(
+              state,
+              from,
+              anchor.id,
+              relatedAnchors,
+            )
+          : [];
 
       const tr = state.tr;
       if (suggestionType === 'replace') tr.delete(from, to);
@@ -1512,28 +1640,84 @@ export function applyAcceptedSuggestion(
       }
       if (!tr.docChanged) return false;
       tr.setMeta(suggestionTrackingPluginKey, true);
-      if (
+      // Work out where these additions should be after the whole edit.
+      // Skip any point the edit removed.
+      const mappedAdds = pendingAdds.flatMap(({ anchor: candidate, point }) => {
+        const result = tr.mapping.mapResult(
+          point,
+          candidate.anchorFrom.assoc === 1 ? 1 : -1,
+        );
+        if (
+          result.deleted ||
+          result.pos < 0 ||
+          result.pos > tr.doc.content.size
+        )
+          return [];
+        return [{ anchor: candidate, point: result.pos }];
+      });
+      const persistAcceptedBreak =
         suggestionType === 'replace' &&
         line.structureType.length === 1 &&
-        !line.insertedTexts.some(Boolean)
-      ) {
-        // Persist with the edit so peers and reloads use the actual break endpoint,
-        // even if later owner edits move it away from the original Replace anchor.
+        !line.insertedTexts.some(Boolean);
+      let wroteOverride = false;
+      if (persistAcceptedBreak || mappedAdds.length > 0) {
+        // Save the edit and corrected positions together, so other people,
+        // reload, and Undo see the same result.
         doc.transact(() => {
+          // Include this tab's overrides in the same Yjs undo item as the
+          // structural edit. Other tabs have separate editors/undo managers.
+          const tabOverrides =
+            mappedAdds.length > 0
+              ? getSuggestionAddPointOverrides(editor.state, true)
+              : null;
+          if (tabOverrides) {
+            yUndoPluginKey
+              .getState(editor.state)
+              ?.undoManager?.addToScope(tabOverrides);
+          }
           editor.view.dispatch(tr);
-          const point = createCommentAnchorPointFromEditor(
-            editor,
-            editor.state.selection.from,
-          );
-          if (point) {
-            doc
-              .getMap(ACCEPTED_BREAK_POINTS)
-              .set(anchor.id, Y.encodeRelativePosition(point.anchorFrom));
+          if (persistAcceptedBreak) {
+            const point = createCommentAnchorPointFromEditor(
+              editor,
+              editor.state.selection.from,
+            );
+            if (point) {
+              doc
+                .getMap(ACCEPTED_BREAK_POINTS)
+                .set(anchor.id, Y.encodeRelativePosition(point.anchorFrom));
+            }
+          }
+          if (mappedAdds.length > 0 && editor.state.doc.eq(tr.doc)) {
+            // Once the shared document has the split, save a new position
+            // only if an addition now points to the wrong place. Leave the
+            // original saved comment as it is.
+            for (const { anchor: candidate, point } of mappedAdds) {
+              if (
+                resolveSuggestionAddPointInState(
+                  candidate,
+                  editor.state,
+                  relatedAnchors,
+                ) === point
+              )
+                continue;
+              const mappedAnchor = createCommentAnchorPointFromEditor(
+                editor,
+                point,
+                candidate.anchorFrom.assoc === 1 ? 1 : -1,
+              );
+              if (!mappedAnchor || !tabOverrides) continue;
+              tabOverrides.set(
+                candidate.id,
+                Y.encodeRelativePosition(mappedAnchor.anchorFrom),
+              );
+              wroteOverride = true;
+            }
           }
         }, ySyncPluginKey);
       } else {
         editor.view.dispatch(tr);
       }
+      if (wroteOverride) triggerDecorationRebuild(editor);
       return true;
     }
 

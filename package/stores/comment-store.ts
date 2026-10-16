@@ -21,6 +21,7 @@ import { SuggestionMultilineStructure, SuggestionType } from '../types';
 import {
   appendSuggestionStructureType,
   appendSuggestionText,
+  crossesStandaloneParagraphAndListItem,
   resolveSuggestionStructureType,
   undoSuggestionInput,
   validMultilineStructure,
@@ -2684,6 +2685,32 @@ export const createCommentStore = () =>
       if (!editor) return;
       const selection = editor.state.selection;
       const hadSelection = selection.from < selection.to;
+
+      // A selected Enter is applied from the start of its range on Accept.
+      // The end's list context cannot supply a valid split for a standalone
+      // paragraph (or the reverse). Also catch Delete-then-Enter on that same
+      // still-empty range draft before changing any draft state.
+      const existingDraft = !hadSelection
+        ? findDraftAtEditorCursor(get().drafts, editor.state)
+        : null;
+      const pendingRange =
+        existingDraft?.hadDeletion &&
+        !existingDraft.insertedText &&
+        !existingDraft.multilineStructure
+          ? resolveCommentAnchorRangeInState(existingDraft, editor.state)
+          : null;
+      const blockedRange = hadSelection ? selection : pendingRange;
+      if (
+        !shift &&
+        blockedRange &&
+        crossesStandaloneParagraphAndListItem(
+          editor,
+          blockedRange.from,
+          blockedRange.to,
+        )
+      ) {
+        return;
+      }
 
       // A normal Enter would leave an empty list item. In suggestion mode it
       // must neither edit the document nor create a draft for that exit.
