@@ -44,6 +44,8 @@ export interface SuggestionTrackingOptions {
 
   /** Viewer types text with a collapsed cursor (Add gesture). */
   onTextInput: (text: string) => void;
+  /** Enter or Shift+Enter may contribute a proposed break, never a doc edit. */
+  onBreak: (shift: boolean) => void;
 
   /** Viewer types text over a non-empty selection (Replace gesture). */
   onReplaceTyping: (from: number, to: number, text: string) => void;
@@ -254,6 +256,7 @@ export const SuggestionTrackingExtension =
       return {
         getIsSuggestionMode: () => false,
         onTextInput: () => {},
+        onBreak: () => {},
         onReplaceTyping: () => {},
         onDeleteSelection: () => {},
         onPasteLink: () => {},
@@ -403,8 +406,11 @@ export const SuggestionTrackingExtension =
                 return true;
               }
 
-              // Enter / Tab — blocked per v1 spec
-              if (event.key === 'Enter' || event.key === 'Tab') {
+              if (event.key === 'Enter') {
+                opts.onBreak(event.shiftKey);
+                return true;
+              }
+              if (event.key === 'Tab') {
                 return true;
               }
 

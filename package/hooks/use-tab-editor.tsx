@@ -1727,6 +1727,8 @@ const useEditorExtension = ({
           getIsSuggestionMode: () => isSuggestionModeRef.current,
           onTextInput: (text) =>
             storeApiRef.current?.getState().appendToDraftAtCursor(text),
+          onBreak: (shift) =>
+            storeApiRef.current?.getState().appendBreakToDraftAtCursor(shift),
           onReplaceTyping: (from, to, text) => {
             const state = storeApiRef.current?.getState();
             if (!state) return;
