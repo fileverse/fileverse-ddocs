@@ -6,6 +6,10 @@ let emojiData: Promise<Emoji[]> | undefined;
 const loadEmojiData = () =>
   (emojiData ??= import('emojibase-data/en/data.json').then(
     (m) => m.default as Emoji[],
+    (error) => {
+      emojiData = undefined; // retry on the next query, e.g. after going offline
+      throw error;
+    },
   ));
 
 function isRegionalIndicator(emoji: any) {

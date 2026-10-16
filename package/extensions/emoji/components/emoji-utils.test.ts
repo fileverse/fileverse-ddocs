@@ -20,3 +20,24 @@ describe('emojiSearch', () => {
     expect(results).toHaveLength(0);
   });
 });
+
+describe('emojiSearch when the data chunk fails to load', () => {
+  afterEach(() => {
+    vi.doUnmock('emojibase-data/en/data.json');
+    vi.resetModules();
+  });
+
+  it('retries on the next query instead of caching the failure', async () => {
+    let fail = true;
+    vi.resetModules();
+    vi.doMock('emojibase-data/en/data.json', () => {
+      if (fail) throw new Error('chunk load failed');
+      return { default: [{ label: 'rocket', emoji: '🚀', group: 0 }] };
+    });
+    const { emojiSearch: search } = await import('./emoji-utils');
+
+    await expect(search('rocket')).rejects.toThrow();
+    fail = false;
+    expect((await search('rocket')).map((r) => r.emoji)).toEqual(['🚀']);
+  });
+});
