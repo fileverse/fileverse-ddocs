@@ -17,13 +17,14 @@ Both entries (`index.ts` and `headless-editor-utils.ts`) reach `createHeadlessEd
 
 `vite.config.ts` builds its `external` list from `dependencies` plus `peerDependencies` in `package.json`. Every declared package is external (subpaths included) except the ones listed below. A new runtime dependency only has to be added to `package.json`.
 
-Three groups stay bundled. Each one was found by a failing check, not by assumption:
+Four groups stay bundled. Each one was found by a failing check, not by assumption:
 
 | Bundled | Why it cannot be external |
 | --- | --- |
 | `@tiptap/*`, `prosemirror-*`, `@_ueberdosis/prosemirror-tables`, `y-prosemirror`, `tiptap-markdown`, `@aarkue/tiptap-math-extension` | Tiptap's own packages use caret ranges (`starter-kit@3.11.0` depends on `@tiptap/core ^3.11.0`). A consumer install floats them to the latest 3.x beside our pinned `@tiptap/core@3.11.0`: a fresh install got 3.32.0 for 37 packages, and ddocs.new already has 3.20.2. External, the editor would run on two `@tiptap/core` copies at untested versions. Bundled, it runs the exact set this repo tests. |
 | `react-tweet` | Its JS imports its own `.module.css`, which Node cannot load. ddocs.new's `legacy-content-initialization.test.tsx` imports the real package under Vitest, so the dist must load in plain Node. Its styles stay in `style.css`. |
 | `mammoth` | Its `browser` field swaps in a browser `unzip.js`. The Node build rejects the `{ arrayBuffer }` input we pass, so .docx import fails outside a bundler. Bundling pins the browser build. |
+| `tippy.js`, `@tippyjs/react` | CommonJS with no `exports` map. Bundlers read their ESM `module` build, but Node hands a default import the whole module object, so the slash and emoji menus (`tippy is not a function`) and the table cell view (`Element type is invalid`) break in Vitest. |
 
 Two more rules:
 
@@ -32,22 +33,22 @@ Two more rules:
 
 The invariant is that no external package may depend on a bundled engine package, or it would bring its own copy. This holds today.
 
-## Result (measured on 5.1.13)
+## Result (before: 5.1.13; after: this branch on 6.0.0)
 
 | | Before | After |
 | --- | --- | --- |
-| `use-headless-editor` chunk | 4.50 MB (gzip 1,005 KB) | 1.36 MB (gzip 355 KB) |
-| `index.es.js` | 1.15 MB | 783 KB |
+| `use-headless-editor` chunk | 4.50 MB (gzip 1,005 KB) | 1.41 MB (gzip 371 KB) |
+| `index.es.js` | 1.15 MB | 791 KB |
 | Lazy chunks | – | emoji data 1.07 MB (gzip 102 KB), mammoth 527 KB |
-| Tarball packed / unpacked | 1.6 MB / 6.9 MB | 856 kB / 4.2 MB |
-| Scratch consumer app: total JS / largest chunk | 9.91 MB / 6.19 MB | 9.72 MB / 5.22 MB |
+| Tarball packed / unpacked | 1.6 MB / 6.9 MB | 884 kB / 4.3 MB |
+| Scratch consumer app: total JS / largest chunk | 9.91 MB / 6.19 MB | 9.73 MB / 5.23 MB |
 | `style.css` | 68.41 kB | byte-identical |
 
 ## Verifying a change to the external list
 
 1. `npm run build`, then check that every bare import in `dist/*.mjs` and `dist/*.js` is declared in `package.json`.
 2. `npm pack`, install the tarball into a scratch app with fresh `node_modules`, and run a production Vite build.
-3. In that app, under Vitest with jsdom, `import()` every external specifier the dist uses. Then run a headless JSON→Yjs conversion, a Markdown import and a .docx import.
+3. In that app, under Vitest with jsdom, `import()` every external specifier the dist uses. Loading is not enough: for every default import, check that Node's `default` is the value a bundler would give (not a module object wrapping another `default`). Then run a headless JSON→Yjs conversion, a Markdown import and a .docx import.
 4. Compare the app's bundle size against the same app built with the previous tarball.
 
 ## Open

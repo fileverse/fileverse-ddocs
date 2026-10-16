@@ -1,6 +1,6 @@
 # ddoc Bundle Optimization Notes
 
-> **Status (2026-10):** TEC-3028 replaced the hand-written external list: every declared dependency is now external except the editor engine, `react-tweet` and `mammoth`, and the emoji data and mammoth load lazily. See `DIST_BUNDLING.md`.
+> **Status (2026-10):** TEC-3028 replaced the hand-written external list: every declared dependency is now external except the editor engine, `react-tweet`, `mammoth` and the two tippy packages, and the emoji data and mammoth load lazily. See `DIST_BUNDLING.md`.
 >
 > **Status (2026-09):** the numbers below are from Feb 2026 and predate several changes. Step 4 landed and went further: `vite.config.ts` now externalizes `react`, `react-dom` (and their subpaths), `@fileverse/ui`, `framer-motion`, `frimousse`, `mermaid`, `yjs`, `@fileverse/crypto`, `@dnd-kit/*` and `viem`, and dedupes `yjs`. `yjs` is a peer dependency (`>=13.6.30 <14`) and ddocs.new pins it to one copy through its `overrides`, so the "must stay bundled" note under step 4 is obsolete. `useSyncMachine` / xstate were replaced by `useSyncManager` + `SyncManager` in `package/sync-local/`. Steps 1–3 and 5 (viewer entry, viewer hook, lazy highlight.js) are still open.
 

@@ -4,17 +4,19 @@ import react from '@vitejs/plugin-react';
 import dts from 'vite-plugin-dts';
 import pkg from './package.json';
 
-// Stays bundled: the Tiptap/ProseMirror engine (consumer installs float Tiptap's
-// caret ranges and would split @tiptap/core), react-tweet (its JS imports CSS)
-// and mammoth (its Node build rejects the { arrayBuffer } input we pass).
+// Stays bundled (docs/DIST_BUNDLING.md): the Tiptap/ProseMirror engine, plus
+// packages Node mis-loads unbundled: react-tweet (imports CSS), mammoth (Node
+// build rejects { arrayBuffer }), tippy (CommonJS default import).
 const isBundled = (name: string) =>
   name.startsWith('@tiptap/') ||
   name.startsWith('prosemirror-') ||
   [
     '@_ueberdosis/prosemirror-tables',
     '@aarkue/tiptap-math-extension',
+    '@tippyjs/react',
     'mammoth',
     'react-tweet',
+    'tippy.js',
     'tiptap-markdown',
     'y-prosemirror',
   ].includes(name);
