@@ -11,7 +11,7 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import * as Y from 'yjs';
-import { SuggestionType } from '../../types';
+import { SuggestionMultilineStructure, SuggestionType } from '../../types';
 import {
   createCommentAnchorFromEditor,
   resolveCommentAnchorRangeInState,
@@ -429,6 +429,8 @@ export interface IComment {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
 }
 
 export const CommentExtension = Mark.create<CommentOptions, CommentStorage>({
