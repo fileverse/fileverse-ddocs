@@ -32,7 +32,7 @@ Two more rules:
 
 The invariant is that no external package may depend on a bundled engine package, or it would bring its own copy. This holds today.
 
-## Result (5.1.13 → 5.1.14)
+## Result (measured on 5.1.13)
 
 | | Before | After |
 | --- | --- | --- |
