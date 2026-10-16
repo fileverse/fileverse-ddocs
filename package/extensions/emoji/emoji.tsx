@@ -64,7 +64,8 @@ export const Emoji = Node.create({
 }).configure({
   suggestion: {
     items: ({ query }: any) => {
-      return emojiSearch(query);
+      // Offline, the lazy data chunk fails: show no results, the next query retries.
+      return emojiSearch(query).catch(() => []);
     },
     render: () => {
       let component: any;
