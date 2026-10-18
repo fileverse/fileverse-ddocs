@@ -83,6 +83,7 @@ import { useSplitResize } from './hooks/use-split-resize';
 import { applyTabbedTemplate } from './utils/apply-tabbed-template';
 import type { TabbedJSONContent } from './hooks/use-headless-editor';
 import { useTabPositionMemory } from './hooks/use-tab-position-memory';
+import { EditorContextMenu } from './components/editor-context-menu';
 
 const DdocEditor = forwardRef(
   (
@@ -1343,6 +1344,13 @@ const DdocEditor = forwardRef(
                                             />
                                           </div>
                                         ))}
+                                        {editor && (
+                                          <EditorContextMenu
+                                            key={activeTabId}
+                                            editor={editor}
+                                            onError={onError}
+                                          />
+                                        )}
                                       </div>
                                     </DBlockToolbarProvider>
                                   </EditingProvider>
