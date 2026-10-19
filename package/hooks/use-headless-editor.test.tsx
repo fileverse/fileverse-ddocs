@@ -167,3 +167,52 @@ describe('useHeadlessEditor schema-version support (M3 template creation)', () =
     },
   );
 });
+
+// The homepage bulk upload builds a whole doc from a .md file headlessly, so,
+// as with templates, the schema marker has to be born inside the blob: at
+// first mount the doc already has content and is never stamped after.
+describe('headless Markdown import (homepage bulk upload)', () => {
+  const MARKDOWN = [
+    '# Imported title',
+    '',
+    'Some imported text.',
+    '',
+    '| Case | Result |',
+    '|---|---|',
+    '| A1 | Pass |',
+    '',
+  ].join('\n');
+
+  const importMarkdown = async (options?: { schemaVersion?: number }) => {
+    const file = new File([MARKDOWN], 'fixture.md', { type: 'text/markdown' });
+    const { result } = renderHook(() => useHeadlessEditor());
+    const blob = await result.current.getYjsContentFromMarkdown(
+      file,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async () => ({}) as any,
+      options,
+    );
+    return decodeBlob(blob as string);
+  };
+
+  it('imports as schema 2 when asked: stamped, flat, text and table kept', async () => {
+    const { doc, topLevelTypes, schemaVersion } = await importMarkdown({
+      schemaVersion: 2,
+    });
+
+    expect(schemaVersion).toBe(2);
+    expect(topLevelTypes).not.toContain('dBlock');
+    expect(topLevelTypes).toContain('heading');
+    expect(topLevelTypes).toContain('table');
+    const xml = doc.getXmlFragment('default').toString();
+    expect(xml).toContain('Some imported text.');
+    expect(xml).toContain('A1');
+  });
+
+  it('keeps the default import on schema 1, as before', async () => {
+    const { doc, topLevelTypes } = await importMarkdown();
+
+    expect(topLevelTypes[0]).toBe('dBlock');
+    expect(doc.getMap('ddocMeta').get('schemaVersion')).toBeUndefined();
+  });
+});

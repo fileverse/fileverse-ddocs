@@ -51,6 +51,14 @@ export type CommentMutationType =
 
 export type SuggestionType = 'add' | 'replace' | 'delete' | 'link';
 
+export type SuggestionStructureType = 'block' | 'listItem' | 'soft' | 'text';
+
+export interface SuggestionMultilineStructure {
+  version: 1;
+  insertedTexts: string[];
+  structureType: SuggestionStructureType[];
+}
+
 export interface CommentMutationMeta {
   type: CommentMutationType;
   updateChunk?: string;
@@ -61,6 +69,8 @@ export interface CommentMutationMeta {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
 }
 
 export interface SerializedCommentAnchor {
@@ -73,6 +83,8 @@ export interface SerializedCommentAnchor {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
 }
 
 export interface CommentAccountProps {
@@ -306,6 +318,24 @@ export interface DdocProps extends CommentAccountProps {
     updatedDocContent: string | JSONContent,
     updateChunk: string,
   ) => void;
+  /**
+   * Called when the document changes, from the same places as `onChange`
+   * (after typing pauses, on a flushed structural change, and when a
+   * collaborator's update arrives), but with no arguments. A host that passes
+   * this and not `onChange` never pays for encoding the whole document on
+   * every change. A host that keeps the content elsewhere (the package's
+   * y-indexeddb store) only needs to know that an edit happened.
+   */
+  onLocalChange?: () => void;
+  /**
+   * Whether this is a brand-new document. When omitted the editor derives it
+   * as "owner, no collaboration, no `initialContent`". A host that loads an
+   * existing document from the package's y-indexeddb store passes no
+   * `initialContent`, so it must pass `false` here: a new document is stamped
+   * with the preferred schema version, which would relabel an existing older
+   * document.
+   */
+  isNewDocument?: boolean;
   onCollaboratorChange?: (collaborators: undefined | IDocCollabUsers[]) => void;
   onTextSelection?: (data: IEditorSelectionData) => void;
   onCommentInteraction?: (data: IEditorSelectionData) => void;
@@ -379,8 +409,8 @@ export interface DdocProps extends CommentAccountProps {
    */
   documentStyling?: DocumentStyling;
   /**
-   * Callback when IndexedDB initialization fails
-   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, quota exceeded, corrupted DB). The editor will continue to function without local persistence.
+   * Callback when local saving to IndexedDB has a problem
+   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, corrupted DB), when a save is rejected (e.g., quota exceeded), when the browser closes or another tab deletes the database (the editor detaches from it), and when a corrupt store was repaired on load. The editor keeps working in memory; `refreshYjsIndexedDbProvider` attaches again and saves what it holds.
    */
   onIndexedDbError?: (error: Error) => void;
   /**

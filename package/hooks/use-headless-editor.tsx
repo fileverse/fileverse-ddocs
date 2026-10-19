@@ -17,7 +17,6 @@ import { handleMarkdownContent } from '../extensions/mardown-paste-handler';
 import { DOCX_STYLE_MAP } from '../extensions/docx/docx-import';
 import { readDocxSpacingFromArchive } from '../extensions/docx/docx-spacing';
 import { IpfsImageUploadResponse } from '../types';
-import mammoth from 'mammoth';
 import { CommentExtension as Comment } from '../extensions/comment';
 import {
   ACTIVE_TAB_STATE_KEY,
@@ -315,9 +314,12 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
       throw new Error('Editor is not available');
     }
   };
+  // `schemaVersion` as in getYjsConvertor: an imported doc already has
+  // content when it first mounts, so its schema is decided here, for good.
   async function getYjsContentFromMarkdown(
     file: File,
     ipfsImageUploadFn: (file: File) => Promise<IpfsImageUploadResponse>,
+    options?: { schemaVersion?: number },
   ): Promise<string | null> {
     if (file.type === 'text/markdown' || file.name.endsWith('.md')) {
       const content = await new Promise<string>((resolve, reject) => {
@@ -327,7 +329,7 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
         reader.readAsText(file);
       });
 
-      const { editor, ydoc } = getEditor();
+      const { editor, ydoc } = getEditor(options);
 
       await handleMarkdownContent(editor.view, content, ipfsImageUploadFn);
 
@@ -345,6 +347,7 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
   async function getYjsContentFromDocx(
     file: File,
     ipfsImageUploadFn: (file: File) => Promise<IpfsImageUploadResponse>,
+    options?: { schemaVersion?: number },
   ): Promise<string | null> {
     if (
       file.type ===
@@ -353,6 +356,7 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
     ) {
       try {
         const arrayBuffer = await file.arrayBuffer();
+        const { default: mammoth } = await import('mammoth');
 
         // Same mammoth configuration as the in-editor import
         // (extensions/docx/docx-import.tsx): the style map is what carries
@@ -385,7 +389,7 @@ export const createHeadlessEditorRuntime = (props?: UseHeadlessEditorProps) => {
           extractedHtml,
         );
 
-        const { editor, ydoc } = getEditor();
+        const { editor, ydoc } = getEditor(options);
 
         // Feed extracted HTML into your existing import pipeline. It is HTML,
         // so markdown shorthand must not be rewritten over it — a tilde or

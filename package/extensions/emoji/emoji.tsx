@@ -64,7 +64,8 @@ export const Emoji = Node.create({
 }).configure({
   suggestion: {
     items: ({ query }: any) => {
-      return emojiSearch(query);
+      // Offline, the lazy data chunk fails: show no results, the next query retries.
+      return emojiSearch(query).catch(() => []);
     },
     render: () => {
       let component: any;
@@ -73,8 +74,12 @@ export const Emoji = Node.create({
 
       return {
         onStart: (props: any) => {
+          // Results load lazily: the suggestion may have closed meanwhile.
+          if (!EmojiPluginKey.getState(props.editor.state)?.active) return;
           isEditable = props.editor.isEditable;
           if (!isEditable) return;
+          popup?.[0].destroy();
+          component?.destroy();
 
           component = new ReactRenderer(EmojiList, {
             props,
@@ -93,7 +98,7 @@ export const Emoji = Node.create({
         },
 
         onUpdate(props: any) {
-          if (!isEditable) return;
+          if (!isEditable || !popup) return;
 
           component.updateProps(props);
           popup[0].setProps({
@@ -102,7 +107,7 @@ export const Emoji = Node.create({
         },
 
         onKeyDown(props: any) {
-          if (!isEditable) return;
+          if (!isEditable || !popup) return;
 
           if (props.event.key === 'Escape') {
             popup[0].hide();
@@ -114,8 +119,9 @@ export const Emoji = Node.create({
         onExit() {
           if (!isEditable) return;
 
-          popup[0].destroy();
-          component.destroy();
+          popup?.[0].destroy();
+          component?.destroy();
+          popup = component = undefined;
         },
       };
     },

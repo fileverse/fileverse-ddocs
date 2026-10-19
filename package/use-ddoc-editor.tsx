@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DdocProps } from './types';
 import { useDocSchemaVersion } from './hooks/use-doc-schema-version';
 import { useTabEditor } from './hooks/use-tab-editor';
@@ -16,6 +16,8 @@ export const useDdocEditor = ({
   versionHistoryState,
   collaboration,
   onChange,
+  onLocalChange,
+  isNewDocument,
   onCollaboratorChange,
   onCommentInteraction,
   onError,
@@ -94,12 +96,45 @@ export const useDdocEditor = ({
 
   const yjsSetup = useYjsSetup({
     onChange,
+    onLocalChange,
     enableIndexeddbSync,
     ddocId,
     collaboration,
     onCollaboratorChange,
     onIndexedDbError,
   });
+  // Mounted without a body ('' or none) over a store that may hold one: the
+  // doc's schema marker is only known once the store has loaded. An editor
+  // bound before that binds with the wrong schema, and the replayed content is
+  // rewritten and deleted, then saved back into the store (every tab lost).
+  // So the editor is held until the store has synced, and the store load is
+  // started here: the editor, which normally starts it, is not built yet.
+  const { initialiseYjsIndexedDbProvider } = yjsSetup;
+  const isAwaitingStore = Boolean(
+    enableIndexeddbSync &&
+      ddocId &&
+      !collabEnabled &&
+      !isVersionMode &&
+      ddocContent !== null &&
+      !ddocContent &&
+      !yjsSetup.isIndexeddbSynced,
+  );
+  const storeLoadStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isAwaitingStore || storeLoadStartedRef.current) return;
+    storeLoadStartedRef.current = true;
+    void initialiseYjsIndexedDbProvider();
+  }, [isAwaitingStore, initialiseYjsIndexedDbProvider]);
+  // The editor, once built, starts the store load itself; a load started
+  // above is not started twice.
+  const initialiseYjsIndexedDbProviderForEditor = useCallback(
+    () =>
+      storeLoadStartedRef.current
+        ? Promise.resolve()
+        : initialiseYjsIndexedDbProvider(),
+    [initialiseYjsIndexedDbProvider],
+  );
+
   const shouldWaitForIndexeddbBeforeCreatingDefaultTab = Boolean(
     enableIndexeddbSync &&
       !collabEnabled &&
@@ -113,9 +148,14 @@ export const useDdocEditor = ({
     !isVersionMode && !isPreviewMode && !collabEnabled && rest.isDDocOwner,
   );
 
+  const isNewDdoc =
+    isNewDocument ??
+    Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent);
+
   const tabManager = useTabManager({
     ydoc: yjsSetup.ydoc,
     initialContent: ddocContent,
+    isNewDocument: isNewDdoc,
     enableCollaboration: collabEnabled,
     isDDocOwner: rest.isDDocOwner || false,
     createDefaultTabIfMissing: Boolean(
@@ -147,7 +187,7 @@ export const useDdocEditor = ({
   // is already readable here on the very first render.
   const { docSchemaVersion, isSchemaUnsupported } = useDocSchemaVersion({
     ydoc: yjsSetup.ydoc,
-    isNewDdoc: Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent),
+    isNewDdoc,
     isContentResolved:
       !shouldWaitForIndexeddbBeforeCreatingDefaultTab ||
       yjsSetup.isIndexeddbSynced,
@@ -195,15 +235,14 @@ export const useDdocEditor = ({
     onDisconnect: yjsSetup.onDisconnect,
     isIndexeddbSynced: yjsSetup.isIndexeddbSynced,
     hasCollabContentInitialised: yjsSetup.hasCollabContentInitialised,
-    initialiseYjsIndexedDbProvider: yjsSetup.initialiseYjsIndexedDbProvider,
+    initialiseYjsIndexedDbProvider: initialiseYjsIndexedDbProviderForEditor,
     externalExtensions,
     // An empty activeTabId makes useTabEditorCache destroy every editor and
-    // create none, so this build never binds y-sync to a newer-schema doc.
-    // Do NOT also gate on schema resolution: IndexedDB sync only starts from
-    // the editor's content effect, so holding the editor until sync deadlocks.
-    // A doc whose marker arrives late rebuilds its editors via the
-    // docSchemaVersion dependency of buildExtensionsForTab instead.
-    activeTabId: isSchemaUnsupported ? '' : tabManager.activeTabId,
+    // create none, so this build never binds y-sync to a newer-schema doc,
+    // nor to a doc whose store has not loaded yet (isAwaitingStore, which
+    // starts the store load itself so holding the editor cannot deadlock).
+    activeTabId:
+      isSchemaUnsupported || isAwaitingStore ? '' : tabManager.activeTabId,
     tabIds,
     docSchemaVersion,
     hasTabState: tabManager.hasTabState,
