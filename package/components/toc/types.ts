@@ -26,6 +26,10 @@ export type ToCItemProps = {
   onItemRemove: (e: React.MouseEvent, id: string) => void;
   index: number;
   orientation?: 'portrait' | 'landscape';
+  /** At or below 1280px: the item is in the mobile list. */
+  isMobile?: boolean;
+  /** At or above 1280px: the item takes the rail's width caps. */
+  isWide?: boolean;
 };
 
 export interface DocumentOutlineProps {
@@ -61,4 +65,7 @@ export interface DocumentOutlineProps {
   deleteTab?: (tabId: string) => void;
   isConnected?: boolean;
   isFocusMode?: boolean;
+  /** 'contained': sized from the editor canvas. Only DdocEditor passes it. */
+  layout?: 'viewport' | 'contained';
+  tabPanelSlot?: HTMLElement | null;
 }

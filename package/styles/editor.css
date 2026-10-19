@@ -447,8 +447,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
 
-    @media (min-width: 768px) {
+    @container ddoc-editor (min-width: 768px) {
       grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+
+    @media (min-width: 768px) {
+      &:where(:not(.ddoc-editor-cq *)) {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      }
     }
 
     & > [data-type='column'] > div > div {
@@ -603,8 +609,17 @@
   z-index: 5;
 }
 
-@media (min-width: 768px) {
+@container ddoc-editor (min-width: 768px) {
   .ProseMirror.main-doc-editor {
+    --padding-t: 72px;
+    --padding-r: 80px;
+    --padding-b: 20vh;
+    --padding-l: var(--padding-r);
+    padding: var(--padding-t) var(--padding-r) var(--padding-b) var(--padding-l);
+  }
+}
+@media (min-width: 768px) {
+  .ProseMirror.main-doc-editor:where(:not(.ddoc-editor-cq *)) {
     --padding-t: 72px;
     --padding-r: 80px;
     --padding-b: 20vh;
@@ -714,8 +729,13 @@
 /* Below the padding breakpoint the 36px gutter fits only one button — match
    the cluster's gate (767px, see isBelowLargeScreen) and keep just the
    collapse chevron (which self-reveals when collapsed). */
-@media (max-width: 767px) {
+@container ddoc-editor (max-width: 767px) {
   .ProseMirror .d-block-preview-copy-link {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .ProseMirror .d-block-preview-copy-link:where(:not(.ddoc-editor-cq *)) {
     display: none;
   }
 }
@@ -796,8 +816,13 @@
   max-width: 100%;
   margin-inline: auto;
 }
-@media (min-width: 1024px) {
+@container ddoc-editor (min-width: 1024px) {
   .ProseMirror [data-type='d-block'].is-table > [data-node-view-content] {
+    max-width: 90%;
+  }
+}
+@media (min-width: 1024px) {
+  .ProseMirror [data-type='d-block'].is-table > [data-node-view-content]:where(:not(.ddoc-editor-cq *)) {
     max-width: 90%;
   }
 }
@@ -830,8 +855,13 @@
   padding-top: 0.5rem;
 }
 
-@media (min-width: 1025px) {
+@container ddoc-editor (min-width: 1025px) {
   .node-dBlock:first-child > div > .is-table {
+    padding-top: 0;
+  }
+}
+@media (min-width: 1025px) {
+  .node-dBlock:first-child > div > .is-table:where(:not(.ddoc-editor-cq *)) {
     padding-top: 0;
   }
 }
@@ -841,8 +871,15 @@
   pointer-events: auto;
 }
 
-@media (max-width: 1025px) {
+@container ddoc-editor (max-width: 1025px) {
   .node-iframe iframe {
+    width: 100%;
+    aspect-ratio: 16/9;
+    height: auto;
+  }
+}
+@media (max-width: 1025px) {
+  .node-iframe iframe:where(:not(.ddoc-editor-cq *)) {
     width: 100%;
     aspect-ratio: 16/9;
     height: auto;
@@ -969,8 +1006,13 @@ ul[data-type='taskList'] li > label {
   user-select: none;
 }
 
-@media screen and (max-width: 768px) {
+@container ddoc-editor (max-width: 768px) {
   ul[data-type='taskList'] li > label {
+    margin-inline-end: 0.5rem;
+  }
+}
+@media screen and (max-width: 768px) {
+  ul[data-type='taskList'] li > label:where(:not(.ddoc-editor-cq *)) {
     margin-inline-end: 0.5rem;
   }
 }

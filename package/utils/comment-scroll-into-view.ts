@@ -11,7 +11,6 @@ import { getEditorScrollContainer } from './get-editor-scroll-container';
 const MOBILE_COMMENT_DRAWER_SHEET_SELECTOR =
   '[data-mobile-comment-drawer-sheet]';
 const EDITOR_COMMENT_LAYOUT_SELECTOR = '.editor-comment-layout';
-const MOBILE_COMMENT_BREAKPOINT_QUERY = '(max-width: 1280px)';
 const DEFAULT_VIEWPORT_PADDING = 24;
 const MOBILE_DRAWER_CLEARANCE = 16;
 export const MOBILE_COMMENT_DRAWER_CANVAS_OFFSET_VAR =
@@ -31,11 +30,10 @@ const getCommentAnchorSelector = (commentId: string) => {
   return `[data-comment-id="${safeCommentId}"]`;
 };
 
+// No width check: the sheet is only rendered in the mobile comment layout,
+// which follows the editor's width, not the window's.
 const getMobileCommentDrawerSheetRect = () => {
-  if (
-    typeof window === 'undefined' ||
-    !window.matchMedia(MOBILE_COMMENT_BREAKPOINT_QUERY).matches
-  ) {
+  if (typeof window === 'undefined') {
     return null;
   }
 

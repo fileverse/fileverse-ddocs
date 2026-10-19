@@ -3,7 +3,7 @@ import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { NodeRangeSelection } from '@tiptap/extension-node-range';
 import { Editor } from '@tiptap/react';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 import { cn } from '@fileverse/ui';
 import useContentItemActions, {
   ResolvedContentItem,
@@ -159,7 +159,7 @@ export const DBlockDragHandle = ({
   // 767, not 768: the container padding widens at min-width 768px, so a
   // max-width gate of 768 would leave exactly-768px viewports with the wide
   // gutter and no controls in it.
-  const isBelowLargeScreen = useMediaQuery('(max-width: 767px)');
+  const isBelowLargeScreen = useEditorMediaQuery('(max-width: 767px)');
 
   const resolveBlock = useCallback(
     (): ResolvedContentItem | null =>

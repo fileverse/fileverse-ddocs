@@ -42,7 +42,13 @@ class ZoomService {
       ),
     );
 
-    if (window.matchMedia('(max-width: 1280px)').matches) {
+    // Follows the editor's width when its root is a query container.
+    const root = element.closest('.ddoc-editor-cq');
+    const isNarrow = root
+      ? root.clientWidth <= 1280
+      : window.matchMedia('(max-width: 1280px)').matches;
+
+    if (isNarrow) {
       return;
     }
 

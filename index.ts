@@ -55,7 +55,11 @@ export {
   seedSession,
 } from './package/sync-local/session-tools';
 
-export type { CommentMutationMeta, SuggestionType } from './package/types';
+export type {
+  CommentMutationMeta,
+  DdocStats,
+  SuggestionType,
+} from './package/types';
 export type {
   ImageUploadFn,
   ImageFetchFn,

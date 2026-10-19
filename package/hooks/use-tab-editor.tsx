@@ -60,6 +60,7 @@ import { ToCItemType } from '../components/toc/types';
 import { TWITTER_REGEX } from '../constants/twitter';
 import { headingToSlug } from '../utils/heading-to-slug';
 import { useResponsive } from '../utils/responsive';
+import type { EditorWidthStore } from '../utils/editor-width-store';
 import { yCursorPlugin, yCursorPluginKey } from '@tiptap/y-tiptap';
 import { getResponsiveColor } from '../utils/colors';
 import { getEditorScrollContainer } from '../utils/get-editor-scroll-container';
@@ -80,6 +81,7 @@ import {
 import { useTabEditorCache } from './use-tab-editor-cache';
 import { transactionOnlyChangesText } from '../utils/transaction-range';
 import { clearActiveComment } from '../extensions/comment/comment';
+import { createStatsPublisher } from '../utils/stats-publisher';
 
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
@@ -198,6 +200,7 @@ const hasVisibleFloatingCommentCard = () => {
 
 interface UseTabEditorArgs {
   ydoc: Y.Doc;
+  editorWidthStore?: EditorWidthStore;
   isVersionMode?: boolean;
   hasTabState?: boolean;
   versionId?: string;
@@ -224,6 +227,7 @@ interface UseTabEditorArgs {
   setWordCount?: DdocProps['setWordCount'];
   setSelectedWordCount?: DdocProps['setSelectedWordCount'];
   setPageCount?: DdocProps['setPageCount'];
+  onStatsChange?: DdocProps['onStatsChange'];
   setIsContentLoading: Dispatch<SetStateAction<boolean>>;
   setIsCollabContentLoading: Dispatch<SetStateAction<boolean>>;
   unFocused?: boolean;
@@ -249,6 +253,7 @@ interface UseTabEditorArgs {
 
 export const useTabEditor = ({
   ydoc,
+  editorWidthStore,
   isVersionMode,
   hasTabState,
   versionId,
@@ -275,6 +280,7 @@ export const useTabEditor = ({
   setWordCount,
   setSelectedWordCount,
   setPageCount,
+  onStatsChange,
   setIsContentLoading,
   setIsCollabContentLoading,
   unFocused,
@@ -1010,9 +1016,24 @@ export const useTabEditor = ({
   // character count, and on every tab activation (edits that reached an
   // inactive tab's editor were not observed).
   const pageStructureVersionRef = useRef(0);
+  const onStatsChangeRef = useRef(onStatsChange);
+  useEffect(() => {
+    onStatsChangeRef.current = onStatsChange;
+  });
+  const statsPublisherRef = useRef<ReturnType<
+    typeof createStatsPublisher
+  > | null>(null);
+  if (!statsPublisherRef.current) {
+    statsPublisherRef.current = createStatsPublisher((stats) =>
+      onStatsChangeRef.current?.(stats),
+    );
+  }
+  const statsPublisher = statsPublisherRef.current;
+  // A boolean, so an inline callback does not restart the effects below.
+  const hasStatsListener = Boolean(onStatsChange);
 
   useEffect(() => {
-    if (!setPageCount) {
+    if (!setPageCount && !hasStatsListener) {
       return;
     }
 
@@ -1027,7 +1048,7 @@ export const useTabEditor = ({
       }
       pageCounter.destroy();
     };
-  }, [setPageCount]);
+  }, [setPageCount, hasStatsListener]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1035,13 +1056,14 @@ export const useTabEditor = ({
       !setCharacterCount &&
       !setWordCount &&
       !setSelectedWordCount &&
-      !setPageCount
+      !setPageCount &&
+      !hasStatsListener
     )
       return;
 
     const updateSelectedWordCount = () => {
       if (
-        !setSelectedWordCount ||
+        (!setSelectedWordCount && !hasStatsListener) ||
         activeEditorRef.current !== editor ||
         editor.isDestroyed
       ) {
@@ -1050,14 +1072,16 @@ export const useTabEditor = ({
 
       const { from, to, empty } = editor.state.selection;
       if (empty) {
-        setSelectedWordCount(0);
+        setSelectedWordCount?.(0);
+        statsPublisher.publish({ selectedWords: 0 });
         return;
       }
 
       // ' ' separators match Tiptap CharacterCount's default whitespace word counting
       const text = editor.state.doc.textBetween(from, to, ' ', ' ');
       const words = text.split(' ').filter((word) => word !== '').length;
-      setSelectedWordCount(words);
+      setSelectedWordCount?.(words);
+      statsPublisher.publish({ selectedWords: words });
     };
 
     const updateCounts = (event?: {
@@ -1075,6 +1099,9 @@ export const useTabEditor = ({
       } else {
         // Initial call for this (re)activated tab.
         pageStructureVersionRef.current += 1;
+        statsPublisher.beginTab(
+          lastPageMeasurementByTabRef.current[activeTabId]?.pageCount ?? null,
+        );
       }
 
       if (statsDebounceRef.current) {
@@ -1092,9 +1119,11 @@ export const useTabEditor = ({
           // characters() walks the whole document text; read it once per tick.
           const characters = editor.storage.characterCount.characters() ?? 0;
           setCharacterCount?.(characters);
-          setWordCount?.(editor.storage.characterCount.words() ?? 0);
+          const words = editor.storage.characterCount.words() ?? 0;
+          setWordCount?.(words);
+          statsPublisher.publish({ characters, words }, { tick: true });
 
-          if (setPageCount) {
+          if (setPageCount || hasStatsListener) {
             const pageCounter = pageCounterRef.current;
 
             if (!pageCounter) {
@@ -1121,7 +1150,8 @@ export const useTabEditor = ({
                     lastMeasurement.characters,
                 ),
               );
-              setPageCount(scaled);
+              setPageCount?.(scaled);
+              statsPublisher.publish({ pages: scaled });
               return;
             }
 
@@ -1166,7 +1196,8 @@ export const useTabEditor = ({
                       at: Date.now(),
                       structuralVersion: measuredStructuralVersion,
                     };
-                    setPageCount(pageCount);
+                    setPageCount?.(pageCount);
+                    statsPublisher.publish({ pages: pageCount });
                   }
                 })
                 .catch(() => {
@@ -1178,10 +1209,11 @@ export const useTabEditor = ({
                   ) {
                     // Reuse the last good count for this tab, else transient
                     // measurement failures collapse the footer back to 1.
-                    setPageCount(
+                    const fallbackPages =
                       lastPageMeasurementByTabRef.current[activeTabId]
-                        ?.pageCount ?? 1,
-                    );
+                        ?.pageCount ?? 1;
+                    setPageCount?.(fallbackPages);
+                    statsPublisher.publish({ pages: fallbackPages });
                   }
                 });
             });
@@ -1213,6 +1245,8 @@ export const useTabEditor = ({
     setPageCount,
     setWordCount,
     setSelectedWordCount,
+    hasStatsListener,
+    statsPublisher,
   ]);
 
   // Print shortcut handler
@@ -1302,7 +1336,7 @@ export const useTabEditor = ({
   const hash = window.location.hash.startsWith('#')
     ? window.location.hash.substring(1)
     : window.location.hash;
-  const { isNativeMobile } = useResponsive();
+  const { isNativeMobile } = useResponsive(editorWidthStore);
 
   const hashParams = new URLSearchParams(hash);
   const heading = hashParams.get('heading');

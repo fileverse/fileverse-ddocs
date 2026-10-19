@@ -7,6 +7,7 @@ import { useYjsSetup } from './hooks/use-yjs-setup';
 import { Editor } from '@tiptap/react';
 import type { DBlockRuntimeState } from './extensions/d-block/dblock-runtime';
 import { registerFonts } from './utils/font-loader';
+import type { EditorWidthStore } from './utils/editor-width-store';
 
 export const useDdocEditor = ({
   isPreviewMode,
@@ -24,6 +25,7 @@ export const useDdocEditor = ({
   setWordCount,
   setSelectedWordCount,
   setPageCount,
+  onStatsChange,
   ipfsImageUploadFn,
   ddocId,
   enableIndexeddbSync,
@@ -49,11 +51,13 @@ export const useDdocEditor = ({
   isPreviewEditor = false,
   fonts,
   preferredSchemaVersion,
+  editorWidthStore,
   onSchemaStampGuard,
   ...rest
 }: Partial<DdocProps> & {
   isFocusMode?: boolean;
   isPreviewEditor?: boolean;
+  editorWidthStore?: EditorWidthStore;
 }) => {
   useEffect(() => {
     registerFonts(fonts ?? []);
@@ -221,6 +225,7 @@ export const useDdocEditor = ({
 
   const tabEditor = useTabEditor({
     ydoc: yjsSetup.ydoc,
+    editorWidthStore,
     isPreviewMode,
     viewerMode,
     initialContent: ddocContent,
@@ -245,6 +250,7 @@ export const useDdocEditor = ({
     setWordCount,
     setSelectedWordCount,
     setPageCount,
+    onStatsChange,
     setIsContentLoading,
     setIsCollabContentLoading,
     unFocused,
