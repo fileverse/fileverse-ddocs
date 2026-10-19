@@ -87,10 +87,15 @@ describe('useDdocEditor schema stamp over an existing v1 store', () => {
     expect(result.current.docSchemaVersion).toBe(1);
     expect(ydoc.getXmlFragment('default').toString()).toContain(TEXT);
     expect(result.current.editor?.getText()).toContain(TEXT);
+    // No stamp is requested any more for an unasserted doc, so the block
+    // guard has nothing to refuse; the mount is reported instead.
     expect(onSchemaStampGuard).toHaveBeenCalledWith({
-      kind: 'blocked',
+      kind: 'unasserted-new',
       preferredSchemaVersion: 2,
     });
+    expect(onSchemaStampGuard).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'blocked' }),
+    );
 
     // One ordinary edit: the body must still be there afterwards.
     await act(async () => {
@@ -101,7 +106,7 @@ describe('useDdocEditor schema stamp over an existing v1 store', () => {
     expect(ydoc.getXmlFragment('default').toString()).toContain(TEXT);
   }, 20000);
 
-  it('still stamps a genuinely new doc (empty store, empty body) with the preferred version', async () => {
+  it('still stamps a genuinely new doc (empty store, empty body, host asserts isNewDocument) with the preferred version', async () => {
     const { result } = renderHook(() =>
       useDdocEditor({
         ddocId: `fresh-${Date.now()}`,
@@ -109,6 +114,7 @@ describe('useDdocEditor schema stamp over an existing v1 store', () => {
         enableIndexeddbSync: true,
         preferredSchemaVersion: 2,
         initialContent: '',
+        isNewDocument: true,
         onChange: vi.fn(),
       }),
     );
