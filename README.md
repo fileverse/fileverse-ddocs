@@ -146,9 +146,9 @@ The preset composes `@fileverse/ui/tailwind` (class-based dark mode, animate plu
 
 You should now be set to use dDocs!
 
-### Migrating from 5.x
+### Migrating from 6.x
 
-6.0 changes how the editor is sized. No prop was removed.
+7.0 changes how the editor is sized. No prop was removed.
 
 - Give the editor a parent with a definite height (see Sizing). It no longer sizes itself from `100dvh`.
 - Put your footer after the editor in normal flow. `footerHeight` has no effect and can be removed.
