@@ -816,7 +816,7 @@ const DdocEditor = forwardRef(
     });
 
     // The scroller is the canvas, except in Split View where it stays on the
-    // inner wrapper as before (docs/DROP_IN_EDITOR.md §2.2). The ref object
+    // inner wrapper. The ref object
     // itself switches, so effects keyed on it re-bind to the new element.
     const editorScrollContainerRef = isSplitViewActive
       ? contentWrapperRef

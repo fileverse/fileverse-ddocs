@@ -2,7 +2,7 @@ let cached: boolean | null = null;
 
 // Early container-query implementations make the container the containing
 // block for position: fixed descendants, which would trap the editor's
-// viewport-level overlays. See docs/DROP_IN_EDITOR.md §2.9.
+// viewport-level overlays. Failing the check keeps the window breakpoints.
 export const canUseEditorContainerQueries = (): boolean => {
   if (cached !== null) return cached;
   if (

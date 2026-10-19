@@ -46,7 +46,7 @@ describe('scrollCommentSelectionRangeIntoView', () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 210, behavior: 'smooth' });
   });
 
-  // A narrow editor on a wide screen shows the sheet (docs/DROP_IN_EDITOR.md §2.9).
+  // A narrow editor on a wide screen shows the sheet.
   it('lifts the comment above the sheet whatever the window width', () => {
     const { editor, scrollTo } = setup();
     addSheet();

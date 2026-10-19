@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(path.resolve(__dirname, 'ddoc-editor.tsx'), 'utf8');
 
-// docs/DROP_IN_EDITOR.md §2.8: the editor is sized by its parent.
+// The editor is sized by its parent (AGENTS.md, Layout contract).
 describe('DdocEditor layout contract', () => {
   it.each([
     '100dvh',
@@ -21,7 +21,7 @@ describe('DdocEditor layout contract', () => {
   });
 
   // Effects keyed on the ref (floating comments' scroll listener) re-bind
-  // only if the ref object changes with the scroller (§2.2).
+  // only if the ref object changes with the scroller.
   it('switches the scroll container ref object with Split View', () => {
     expect(source.replace(/\s+/g, ' ')).toContain(
       'const editorScrollContainerRef = isSplitViewActive ? contentWrapperRef : canvasRef;',

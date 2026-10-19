@@ -14,7 +14,7 @@ const WIDTH_QUERY = /^\s*\(\s*(min|max)-width\s*:\s*([\d.]+)px\s*\)\s*$/;
 const subscribeToNothing = () => () => {};
 
 // Same query strings as useMediaQuery, answered from the editor root's width
-// (docs/DROP_IN_EDITOR.md §2.9). Outside a root it is the window, as before.
+// when the element is inside one. Outside a root it is the window, as before.
 export const useEditorMediaQuery = (
   query: string,
   store?: EditorWidthStore,

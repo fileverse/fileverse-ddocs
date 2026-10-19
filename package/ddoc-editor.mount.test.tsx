@@ -29,7 +29,7 @@ const mount = async () => {
   return container.querySelector<HTMLElement>('.ddoc-editor-root')!;
 };
 
-// docs/DROP_IN_EDITOR.md §2.1: the mounted tree, with no UI-state props.
+// The mounted tree, with no UI-state props (AGENTS.md, Layout contract).
 describe('DdocEditor mounted structure', () => {
   it('lays out toolbar, canvas and tab-panel slot under the root', async () => {
     const root = await mount();
