@@ -385,7 +385,10 @@ export interface DdocProps extends CommentAccountProps {
 
 export type SchemaStampGuardEvent =
   | { kind: 'blocked'; preferredSchemaVersion: number }
-  | { kind: 'reverted'; preferredSchemaVersion: number };
+  | { kind: 'reverted'; preferredSchemaVersion: number }
+  // Mounted as "owner, no collab, no body" without isNewDocument: the old
+  // inference would have stamped; now the doc opens unstamped (TEC-3272).
+  | { kind: 'unasserted-new'; preferredSchemaVersion: number };
 
 export interface IEditorSelectionData {
   from: number;

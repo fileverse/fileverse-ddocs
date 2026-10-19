@@ -152,7 +152,7 @@ describe('useDdocEditor mounted without the body its store holds', () => {
     );
   });
 
-  it('still opens a genuinely new doc (empty store, empty body) at the preferred schema', async () => {
+  it('still opens a genuinely new doc (empty store, empty body, host asserts isNewDocument) at the preferred schema', async () => {
     const ddocId = `store-first-new-${Math.random()}`;
     const { result } = renderHook(() =>
       useDdocEditor({
@@ -161,6 +161,7 @@ describe('useDdocEditor mounted without the body its store holds', () => {
         enableIndexeddbSync: true,
         preferredSchemaVersion: 2,
         initialContent: '',
+        isNewDocument: true,
         onChange: vi.fn(),
       }),
     );
@@ -173,4 +174,102 @@ describe('useDdocEditor mounted without the body its store holds', () => {
     await settle();
     expect(result.current.editor?.getText()).toContain('new text');
   }, 20000);
+
+  // TEC-3272. A stale draft flag made the host mount an existing v1 doc with
+  // '' in preview mode (row not loaded yet), then remount it for real. The
+  // first mount used to infer "new", stamp schema 2 on the empty Y.Doc, and
+  // y-indexeddb persisted that stamp ahead of the replay; the second mount
+  // then bound the v1 body with the v2 schema and deleted it.
+  it("an early preview mount with '' over a v1 store does not stamp, and the real mount keeps the text", async () => {
+    const ddocId = `store-first-tec3272-${Math.random()}`;
+    await seedStore(ddocId, bodyFor(1));
+    const guard = vi.fn();
+    const preview = renderHook(() =>
+      useDdocEditor({
+        ddocId,
+        isDDocOwner: true,
+        enableIndexeddbSync: true,
+        preferredSchemaVersion: 2,
+        initialContent: '',
+        isPreviewMode: true,
+        onChange: vi.fn(),
+        onSchemaStampGuard: guard,
+      }),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+    expect(
+      preview.result.current.ydoc
+        .getMap(DDOC_META_ROOT_KEY)
+        .get(SCHEMA_VERSION_META_KEY),
+    ).toBeUndefined();
+    preview.unmount();
+    expect((await readStore(ddocId)).marker).toBeUndefined();
+
+    const { result } = renderHook(() =>
+      useDdocEditor({
+        ddocId,
+        isDDocOwner: true,
+        enableIndexeddbSync: true,
+        preferredSchemaVersion: 2,
+        initialContent: '',
+        onChange: vi.fn(),
+        onSchemaStampGuard: guard,
+      }),
+    );
+    await settle();
+    expect(result.current.docSchemaVersion).toBe(1);
+    expect(result.current.editor?.getText()).toContain(TEXT);
+    await act(async () => {
+      result.current.editor?.commands.focus('end');
+      result.current.editor?.commands.insertContent(' more');
+    });
+    await settle();
+    const stored = await readStore(ddocId);
+    expect(stored.text).toContain(TEXT);
+    expect(stored.marker).toBeUndefined();
+    expect(guard).toHaveBeenCalledWith({
+      kind: 'unasserted-new',
+      preferredSchemaVersion: 2,
+    });
+  }, 30000);
+
+  it('reports unasserted-new once when mounted as owner with no body and no isNewDocument, not when asserted', async () => {
+    const guard = vi.fn();
+    const a = renderHook(() =>
+      useDdocEditor({
+        ddocId: `store-first-unasserted-${Math.random()}`,
+        isDDocOwner: true,
+        enableIndexeddbSync: true,
+        preferredSchemaVersion: 2,
+        initialContent: '',
+        onChange: vi.fn(),
+        onSchemaStampGuard: guard,
+      }),
+    );
+    await settle();
+    a.rerender();
+    await settle();
+    expect(
+      guard.mock.calls.filter(([e]) => e.kind === 'unasserted-new'),
+    ).toHaveLength(1);
+    expect(a.result.current.docSchemaVersion).toBe(1);
+
+    const asserted = vi.fn();
+    renderHook(() =>
+      useDdocEditor({
+        ddocId: `store-first-asserted-${Math.random()}`,
+        isDDocOwner: true,
+        enableIndexeddbSync: true,
+        preferredSchemaVersion: 2,
+        initialContent: '',
+        isNewDocument: true,
+        onChange: vi.fn(),
+        onSchemaStampGuard: asserted,
+      }),
+    );
+    await settle();
+    expect(asserted).not.toHaveBeenCalled();
+  }, 30000);
 });

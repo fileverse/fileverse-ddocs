@@ -27,10 +27,13 @@ const marker = (result: ReturnType<typeof render>['result']) =>
   result.current.ydoc.getMap(DDOC_META_ROOT_KEY).get(SCHEMA_VERSION_META_KEY);
 
 describe('isNewDocument', () => {
-  it('stamps a doc with no initialContent as new when the host says nothing (unchanged)', () => {
+  // TEC-3272: "host says nothing" is no longer taken as "new". That inference
+  // also matched an existing doc mounted before its body was in hand, and
+  // stamped it; the doc now opens unstamped and the host is told.
+  it('does not stamp a doc with no initialContent when the host says nothing', () => {
     const { result } = render();
-    expect(result.current.docSchemaVersion).toBe(2);
-    expect(marker(result)).toBe(2);
+    expect(result.current.docSchemaVersion).toBe(1);
+    expect(marker(result)).toBeUndefined();
   });
 
   it('does not stamp an existing doc the host loads without initialContent', () => {
