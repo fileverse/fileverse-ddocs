@@ -337,6 +337,8 @@ const DdocEditor = forwardRef(
     const [tabPanelSlot, setTabPanelSlot] = useState<HTMLDivElement | null>(
       null,
     );
+    const [mobileCommentSlot, setMobileCommentSlot] =
+      useState<HTMLDivElement | null>(null);
     const editorWrapperRef = useRef<HTMLDivElement | null>(null);
     const editorWidthStoreRef = useRef<EditorWidthStore | null>(null);
     if (!editorWidthStoreRef.current) {
@@ -1678,6 +1680,7 @@ const DdocEditor = forwardRef(
                       onTabChange={setActiveTabId}
                       isPreviewMode={isPreviewMode}
                       tabs={tabs}
+                      mobileContainer={mobileCommentSlot}
                     />
                   )}
                 </div>
@@ -1809,6 +1812,14 @@ const DdocEditor = forwardRef(
                 style={{
                   height: isBelow1280px && shouldRenderDocumentOutline ? 50 : 0,
                 }}
+              />
+              {/* Same layer as the drawer anchor, but outside the scrolling canvas. */}
+              <div
+                ref={setMobileCommentSlot}
+                className={cn(
+                  'ddoc-mobile-comment-slot relative shrink-0',
+                  isPresentationMode ? 'z-[60]' : 'z-40',
+                )}
               />
             </CommentStoreProvider>
           </EditorWidthContext.Provider>
