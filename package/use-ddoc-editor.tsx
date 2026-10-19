@@ -144,9 +144,19 @@ export const useDdocEditor = ({
     !isVersionMode && !isPreviewMode && !collabEnabled && rest.isDDocOwner,
   );
 
-  const isNewDdoc =
-    isNewDocument ??
-    Boolean(rest.isDDocOwner && !collabEnabled && !ddocContent);
+  // A doc is new only when the host says so. It used to be inferred from
+  // "owner, no collab, no body", which is also what an EXISTING doc looks
+  // like when the host mounts it before its body is in hand (a stale draft
+  // flag, a fresh device, a body-less row). That inference stamped the
+  // preferred schema onto an empty Y.Doc, the stamp was persisted into the
+  // store ahead of the replay, and the real body then bound with the wrong
+  // schema and was deleted (TEC-3272). With no assertion the doc opens with
+  // the schema its content carries, v1 for an unmarked doc: slower on big
+  // tables, never destructive.
+  const isNewDdoc = isNewDocument === true;
+  const inferredNew = Boolean(
+    rest.isDDocOwner && !collabEnabled && !ddocContent,
+  );
 
   const tabManager = useTabManager({
     ydoc: yjsSetup.ydoc,
@@ -181,6 +191,24 @@ export const useDdocEditor = ({
   // Called after useTabManager on purpose: initialContent is decoded into the
   // ydoc synchronously by useTabManager's hydration memo, so the schema marker
   // is already readable here on the very first render.
+  const unassertedReportedRef = useRef(false);
+  useEffect(() => {
+    if (isNewDdoc || !inferredNew || unassertedReportedRef.current) return;
+    if (isVersionMode || isPreviewMode) return;
+    unassertedReportedRef.current = true;
+    onSchemaStampGuard?.({
+      kind: 'unasserted-new',
+      preferredSchemaVersion: preferredSchemaVersion ?? 1,
+    });
+  }, [
+    isNewDdoc,
+    inferredNew,
+    isVersionMode,
+    isPreviewMode,
+    onSchemaStampGuard,
+    preferredSchemaVersion,
+  ]);
+
   const { docSchemaVersion, isSchemaUnsupported } = useDocSchemaVersion({
     ydoc: yjsSetup.ydoc,
     isNewDdoc,
