@@ -924,7 +924,9 @@ function App() {
               : initialContent
           }
           isNewDocument={
-            storeOnly && storeCheck.status === 'existing' ? false : undefined
+            storeOnly && storeCheck.status !== 'pending'
+              ? storeCheck.status === 'new'
+              : undefined
           }
           onIndexedDbError={handleIndexedDbError}
           enableIndexeddbSync={true}
