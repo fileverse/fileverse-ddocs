@@ -391,6 +391,7 @@ const DdocEditor = forwardRef(
       activeTabId,
       setActiveTabId: setActiveTabIdRaw,
       createTab,
+      createSubtab,
       renameTab,
       duplicateTab,
       orderTab,
@@ -1060,6 +1061,7 @@ const DdocEditor = forwardRef(
                     activeTabId={activeTabId}
                     setActiveTabId={setActiveTabId}
                     createTab={createTab}
+                    createSubtab={createSubtab}
                     renameTab={renameTab}
                     duplicateTab={duplicateTab}
                     orderTab={orderTab}
@@ -1071,6 +1073,7 @@ const DdocEditor = forwardRef(
                     isFocusMode={isFocusMode}
                     layout="contained"
                     tabPanelSlot={tabPanelSlot}
+                    ddocId={ddocId}
                   />
                 )}
               </div>
@@ -1785,6 +1788,7 @@ const DdocEditor = forwardRef(
                             activeTabId={activeTabId}
                             setActiveTabId={setActiveTabId}
                             createTab={createTab}
+                            createSubtab={createSubtab}
                             renameTab={renameTab}
                             duplicateTab={duplicateTab}
                             orderTab={orderTab}
@@ -1796,6 +1800,7 @@ const DdocEditor = forwardRef(
                             isFocusMode={isFocusMode}
                             layout="contained"
                             tabPanelSlot={tabPanelSlot}
+                            ddocId={ddocId}
                           />
                         </div>
                       )}

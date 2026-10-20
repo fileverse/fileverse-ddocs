@@ -3,6 +3,7 @@ import {
   ComponentProps,
   HTMLAttributes,
   MouseEvent,
+  ReactNode,
   useEffect,
   useRef,
   useState,
@@ -50,11 +51,19 @@ export interface TabItemProps {
   onCopyLink?: () => void;
   onDelete?: () => void;
   isConnected?: boolean;
+  // Subtabs. Absent on a doc without subtabs, so the row looks as before.
+  onAddSubtab?: () => void;
+  /** Left offset in px for the row's level. */
+  indent?: number;
+  expandState?: 'expanded' | 'collapsed' | 'leaf';
+  onToggleExpand?: () => void;
 }
 
 interface SortableTabItemProps
   extends Omit<TabItemProps, 'dragHandleProps' | 'isEditing' | 'setIsEditing'> {
   id: string;
+  // Rendered inside the dragged element, so a tab's subtabs move with it.
+  children?: ReactNode;
 }
 
 interface TabContextMenuItem {
@@ -79,7 +88,10 @@ interface TabContextMenuProps {
 const menuItemClassName =
   'space-xsm gap-xsm hover:color-bg-default-hover cursor-pointer h-[30px] border-radius-sm flex items-center w-full';
 
-export const SortableTabItem = (props: SortableTabItemProps) => {
+export const SortableTabItem = ({
+  children,
+  ...props
+}: SortableTabItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
 
   const {
@@ -113,6 +125,7 @@ export const SortableTabItem = (props: SortableTabItemProps) => {
           ...listeners,
         }}
       />
+      {children}
     </div>
   );
 };
@@ -145,6 +158,10 @@ export const TabItem = ({
   onCopyLink,
   onDelete,
   isConnected = true,
+  onAddSubtab,
+  indent = 0,
+  expandState,
+  onToggleExpand,
 }: TabItemProps) => {
   const [isHovered, setIsHovered] = useState(false);
   const [openEmojiPickerTrigger, setOpenEmojiPickerTrigger] = useState(0);
@@ -198,6 +215,13 @@ export const TabItem = ({
 
   const editMenuSections: TabContextMenuItem[][] = [
     [
+      {
+        id: 'add-subtab',
+        label: 'Add subtab',
+        icon: 'Plus',
+        onSelect: () => onAddSubtab?.(),
+        visible: Boolean(onAddSubtab),
+      },
       {
         id: 'rename',
         label: 'Rename',
@@ -303,7 +327,36 @@ export const TabItem = ({
         isActive && 'color-bg-default-hover',
       )}
     >
-      <div className="flex items-center gap-[8px] min-w-0 flex-1">
+      <div
+        className="flex items-center gap-[8px] min-w-0 flex-1"
+        style={indent ? { paddingLeft: indent } : undefined}
+      >
+        {expandState && (
+          <button
+            type="button"
+            data-testid={`tab-expand-${tabId}`}
+            aria-label={expandState === 'collapsed' ? 'Expand' : 'Collapse'}
+            disabled={expandState === 'leaf'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand?.();
+            }}
+            className={cn(
+              'w-[16px] h-[16px] shrink-0 flex items-center justify-center rounded-[2px]',
+              expandState === 'leaf'
+                ? 'invisible'
+                : 'hover:color-bg-secondary-hover',
+            )}
+          >
+            <LucideIcon
+              name={
+                expandState === 'collapsed' ? 'ChevronRight' : 'ChevronDown'
+              }
+              className="w-[14px] h-[14px]"
+            />
+          </button>
+        )}
         <TabEmojiPicker
           emoji={emoji}
           setEmoji={(_emoji) => {

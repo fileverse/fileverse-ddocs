@@ -18,6 +18,7 @@ export const DocumentOutline = ({
   activeTabId,
   setActiveTabId,
   createTab,
+  createSubtab,
   renameTab,
   duplicateTab,
   orderTab,
@@ -31,6 +32,7 @@ export const DocumentOutline = ({
   isFocusMode,
   layout = 'viewport',
   tabPanelSlot,
+  ddocId,
 }: DocumentOutlineProps) => {
   const isMediaMax1280px = useEditorMediaQuery('(max-width:1280px)');
 
@@ -64,6 +66,7 @@ export const DocumentOutline = ({
       setItems={setItems}
       orientation={orientation}
       createTab={createTab}
+      createSubtab={createSubtab}
       renameTab={renameTab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
@@ -76,6 +79,7 @@ export const DocumentOutline = ({
       isConnected={isConnected}
       isFocusMode={isFocusMode}
       layout={layout}
+      ddocId={ddocId}
     />
   ) : (
     <DocumentMobileTabPanel
@@ -89,6 +93,7 @@ export const DocumentOutline = ({
       orientation={orientation}
       renameTab={renameTab}
       createTab={createTab}
+      createSubtab={createSubtab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
       deleteTab={deleteTab}
@@ -100,6 +105,7 @@ export const DocumentOutline = ({
       isFocusMode={isFocusMode}
       layout={layout}
       tabPanelSlot={tabPanelSlot}
+      ddocId={ddocId}
     />
   );
 };

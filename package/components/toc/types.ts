@@ -48,6 +48,7 @@ export interface DocumentOutlineProps {
   activeTabId: string;
   setActiveTabId: (id: string) => void;
   createTab: () => void;
+  createSubtab?: (parentId: string) => void;
   renameTab: (
     tabId: string,
     payload: { newName?: string; emoji?: string },
@@ -61,6 +62,7 @@ export interface DocumentOutlineProps {
   tabConfig?: {
     onCopyTabLink?: (tabId: string) => void;
     defaultTabId?: string;
+    enableSubtabs?: boolean;
   };
   deleteTab?: (tabId: string) => void;
   isConnected?: boolean;
@@ -68,4 +70,6 @@ export interface DocumentOutlineProps {
   /** 'contained': sized from the editor canvas. Only DdocEditor passes it. */
   layout?: 'viewport' | 'contained';
   tabPanelSlot?: HTMLElement | null;
+  /** Lets the sidebar remember collapsed tabs per document in this browser. */
+  ddocId?: string;
 }
