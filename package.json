@@ -2,7 +2,7 @@
   "name": "@fileverse-dev/ddoc",
   "private": false,
   "description": "DDoc",
-  "version": "7.0.0",
+  "version": "7.0.1-mobile-comments.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/fileverse/fileverse-ddocs.git"
