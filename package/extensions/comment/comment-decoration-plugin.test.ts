@@ -5,12 +5,14 @@ import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import { fromUint8Array } from 'js-base64';
 import { deserializeCommentAnchors } from '../../utils/comment-anchor-serialization';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
+import { getSharedThreadAnchorElement } from '../../components/inline-comment/floating-comment-layout-utils';
 import {
   applyAcceptedSuggestion,
   CommentDecorationExtension,
   commentDecorationPluginKey,
   createCommentAnchorFromEditor,
   createCommentAnchorPointFromEditor,
+  getCommentAtPosition,
   triggerDecorationRebuild,
   resolveSuggestionAddPointInState,
   type CommentAnchor,
@@ -274,6 +276,193 @@ describe('comment decoration anchoring', () => {
     expect(decoratedText(editor, 'c1')).toBeNull();
   });
 });
+
+describe.each([1, 2])(
+  'regular comment overlap in schema v%i',
+  (schemaVersion) => {
+    let editor: Editor;
+
+    afterEach(() => editor?.destroy());
+
+    it('activates a new same-range comment ahead of resolved history', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Alpha bravo charlie</p>');
+      const range = findRange(editor, 'bravo');
+      const original: CommentAnchor = {
+        id: 'original',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: true,
+        deleted: false,
+      };
+      harness.anchors.push(original);
+
+      const newComment: CommentAnchor = {
+        id: 'new',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(newComment);
+      triggerDecorationRebuild(editor);
+      editor.commands.setTextSelection(range.from + 1);
+
+      const getSelectedComment = () =>
+        getCommentAtPosition(
+          editor,
+          editor.state.selection.from,
+          () => harness.anchors,
+        );
+
+      expect(getSelectedComment()).toBe(newComment);
+      expect(decoratedText(editor, 'new')).toBe('bravo');
+      expect(decoratedText(editor, 'original')).toBeNull();
+
+      // Preserve resolved history as a fallback when no live thread matches.
+      newComment.resolved = true;
+      triggerDecorationRebuild(editor);
+      expect(getSelectedComment()).toBe(original);
+      original.deleted = true;
+      expect(getSelectedComment()).toBe(newComment);
+      newComment.deleted = true;
+      expect(getSelectedComment()).toBeNull();
+    });
+
+    it('selects the newest unresolved comment covering the clicked text', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Alpha bravo charlie</p>');
+      const bravo = findRange(editor, 'bravo');
+      const charlie = findRange(editor, 'charlie');
+      const addAnchor = (
+        id: string,
+        range: { from: number; to: number },
+        resolved = false,
+        deleted = false,
+      ) => {
+        const anchor: CommentAnchor = {
+          id,
+          ...createCommentAnchorFromEditor(editor!, range.from, range.to)!,
+          resolved,
+          deleted,
+        };
+        harness.anchors.push(anchor);
+        return anchor;
+      };
+      const newer = addAnchor('newer', bravo);
+      expect(
+        getCommentAtPosition(editor, bravo.from + 1, () => harness.anchors),
+      ).toBe(newer);
+      // Anchor array order is deliberately different from creation order.
+      const older = addAnchor('older', bravo);
+      addAnchor('unrelated-latest', charlie);
+      const resolved = addAnchor('resolved-latest', bravo, true);
+      addAnchor('deleted-latest', bravo, false, true);
+      const createdAt = new Map([
+        ['newer', new Date('2026-10-20T12:02:00Z')],
+        ['older', new Date('2026-10-20T12:01:00Z')],
+        ['unrelated-latest', new Date('2026-10-20T12:05:00Z')],
+        ['resolved-latest', new Date('2026-10-20T12:04:00Z')],
+        ['deleted-latest', new Date('2026-10-20T12:06:00Z')],
+      ]);
+      const selectAt = (pos: number) =>
+        getCommentAtPosition(
+          editor!,
+          pos,
+          () => harness.anchors,
+          (id) => createdAt.get(id),
+        );
+
+      expect(selectAt(bravo.from + 1)).toBe(newer);
+      expect(selectAt(charlie.from + 1)?.id).toBe('unrelated-latest');
+      newer.resolved = true;
+      expect(selectAt(bravo.from + 1)).toBe(older);
+      older.deleted = true;
+      expect(selectAt(bravo.from + 1)).toBe(newer);
+      newer.deleted = true;
+      expect(selectAt(bravo.from + 1)).toBe(resolved);
+      expect(selectAt(findRange(editor, 'Alpha').from + 1)).toBeNull();
+    });
+
+    it('retains resolved history while allowing same-range and partial-overlap anchors', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Alpha bravo charlie delta</p>');
+      const bravo = findRange(editor, 'bravo');
+      const first: CommentAnchor = {
+        id: 'first',
+        ...createCommentAnchorFromEditor(editor, bravo.from, bravo.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(first);
+      const savedFrom = Y.encodeRelativePosition(first.anchorFrom);
+      const savedTo = Y.encodeRelativePosition(first.anchorTo);
+
+      // An unresolved comment does not consume the range.
+      const second: CommentAnchor = {
+        id: 'second',
+        ...createCommentAnchorFromEditor(editor, bravo.from, bravo.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(second);
+      expect(decoratedText(editor, 'first')).toBeNull();
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBe('bravo');
+      expect(decoratedText(editor, 'second')).toBe('bravo');
+      // ProseMirror can omit one ID from the shared DOM span. Recover that
+      // thread's visible anchor without changing either saved comment.
+      expect(
+        editor.view.dom.querySelectorAll('[data-comment-id="first"]'),
+      ).toHaveLength(0);
+      const firstElement = getSharedThreadAnchorElement({
+        editor,
+        editorRoot: editor.view.dom,
+        anchorId: 'first',
+      });
+      expect(firstElement).toBe(
+        editor.view.dom.querySelector('[data-comment-id="second"]'),
+      );
+
+      first.resolved = true;
+      second.resolved = true;
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBeNull();
+      expect(
+        getCommentAtPosition(editor, bravo.from + 1, () => harness.anchors)
+          ?.resolved,
+      ).toBe(true);
+      expect(
+        getCommentAtPosition(
+          editor,
+          findRange(editor, 'delta').from + 1,
+          () => harness.anchors,
+        ),
+      ).toBeNull();
+
+      const overlap = findRange(editor, 'bravo charlie');
+      const third: CommentAnchor = {
+        id: 'third',
+        ...createCommentAnchorFromEditor(editor, overlap.from, overlap.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(third);
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'third')).toBe('bravo charlie');
+      expect(Y.encodeRelativePosition(first.anchorFrom)).toEqual(savedFrom);
+      expect(Y.encodeRelativePosition(first.anchorTo)).toEqual(savedTo);
+
+      // Reopening the original thread restores only its own highlight.
+      first.resolved = false;
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBe('bravo');
+      expect(decoratedText(editor, 'second')).toBeNull();
+      expect(decoratedText(editor, 'third')).toBe('bravo charlie');
+    });
+  },
+);
 
 describe('accepted suggestions', () => {
   let editor: Editor | null = null;

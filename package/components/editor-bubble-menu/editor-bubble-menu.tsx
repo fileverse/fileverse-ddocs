@@ -21,8 +21,10 @@ import { CommentDropdown } from '../inline-comment/comment-dropdown';
 import { EditorBubbleMenuProps, BubbleMenuItem } from './types';
 import { useResponsive } from '../../utils/responsive';
 import {
+  canCreateInlineComment,
   isBubbleMenuHidden,
   isSelectionInsideEditor,
+  shouldOfferNewCommentDraft,
   shouldShow,
   shouldShowIgnoringFocus,
 } from './props';
@@ -114,12 +116,11 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
 
   // In preview mode the bubble menu only hosts the Comment button, so it's
   // pointless when commenting isn't available for this viewer.
-  const canComment =
-    !!isCollabDocumentPublished &&
-    !disableInlineComment &&
-    !isCommentResolved &&
-    !enableCollaboration &&
-    !isFocusMode;
+  const canCreateComment = canCreateInlineComment({
+    isCollabDocumentPublished: !!isCollabDocumentPublished,
+    disableInlineComment,
+  });
+  const canComment = canCreateComment && !enableCollaboration && !isFocusMode;
 
   // Mobile text selection can survive an editor blur, so retry the same
   // visibility checks without the focus requirement when selection stays in-editor.
@@ -203,7 +204,6 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
         icon: 'MessageSquarePlus',
       },
     ];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, isCommentActive, setToolVisibility, toolVisibility]);
 
   const renderContent = useCallback(
@@ -268,11 +268,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
         data-testid="inline-comment-btn-mobile"
         icon="MessageSquarePlus"
         size="sm"
-        disabled={
-          isCommentResolved ||
-          !isCollabDocumentPublished ||
-          disableInlineComment
-        }
+        disabled={!canCreateComment}
         isActive={isCommentActive}
         onClick={handleMobileInlineComment}
         classNames="disabled:!bg-transparent"
@@ -349,12 +345,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
                 icon="MessageSquarePlus"
                 variant="ghost"
                 size="sm"
-                tooltip={isCommentResolved ? 'Comment resolved' : ''}
-                disabled={
-                  isCommentResolved ||
-                  !isCollabDocumentPublished ||
-                  disableInlineComment
-                }
+                disabled={!canCreateComment}
                 isActive={isCommentActive}
                 onClick={handleInlineComment}
                 classNames="disabled:!bg-transparent"
@@ -372,19 +363,14 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
                     icon="MessageSquarePlus"
                     variant="ghost"
                     size="sm"
-                    tooltip={isCommentResolved ? 'Comment resolved' : ''}
-                    disabled={
-                      isCommentResolved ||
-                      !isCollabDocumentPublished ||
-                      disableInlineComment
-                    }
+                    disabled={!canCreateComment}
                     isActive={isCommentActive}
                     onClick={handleInlineComment}
                     classNames="disabled:!bg-transparent"
                   />
                 }
                 content={
-                  !isCommentActive
+                  shouldOfferNewCommentDraft(isCommentActive, isCommentResolved)
                     ? renderContent({
                         name: 'Comment',
                         initialComment: activeComment?.content || '',
@@ -591,12 +577,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
                         icon="MessageSquarePlus"
                         variant="ghost"
                         size="sm"
-                        tooltip={isCommentResolved ? 'Comment resolved' : ''}
-                        disabled={
-                          isCommentResolved ||
-                          !isCollabDocumentPublished ||
-                          disableInlineComment
-                        }
+                        disabled={!canCreateComment}
                         isActive={isCommentActive}
                         onClick={handleInlineComment}
                         classNames="disabled:!bg-transparent"
@@ -619,19 +600,17 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
                           icon="MessageSquarePlus"
                           variant="ghost"
                           size="sm"
-                          tooltip={isCommentResolved ? 'Comment resolved' : ''}
-                          disabled={
-                            isCommentResolved ||
-                            !isCollabDocumentPublished ||
-                            disableInlineComment
-                          }
+                          disabled={!canCreateComment}
                           isActive={isCommentActive}
                           onClick={handleInlineComment}
                           classNames="disabled:!bg-transparent"
                         />
                       }
                       content={
-                        !isCommentActive
+                        shouldOfferNewCommentDraft(
+                          isCommentActive,
+                          isCommentResolved,
+                        )
                           ? renderContent({
                               name: 'Comment',
                               initialComment: activeComment?.content || '',

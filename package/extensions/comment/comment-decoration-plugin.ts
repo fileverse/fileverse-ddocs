@@ -1317,10 +1317,16 @@ export function getCommentAtPosition(
   editor: Editor,
   pos: number,
   getAnchors: () => CommentAnchor[],
+  getCreatedAt?: (commentId: string) => Date | string | undefined,
 ): CommentAnchor | null {
-  // Find the active (undeleted) anchor containing the cursor position.
+  // Choose the newest unresolved regular comment at this position. Decoration
+  // spans can merge in the DOM, so their single rendered ID cannot decide it.
   // Used in transaction listener to auto-activate floating threads on selection.
   const anchors = getAnchors();
+  let unresolvedMatch: CommentAnchor | null = null;
+  let newestCreatedAt = Number.NEGATIVE_INFINITY;
+  let suggestionMatch: CommentAnchor | null = null;
+  let resolvedMatch: CommentAnchor | null = null;
 
   for (const anchor of anchors) {
     if (anchor.deleted || (anchor.isSuggestion && anchor.resolved)) {
@@ -1339,7 +1345,7 @@ export function getCommentAtPosition(
       if (point === null) continue;
       const widgetEnd = point + (anchor.suggestedContent?.length ?? 0);
       if (pos >= point && pos <= widgetEnd) {
-        return anchor;
+        suggestionMatch ??= anchor;
       }
       continue;
     }
@@ -1351,11 +1357,33 @@ export function getCommentAtPosition(
     }
 
     if (pos >= range.from && pos <= range.to) {
-      return anchor;
+      if (!anchor.resolved) {
+        if (anchor.isSuggestion) {
+          suggestionMatch ??= anchor;
+          continue;
+        }
+        const createdAt = getCreatedAt?.(anchor.id);
+        const parsedTimestamp = createdAt
+          ? new Date(createdAt).getTime()
+          : Number.NaN;
+        const timestamp = Number.isFinite(parsedTimestamp)
+          ? parsedTimestamp
+          : Number.NEGATIVE_INFINITY;
+        if (
+          !unresolvedMatch ||
+          timestamp > newestCreatedAt ||
+          (getCreatedAt && timestamp === newestCreatedAt)
+        ) {
+          unresolvedMatch = anchor;
+          newestCreatedAt = timestamp;
+        }
+        continue;
+      }
+      resolvedMatch ??= anchor;
     }
   }
 
-  return null;
+  return unresolvedMatch ?? suggestionMatch ?? resolvedMatch;
 }
 
 export function getCommentAnchorRange(
