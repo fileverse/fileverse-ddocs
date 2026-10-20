@@ -61,6 +61,13 @@ export const PARENT_ROOT_KEY = 'tabs_parent_registry';
 // A level-3 subtab cannot have subtabs.
 export const MAX_TAB_DEPTH = 3;
 
+/**
+ * The heading level of a tab's title in exports: 1 for a tab, 2 or 3 for a
+ * subtab, so an exported file keeps the tree. Deeper data stays at 3.
+ */
+export const getTabHeadingLevel = (tab: Pick<Tab, 'depth'>) =>
+  Math.min(Math.max(tab.depth ?? 1, 1), MAX_TAB_DEPTH);
+
 // New schema: every shared tab structure is a deterministic top-level Yjs type.
 function getTabsNodesV2(doc: Y.Doc) {
   return {

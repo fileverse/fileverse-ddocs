@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { getTabListFromNodes, getTabsYdocNodes } from '../tab-utils';
+import {
+  getTabHeadingLevel,
+  getTabListFromNodes,
+  getTabsYdocNodes,
+} from '../tab-utils';
 import {
   canAddSubtab,
   createSubtabInDoc,
@@ -233,5 +237,15 @@ describe('writing', () => {
     const tabs = getTabListFromNodes(getTabsYdocNodes(base()));
     expect(getSubtreeIds(tabs, 'i')).toEqual(['i', 'r1', 'r2']);
     expect(getSubtreeIds(tabs, 'plan')).toEqual(['plan']);
+  });
+});
+
+describe('export heading level', () => {
+  it('follows depth, is 1 for a doc without subtabs, and stops at 3', () => {
+    expect(getTabHeadingLevel({})).toBe(1);
+    expect(getTabHeadingLevel({ depth: 1 })).toBe(1);
+    expect(getTabHeadingLevel({ depth: 2 })).toBe(2);
+    expect(getTabHeadingLevel({ depth: 3 })).toBe(3);
+    expect(getTabHeadingLevel({ depth: 4 })).toBe(3);
   });
 });

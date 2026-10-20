@@ -4,7 +4,7 @@ import { JSONContent } from '@tiptap/core';
 import * as Y from 'yjs';
 import { yXmlFragmentToProsemirrorJSON } from 'y-prosemirror';
 import { CopyAo3Html, IEditorToolElement } from '../components/editor-utils';
-import { Tab } from '../components/tabs/utils/tab-utils';
+import { getTabHeadingLevel, Tab } from '../components/tabs/utils/tab-utils';
 import { stripFrontmatter } from '../extensions/mardown-paste-handler';
 import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getTemporaryEditor } from '../utils/helpers';
@@ -121,8 +121,9 @@ const useDdocExport = ({
         if (!tempEditor) continue;
         tempEditors.push(tempEditor);
         const tabTitle = normalizeTabTitle(tab.name);
+        const level = getTabHeadingLevel(tab);
         allTabPages.push(
-          `<section class="tab-title-page"><h1 class="tab-title-page__text">${escapeHtml(tabTitle)}</h1></section>`,
+          `<section class="tab-title-page"><h${level} class="tab-title-page__text">${escapeHtml(tabTitle)}</h${level}></section>`,
         );
         allTabPages.push(tempEditor.getHTML());
       }
@@ -163,7 +164,8 @@ const useDdocExport = ({
             includeStyles,
           });
           const tabMarkdown = stripFrontmatter(markdown).trim();
-          allTabMd.push(`# ${tabTitle}\n\n${tabMarkdown}`.trim());
+          const hashes = '#'.repeat(getTabHeadingLevel(tab));
+          allTabMd.push(`${hashes} ${tabTitle}\n\n${tabMarkdown}`.trim());
         }
 
         const combinedMarkdown = allTabMd.join('\n\n');
@@ -198,8 +200,9 @@ const useDdocExport = ({
           if (!tempEditor) continue;
           tempEditors.push(tempEditor);
           const tabTitle = normalizeTabTitle(tab.name);
+          const level = getTabHeadingLevel(tab);
           allTabHtml.push(
-            `<h1>${escapeHtml(tabTitle)}</h1>\n${tempEditor.getHTML()}`,
+            `<h${level}>${escapeHtml(tabTitle)}</h${level}>\n${tempEditor.getHTML()}`,
           );
         }
 
@@ -250,7 +253,10 @@ const useDdocExport = ({
           if (!bodyHtml?.trim()) continue;
 
           const tabTitle = normalizeTabTitle(tab.name);
-          allTabHtml.push(`<h1>${escapeHtml(tabTitle)}</h1>\n${bodyHtml}`);
+          const level = getTabHeadingLevel(tab);
+          allTabHtml.push(
+            `<h${level}>${escapeHtml(tabTitle)}</h${level}>\n${bodyHtml}`,
+          );
         }
 
         if (allTabHtml.length === 0) {
@@ -323,8 +329,9 @@ const useDdocExport = ({
           if (!tempEditor) continue;
           tempEditors.push(tempEditor);
           const tabTitle = normalizeTabTitle(tab.name);
+          const level = getTabHeadingLevel(tab);
           allTabHtml.push(
-            `<h1>${escapeHtml(tabTitle)}</h1>\n${tempEditor.getHTML()}`,
+            `<h${level}>${escapeHtml(tabTitle)}</h${level}>\n${tempEditor.getHTML()}`,
           );
         }
 
