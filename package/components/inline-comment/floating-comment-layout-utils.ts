@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react';
+import { commentDecorationPluginKey } from '../../extensions/comment/comment-decoration-plugin';
 import {
   FloatingLayoutInvalidationFlag,
   type FloatingCardLayoutInput,
@@ -102,6 +103,42 @@ export const getAnchorElements = ({
       getAnchorSelector({ anchorId, anchorType }),
     ),
   );
+};
+
+export const getSharedThreadAnchorElement = ({
+  editor,
+  editorRoot,
+  anchorId,
+}: {
+  editor: Editor;
+  editorRoot: HTMLElement;
+  anchorId: string;
+}): HTMLElement | null => {
+  // Overlapping decorations can share a DOM span carrying only one ID.
+  const decoration = commentDecorationPluginKey
+    .getState(editor.state)
+    ?.decorations.find(
+      undefined,
+      undefined,
+      (spec) => spec.commentId === anchorId && !spec.suggestion,
+    )
+    .find((item) => item.from < item.to);
+  if (!decoration) return null;
+
+  try {
+    const { node, offset } = editor.view.domAtPos(
+      decoration.from + (decoration.to - decoration.from > 1 ? 1 : 0),
+    );
+    const candidate =
+      node.nodeType === Node.TEXT_NODE ? node : node.childNodes[offset];
+    const element =
+      candidate instanceof HTMLElement ? candidate : candidate?.parentElement;
+    const highlight = element?.closest<HTMLElement>('[data-comment-id]');
+    return highlight && editorRoot.contains(highlight) ? highlight : null;
+  } catch {
+    // The editor can replace the DOM during a refresh; retry next cycle.
+    return null;
+  }
 };
 
 export const getAnchorStartPos = (editor: Editor, elements: HTMLElement[]) => {
@@ -224,6 +261,30 @@ export const reconcileOrderedFloatingCardIds = ({
       index,
     ]),
   );
+  const createdAtById = new Map(
+    nextFloatingCards.map((card) => [
+      card.floatingCardId,
+      card.type === 'thread' && card.createdAt
+        ? new Date(card.createdAt).getTime()
+        : Number.NaN,
+    ]),
+  );
+  const compareCreatedAt = (a: string, b: string) => {
+    const aCreatedAt = createdAtById.get(a) ?? Number.NaN;
+    const bCreatedAt = createdAtById.get(b) ?? Number.NaN;
+    if (
+      Number.isFinite(aCreatedAt) &&
+      Number.isFinite(bCreatedAt) &&
+      aCreatedAt !== bCreatedAt
+    ) {
+      return aCreatedAt - bCreatedAt;
+    }
+
+    const previousIndexComparison =
+      (previousIndexById.get(a) ?? Number.POSITIVE_INFINITY) -
+      (previousIndexById.get(b) ?? Number.POSITIVE_INFINITY);
+    return previousIndexComparison || a.localeCompare(b);
+  };
   const orderedFloatingCardIds = nextFloatingCards
     .map((floatingCard) => floatingCard.floatingCardId)
     .sort((a, b) => {
@@ -233,15 +294,7 @@ export const reconcileOrderedFloatingCardIds = ({
         return positionComparison;
       }
 
-      const previousIndexComparison =
-        (previousIndexById.get(a) ?? Number.POSITIVE_INFINITY) -
-        (previousIndexById.get(b) ?? Number.POSITIVE_INFINITY);
-
-      if (previousIndexComparison !== 0) {
-        return previousIndexComparison;
-      }
-
-      return a.localeCompare(b);
+      return compareCreatedAt(a, b);
     });
 
   let firstChangedIndex: number | null = null;
