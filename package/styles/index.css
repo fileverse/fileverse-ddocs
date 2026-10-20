@@ -579,8 +579,7 @@ div[data-type='page-break']:hover .remove-page-break-icon {
 }
 
 /* Zero-height sticky line the comment drawer hangs from. Full width so its
-   right edge is the canvas's visible right edge; clipped on x so the closed
-   (translated) drawer does not widen the scroller. */
+   right edge is the canvas's visible right edge. */
 .ddoc-drawer-anchor {
   position: sticky;
   top: 0;
@@ -589,11 +588,24 @@ div[data-type='page-break']:hover .remove-page-break-icon {
   flex: none;
   width: 100%;
   height: 0;
-  overflow-x: clip;
   pointer-events: none;
 }
 
 .ddoc-drawer-anchor > * {
+  pointer-events: auto;
+}
+
+/* Clipped on x so the closed (translated) drawer does not widen the scroller.
+   Not on the sticky anchor itself: iPad Safari then hides the open drawer. */
+.ddoc-drawer-clip {
+  position: relative;
+  width: 100%;
+  height: 0;
+  overflow-x: clip;
+  pointer-events: none;
+}
+
+.ddoc-drawer-clip > * {
   pointer-events: auto;
 }
 

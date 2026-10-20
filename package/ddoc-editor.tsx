@@ -1669,20 +1669,22 @@ const DdocEditor = forwardRef(
                   )}
                 >
                   <SearchReplace editor={editor} viewerMode={viewerMode} />
-                  {editor && (
-                    <CommentDrawer
-                      isOpen={commentDrawerOpen}
-                      onClose={() => setCommentDrawerOpen(false)}
-                      isNavbarVisible={isNavbarVisible}
-                      isPresentationMode={isPresentationMode}
-                      activeCommentId={activeCommentId}
-                      activeTabId={activeTabId}
-                      onTabChange={setActiveTabId}
-                      isPreviewMode={isPreviewMode}
-                      tabs={tabs}
-                      mobileContainer={mobileCommentSlot}
-                    />
-                  )}
+                  <div className="ddoc-drawer-clip">
+                    {editor && (
+                      <CommentDrawer
+                        isOpen={commentDrawerOpen}
+                        onClose={() => setCommentDrawerOpen(false)}
+                        isNavbarVisible={isNavbarVisible}
+                        isPresentationMode={isPresentationMode}
+                        activeCommentId={activeCommentId}
+                        activeTabId={activeTabId}
+                        onTabChange={setActiveTabId}
+                        isPreviewMode={isPreviewMode}
+                        tabs={tabs}
+                        mobileContainer={mobileCommentSlot}
+                      />
+                    )}
+                  </div>
                 </div>
                 {/*
                   Split View keeps the REAL editor mounted in place — it is never
