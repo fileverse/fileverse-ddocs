@@ -1318,9 +1318,11 @@ export function getCommentAtPosition(
   pos: number,
   getAnchors: () => CommentAnchor[],
 ): CommentAnchor | null {
-  // Find the active (undeleted) anchor containing the cursor position.
+  // Prefer an unresolved anchor containing the cursor position, keeping resolved
+  // history as a fallback so an older thread cannot shadow a new comment.
   // Used in transaction listener to auto-activate floating threads on selection.
   const anchors = getAnchors();
+  let resolvedMatch: CommentAnchor | null = null;
 
   for (const anchor of anchors) {
     if (anchor.deleted || (anchor.isSuggestion && anchor.resolved)) {
@@ -1351,11 +1353,12 @@ export function getCommentAtPosition(
     }
 
     if (pos >= range.from && pos <= range.to) {
-      return anchor;
+      if (!anchor.resolved) return anchor;
+      resolvedMatch ??= anchor;
     }
   }
 
-  return null;
+  return resolvedMatch;
 }
 
 export function getCommentAnchorRange(

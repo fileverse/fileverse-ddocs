@@ -88,6 +88,19 @@ export const shouldShow = ({ editor }: { editor: Editor }) => {
 export const shouldShowIgnoringFocus = (editor: Editor) =>
   shouldShowBubbleMenu(editor, true);
 
+export const canCreateInlineComment = ({
+  isCollabDocumentPublished,
+  disableInlineComment,
+}: {
+  isCollabDocumentPublished: boolean;
+  disableInlineComment: boolean;
+}) => isCollabDocumentPublished && !disableInlineComment;
+
+export const shouldOfferNewCommentDraft = (
+  isCommentActive: boolean,
+  isCommentResolved: boolean,
+) => !isCommentActive || isCommentResolved;
+
 /**
  * Whether the bubble menu should take itself out of the way.
  *

@@ -11,6 +11,7 @@ import {
   commentDecorationPluginKey,
   createCommentAnchorFromEditor,
   createCommentAnchorPointFromEditor,
+  getCommentAtPosition,
   triggerDecorationRebuild,
   resolveSuggestionAddPointInState,
   type CommentAnchor,
@@ -274,6 +275,124 @@ describe('comment decoration anchoring', () => {
     expect(decoratedText(editor, 'c1')).toBeNull();
   });
 });
+
+describe.each([1, 2])(
+  'regular comment overlap in schema v%i',
+  (schemaVersion) => {
+    let editor: Editor;
+
+    afterEach(() => editor?.destroy());
+
+    it('activates a new same-range comment ahead of resolved history', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Alpha bravo charlie</p>');
+      const range = findRange(editor, 'bravo');
+      const original: CommentAnchor = {
+        id: 'original',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: true,
+        deleted: false,
+      };
+      harness.anchors.push(original);
+
+      const newComment: CommentAnchor = {
+        id: 'new',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(newComment);
+      triggerDecorationRebuild(editor);
+      editor.commands.setTextSelection(range.from + 1);
+
+      const getSelectedComment = () =>
+        getCommentAtPosition(
+          editor,
+          editor.state.selection.from,
+          () => harness.anchors,
+        );
+
+      expect(getSelectedComment()).toBe(newComment);
+      expect(decoratedText(editor, 'new')).toBe('bravo');
+      expect(decoratedText(editor, 'original')).toBeNull();
+
+      // Preserve resolved history as a fallback when no live thread matches.
+      newComment.resolved = true;
+      triggerDecorationRebuild(editor);
+      expect(getSelectedComment()).toBe(original);
+      original.deleted = true;
+      expect(getSelectedComment()).toBe(newComment);
+      newComment.deleted = true;
+      expect(getSelectedComment()).toBeNull();
+    });
+
+    it('retains resolved history while allowing same-range and partial-overlap anchors', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Alpha bravo charlie delta</p>');
+      const bravo = findRange(editor, 'bravo');
+      const first: CommentAnchor = {
+        id: 'first',
+        ...createCommentAnchorFromEditor(editor, bravo.from, bravo.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(first);
+      const savedFrom = Y.encodeRelativePosition(first.anchorFrom);
+      const savedTo = Y.encodeRelativePosition(first.anchorTo);
+
+      // An unresolved comment does not consume the range.
+      const second: CommentAnchor = {
+        id: 'second',
+        ...createCommentAnchorFromEditor(editor, bravo.from, bravo.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(second);
+      expect(decoratedText(editor, 'first')).toBeNull();
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBe('bravo');
+      expect(decoratedText(editor, 'second')).toBe('bravo');
+
+      first.resolved = true;
+      second.resolved = true;
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBeNull();
+      expect(
+        getCommentAtPosition(editor, bravo.from + 1, () => harness.anchors)
+          ?.resolved,
+      ).toBe(true);
+      expect(
+        getCommentAtPosition(
+          editor,
+          findRange(editor, 'delta').from + 1,
+          () => harness.anchors,
+        ),
+      ).toBeNull();
+
+      const overlap = findRange(editor, 'bravo charlie');
+      const third: CommentAnchor = {
+        id: 'third',
+        ...createCommentAnchorFromEditor(editor, overlap.from, overlap.to)!,
+        resolved: false,
+        deleted: false,
+      };
+      harness.anchors.push(third);
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'third')).toBe('bravo charlie');
+      expect(Y.encodeRelativePosition(first.anchorFrom)).toEqual(savedFrom);
+      expect(Y.encodeRelativePosition(first.anchorTo)).toEqual(savedTo);
+
+      // Reopening the original thread restores only its own highlight.
+      first.resolved = false;
+      triggerDecorationRebuild(editor);
+      expect(decoratedText(editor, 'first')).toBe('bravo');
+      expect(decoratedText(editor, 'second')).toBeNull();
+      expect(decoratedText(editor, 'third')).toBe('bravo charlie');
+    });
+  },
+);
 
 describe('accepted suggestions', () => {
   let editor: Editor | null = null;
