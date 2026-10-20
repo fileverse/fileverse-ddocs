@@ -4,17 +4,23 @@ import { Editor } from '@tiptap/react';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import { DdocProps } from '../types';
 import {
-  cloneFragmentContent,
   DEFAULT_TAB_ID,
   deriveTabsFromEncodedState,
   getActiveTabIdFromNodes,
   getTabListFromNodes,
-  getTabMetadata,
   getTabsYdocNodes,
   LEGACY_ROOT_KEY,
   syncTabStateAndGetNodes,
   Tab,
 } from '../components/tabs/utils/tab-utils';
+import {
+  createSubtabInDoc,
+  deleteTabInDoc,
+  DeletedTabSnapshot,
+  duplicateTabInDoc,
+  moveTabInDoc,
+  restoreDeletedTabsInDoc,
+} from '../components/tabs/utils/tab-operations';
 import { generateRandomBytes } from '@fileverse/crypto/utils';
 import { fromUint8Array } from 'js-base64';
 import { toast } from '@fileverse/ui';
@@ -23,10 +29,8 @@ import { useTabMetadataHistory } from './use-tab-metadata-history';
 const UNDO_WINDOW_MS = 10_000; // 10 seconds
 
 interface DeleteSnapshot {
-  tabId: string;
-  name: string;
-  emoji: string | null;
-  orderIndex: number;
+  // The deleted tab first, then every tab that was under it.
+  tabs: DeletedTabSnapshot[];
   timestamp: number;
 }
 
@@ -185,7 +189,12 @@ export const useTabManager = ({
         _setActiveTabId(firstTabId);
       }
     }
-  }, [initialTabState, shouldSyncActiveTab, defaultTabId, preferFirstTabOnInit]);
+  }, [
+    initialTabState,
+    shouldSyncActiveTab,
+    defaultTabId,
+    preferFirstTabOnInit,
+  ]);
   const {
     applyRename,
     undo: undoTabMetadataChange,
@@ -243,8 +252,14 @@ export const useTabManager = ({
     const applyTabList = (
       currentTabNodes: Pick<
         typeof syncedTabNodes,
-        'order' | 'nameById' | 'emojiById' | 'tabState'
+        | 'order'
+        | 'nameById'
+        | 'emojiById'
+        | 'tabState'
+        | 'parentById'
+        | 'deletedById'
       > = syncedTabNodes,
+      isRemoteChange = false,
     ) => {
       const tabList = getTabListFromNodes(currentTabNodes);
       const currentOrder = currentTabNodes.order.toArray();
@@ -273,14 +288,40 @@ export const useTabManager = ({
           prev === defaultTabId ? prev : defaultTabId,
         );
       } else {
-        // Validate current tab still exists (peer may have deleted it)
+        // Validate current tab still exists (peer may have deleted it).
+        // A deleted subtab falls back to its nearest remaining parent.
         const validTabIds = new Set(tabList.map((t) => t.id));
-        _setActiveTabId((prev) => (validTabIds.has(prev) ? prev : firstTabId));
+        _setActiveTabId((prev) => {
+          if (validTabIds.has(prev)) return prev;
+          const seen = new Set<string>([prev]);
+          let ancestorId = currentTabNodes.parentById.get(prev);
+          while (ancestorId && !seen.has(ancestorId)) {
+            if (validTabIds.has(ancestorId)) break;
+            seen.add(ancestorId);
+            ancestorId = currentTabNodes.parentById.get(ancestorId);
+          }
+          const nextId =
+            ancestorId && validTabIds.has(ancestorId) ? ancestorId : firstTabId;
+          if (
+            isRemoteChange &&
+            currentTabNodes.parentById.size > 0 &&
+            prev !== nextId
+          ) {
+            toast({
+              title: 'This tab was deleted',
+              description: 'Someone else deleted the tab you were in.',
+            });
+          }
+          return nextId;
+        });
       }
     };
 
-    const handleTabListChange = () => {
-      applyTabList(getTabsYdocNodes(ydoc));
+    const handleTabListChange = (
+      _event: unknown,
+      transaction: Y.Transaction,
+    ) => {
+      applyTabList(getTabsYdocNodes(ydoc), !transaction.local);
     };
 
     const legacyRoot = ydoc.getMap(LEGACY_ROOT_KEY);
@@ -305,6 +346,7 @@ export const useTabManager = ({
     tabNodes.emojiById.observe(handleTabListChange);
     tabNodes.tabState.observe(handleTabListChange);
     tabNodes.deletedById.observe(handleTabListChange);
+    tabNodes.parentById.observe(handleTabListChange);
     legacyRoot.observeDeep(handleLegacyTabStateChange);
 
     return () => {
@@ -313,6 +355,7 @@ export const useTabManager = ({
       tabNodes.emojiById.unobserve(handleTabListChange);
       tabNodes.tabState.unobserve(handleTabListChange);
       tabNodes.deletedById.unobserve(handleTabListChange);
+      tabNodes.parentById.unobserve(handleTabListChange);
       legacyRoot.unobserveDeep(handleLegacyTabStateChange);
     };
   }, [
@@ -357,53 +400,36 @@ export const useTabManager = ({
     return tabId;
   }, [shouldSyncActiveTab, ydoc, flushPendingUpdate]);
 
+  const createSubtab = useCallback(
+    (parentId: string) => {
+      const tabId = createSubtabInDoc(
+        ydoc,
+        parentId,
+        getNewTabId(),
+        shouldSyncActiveTab,
+      );
+      if (!tabId) return null;
+      _setActiveTabId(tabId);
+      flushPendingUpdate?.();
+      return tabId;
+    },
+    [shouldSyncActiveTab, ydoc, flushPendingUpdate],
+  );
+
   const deleteTab = useCallback(
     (tabId: string) => {
-      const tabNodes = getTabsYdocNodes(ydoc);
-      const { order: tabOrder } = tabNodes;
-
-      if (tabOrder.length <= 1) {
-        throw new Error('Cannot delete the last remaining tab');
-      }
-
-      const index = tabOrder.toArray().indexOf(tabId);
-      if (index === -1) {
-        throw new Error('Tab not found in order');
-      }
-
-      // Keep enough metadata to restore the tab inside the undo window.
-      const tabMeta = getTabMetadata(tabNodes, tabId);
-      if (tabMeta) {
-        lastDeleteRef.current = {
-          tabId,
-          name: tabMeta.name,
-          emoji: tabMeta.emoji,
-          orderIndex: index,
-          timestamp: Date.now(),
-        };
-      }
-      // Compute fallback before the delete transaction
-      const currentActive = getActiveTabIdFromNodes(tabNodes) || '';
-      const needsFallback = currentActive === tabId;
-      const fallbackId = needsFallback
-        ? (tabOrder.get(index + 1) ?? tabOrder.get(index - 1) ?? DEFAULT_TAB_ID)
-        : null;
-
-      ydoc.transact(() => {
-        // Fragment content is kept; the tombstone prevents it from being re-added as an orphan.
-        tabNodes.nameById.delete(tabId);
-        tabNodes.emojiById.delete(tabId);
-        tabNodes.deletedById.set(tabId, true);
-
-        if (needsFallback && fallbackId && shouldSyncActiveTab) {
-          tabNodes.tabState.set('activeTabId', fallbackId);
-        }
-        // Remove from order
-        tabOrder.delete(index, 1);
-      });
-      // React state: always switch locally if deleted tab was active
-
-      if (needsFallback && fallbackId) {
+      const { snapshots, fallbackId } = deleteTabInDoc(
+        ydoc,
+        tabId,
+        activeTabIdRef.current,
+        shouldSyncActiveTab,
+      );
+      // Keep enough to restore the whole group inside the undo window.
+      lastDeleteRef.current =
+        snapshots.length > 0
+          ? { tabs: snapshots, timestamp: Date.now() }
+          : null;
+      if (fallbackId) {
         _setActiveTabId(fallbackId);
       }
       // Flush immediately so the deletion is persisted before a potential refresh
@@ -420,31 +446,16 @@ export const useTabManager = ({
       return false;
     }
 
-    const tabNodes = getTabsYdocNodes(ydoc);
-    const { order: tabOrder } = tabNodes;
-
-    // Guard: tab already exists (e.g. restored by collab peer)
-    if (tabNodes.nameById.has(snapshot.tabId)) {
-      lastDeleteRef.current = null;
-      return false;
-    }
-
-    ydoc.transact(() => {
-      tabNodes.deletedById.delete(snapshot.tabId);
-      tabNodes.nameById.set(snapshot.tabId, snapshot.name);
-      tabNodes.emojiById.set(snapshot.tabId, snapshot.emoji);
-      ydoc.getXmlFragment(snapshot.tabId);
-
-      const insertIndex = Math.min(snapshot.orderIndex, tabOrder.length);
-      tabOrder.insert(insertIndex, [snapshot.tabId]);
-
-      if (shouldSyncActiveTab) {
-        tabNodes.tabState.set('activeTabId', snapshot.tabId);
-      }
-    });
-
-    _setActiveTabId(snapshot.tabId);
+    // Guard inside: tabs already restored (e.g. by a collab peer) are skipped.
+    const restored = restoreDeletedTabsInDoc(
+      ydoc,
+      snapshot.tabs,
+      shouldSyncActiveTab,
+    );
     lastDeleteRef.current = null;
+    if (!restored) return false;
+
+    _setActiveTabId(snapshot.tabs[0].tabId);
     flushPendingUpdate?.();
 
     return true;
@@ -531,39 +542,16 @@ export const useTabManager = ({
 
   const duplicateTab = useCallback(
     (tabId: string) => {
-      const tabNodes = getTabsYdocNodes(ydoc);
-      const { order: tabOrder } = tabNodes;
-      const originalMeta = getTabMetadata(tabNodes, tabId);
-
-      if (!originalMeta) {
+      const newTabId = duplicateTabInDoc(
+        ydoc,
+        tabId,
+        getNewTabId,
+        shouldSyncActiveTab,
+      );
+      if (!newTabId) {
         console.warn('Duplicate aborted: tab does not exist', tabId);
         return;
       }
-
-      const newTabId = getNewTabId();
-      const newTabName = `${originalMeta.name} (Copy)`;
-      const originalEmoji = originalMeta.emoji;
-
-      ydoc.transact(() => {
-        const originalFragment = ydoc.getXmlFragment(tabId);
-        const newFragment = ydoc.getXmlFragment(newTabId);
-
-        const clonedNodes = cloneFragmentContent(originalFragment);
-
-        if (clonedNodes.length > 0) {
-          newFragment.insert(0, clonedNodes);
-        }
-
-        const index = tabOrder.toArray().indexOf(tabId);
-        tabOrder.insert(index + 1, [newTabId]);
-
-        tabNodes.nameById.set(newTabId, newTabName);
-        tabNodes.emojiById.set(newTabId, originalEmoji);
-
-        if (shouldSyncActiveTab) {
-          tabNodes.tabState.set('activeTabId', newTabId);
-        }
-      });
 
       _setActiveTabId(newTabId);
       flushPendingUpdate?.();
@@ -575,19 +563,9 @@ export const useTabManager = ({
 
   const orderTab = useCallback(
     (destinationTabId: string, movedTabId: string) => {
-      const { order: tabOrder } = getTabsYdocNodes(ydoc);
-
-      const currentOrder = tabOrder.toArray();
-      const oldIndex = currentOrder.indexOf(movedTabId);
-      const newIndex = currentOrder.indexOf(destinationTabId);
-
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      ydoc.transact(() => {
-        tabOrder.delete(oldIndex, 1);
-        tabOrder.insert(newIndex, [movedTabId]);
-      });
-      flushPendingUpdate?.();
+      if (moveTabInDoc(ydoc, destinationTabId, movedTabId)) {
+        flushPendingUpdate?.();
+      }
     },
     [ydoc, flushPendingUpdate],
   );
@@ -599,6 +577,7 @@ export const useTabManager = ({
     setTabs,
     setActiveTabId,
     createTab,
+    createSubtab,
     deleteTab,
     renameTab,
     duplicateTab,
