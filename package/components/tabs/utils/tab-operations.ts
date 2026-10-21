@@ -63,6 +63,28 @@ const indexAfterBlock = (order: Y.Array<string>, blockIds: string[]) => {
   return last === -1 ? current.length : last + 1;
 };
 
+/**
+ * Adds already-named tabs as siblings of `tabId`, right after its block. A
+ * top-level tab keeps the 7.0 write: the new tabs go at the end.
+ */
+export const insertSiblingTabsInDoc = (
+  doc: Y.Doc,
+  tabId: string,
+  newTabIds: string[],
+) => {
+  const tabNodes = getTabsYdocNodes(doc);
+  const parentId = tabNodes.parentById.get(tabId);
+  doc.transact(() => {
+    if (parentId === undefined) {
+      tabNodes.order.push(newTabIds);
+      return;
+    }
+    const block = getSubtreeIds(getTabListFromNodes(tabNodes), tabId);
+    newTabIds.forEach((id) => tabNodes.parentById.set(id, parentId));
+    tabNodes.order.insert(indexAfterBlock(tabNodes.order, block), newTabIds);
+  });
+};
+
 export const createSubtabInDoc = (
   doc: Y.Doc,
   parentId: string,
