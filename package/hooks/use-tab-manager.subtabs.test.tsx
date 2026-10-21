@@ -170,4 +170,85 @@ describe('when someone else deletes your tab', () => {
       expect.objectContaining({ title: 'This tab was deleted' }),
     );
   });
+
+  it('a subtab added while someone deletes its parent is left, with a notice', () => {
+    const { hook, ydoc } = setup({ owner: false });
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(ydoc));
+
+    // Under the first tab, so after the delete the hidden subtab is the first
+    // id in the order list.
+    let newId: string | null = null;
+    act(() => {
+      newId = hook.result.current.createSubtab('default');
+    });
+    expect(hook.result.current.activeTabId).toBe(newId);
+
+    deleteTabInDoc(peer, 'default', 'default', false);
+    act(() => {
+      Y.applyUpdate(
+        ydoc,
+        Y.encodeStateAsUpdate(peer, Y.encodeStateVector(ydoc)),
+      );
+    });
+
+    // The new subtab is still in the order list, but hidden under the deleted
+    // tab, so it must not stay open.
+    expect(tabIds(hook)).not.toContain(newId);
+    expect(tabIds(hook)).toContain(hook.result.current.activeTabId);
+    expect(toastMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+Z does not open a tab whose parent someone deleted meanwhile', () => {
+    const { hook, ydoc } = setup({ owner: false });
+    act(() => hook.result.current.setActiveTabId('r1'));
+    act(() => hook.result.current.deleteTab('r1')); // opens its parent, i
+
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(ydoc));
+    deleteTabInDoc(peer, 'i', 'i', false);
+    act(() => {
+      Y.applyUpdate(
+        ydoc,
+        Y.encodeStateAsUpdate(peer, Y.encodeStateVector(ydoc)),
+      );
+    });
+    pressUndo();
+
+    expect(tabIds(hook)).not.toContain('r1');
+    expect(tabIds(hook)).toContain(hook.result.current.activeTabId);
+  });
+
+  it('no notice when a collaborator opens a doc whose first tab is not "default"', () => {
+    const server = new Y.Doc();
+    const nodes = getTabsYdocNodes(server);
+    server.transact(() => {
+      nodes.order.push(['abc', 'plan']);
+      nodes.nameById.set('abc', 'First');
+      nodes.nameById.set('plan', 'Plan');
+      nodes.emojiById.set('abc', null);
+      nodes.emojiById.set('plan', null);
+    });
+    createSubtabInDoc(server, 'plan', 'q4', false);
+
+    const ydoc = new Y.Doc();
+    const flushPendingUpdate = vi.fn(); // built once, or every render loops
+    const hook = renderHook(() =>
+      useTabManager({
+        ydoc,
+        initialContent: null,
+        enableCollaboration: true,
+        isDDocOwner: false,
+        createDefaultTabIfMissing: false,
+        shouldSyncActiveTab: false,
+        flushPendingUpdate,
+      }),
+    );
+    act(() => {
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(server));
+    });
+
+    expect(hook.result.current.activeTabId).toBe('abc');
+    expect(toastMock).not.toHaveBeenCalled();
+  });
 });

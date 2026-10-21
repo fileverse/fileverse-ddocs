@@ -91,6 +91,34 @@ describe('reading the tree', () => {
     expect(allStoredText(doc)).toContain('still here');
   });
 
+  it('T2: a deleted tab brought back by the clean-up shows its subtabs again', () => {
+    // A delete racing a move: the id is back in the order with a fallback
+    // name, but still carries its deleted mark.
+    const doc = buildDoc([
+      ['a', 'A'],
+      ['plan', 'Tab 2'],
+      ['q4', 'Q4', 'plan'],
+    ]);
+    getTabsYdocNodes(doc).deletedById.set('plan', true);
+    expect(outline(doc)).toEqual(['A', 'Tab 2', '  Q4']);
+
+    createSubtabInDoc(doc, 'plan', 'new', false);
+    expect(outline(doc)).toEqual(['A', 'Tab 2', '  Q4', '  Subtab 2']);
+  });
+
+  it('T2: never hides every tab; orphaned subtabs show at the top level', () => {
+    // An older app deleted the only top-level tab.
+    const doc = buildDoc(
+      [
+        ['old', 'Old'],
+        ['q4', 'Q4', 'old'],
+        ['jan', 'Jan', 'q4'],
+      ],
+      ['old'],
+    );
+    expect(outline(doc)).toEqual(['Q4', '  Jan']);
+  });
+
   it('T3: siblings follow their first appearance in the order list', () => {
     const doc = buildDoc([
       ['p', 'Parent'],

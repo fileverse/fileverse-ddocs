@@ -536,10 +536,18 @@ export function deriveTabsFromEncodedState(
     createDefaultTabIfMissing: options?.createDefaultTabIfMissing ?? true,
   });
   const tabNodesV2 = getTabsNodesV2(doc);
+  const tabList = getTabListFromNodes(tabNodesV2);
+  const storedActiveTabId =
+    getActiveTabIdFromNodes(tabNodesV2) || DEFAULT_TAB_ID;
 
   return {
-    tabList: getTabListFromNodes(tabNodesV2),
-    activeTabId: getActiveTabIdFromNodes(tabNodesV2) || DEFAULT_TAB_ID,
+    tabList,
+    // A stored open tab that is not shown (under a deleted tab) opens the
+    // first tab instead.
+    activeTabId:
+      tabList.length === 0 || tabList.some((t) => t.id === storedActiveTabId)
+        ? storedActiveTabId
+        : tabList[0].id,
     didWrite,
   };
 }
@@ -625,7 +633,8 @@ export function getTabMetadata(
  *
  * The tree rules, the same on every device for the same stored data:
  * T1 a tab is live if it is in the order list with a name;
- * T2 a tab under a deleted tab is hidden (its text stays in the doc);
+ * T2 a tab under a deleted tab is hidden (its text stays in the doc), unless
+ *    that would hide every tab;
  * T3 siblings keep the order of their first appearance in tabs_order;
  * T4 a tab whose parent is unknown, or whose parent chain loops, is shown at
  *    the top level, so bad or half-synced data never hides a tab;
@@ -646,9 +655,12 @@ function buildTabTree(
   parentById: Y.Map<string>,
   deletedById: Y.Map<boolean> | undefined,
 ): Tab[] {
+  // A tab counts as deleted only while it is gone. The clean-up pass can bring
+  // a deleted tab back (a delete racing a move); then its subtabs show too.
+  const liveIds = new Set(flatTabs.map((tab) => tab.id));
   const deletedIds = new Set<string>();
   deletedById?.forEach((value, tabId) => {
-    if (value === true) deletedIds.add(tabId);
+    if (value === true && !liveIds.has(tabId)) deletedIds.add(tabId);
   });
   const parentOf = (tabId: string) => {
     const parentId = parentById.get(tabId);
@@ -667,7 +679,10 @@ function buildTabTree(
     return false;
   };
 
-  const visibleTabs = flatTabs.filter((tab) => !isUnderDeletedTab(tab.id));
+  // Never hide every tab: an older app can delete the last top-level tab and
+  // leave only its subtabs. They are then shown at the top level (T4).
+  const shownTabs = flatTabs.filter((tab) => !isUnderDeletedTab(tab.id));
+  const visibleTabs = shownTabs.length > 0 ? shownTabs : flatTabs;
   const visibleIds = new Set(visibleTabs.map((tab) => tab.id));
 
   // T4: the parent must be shown, and the chain above must not lead back here.

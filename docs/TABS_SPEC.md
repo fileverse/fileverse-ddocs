@@ -48,7 +48,7 @@ Every screen, export and check reads one list, in reading order (a parent, then 
 | Rule | Meaning |
 |------|---------|
 | T1 | A tab is live if it is in `tabs_order` with a name. |
-| T2 | A tab under a deleted tab is hidden. Its text stays in the doc. |
+| T2 | A tab under a deleted tab is hidden. Its text stays in the doc. A deleted tab that is back in `tabs_order` with a name counts as live. If hiding would leave no tab at all, nothing is hidden. |
 | T3 | Siblings keep the order of their first appearance in `tabs_order`. |
 | T4 | A tab whose parent is unknown (not synced yet, or bad data), or whose parent chain loops, is shown at the top level. Unknown data never hides a tab. |
 | T5 | Depth is reported as found; the sidebar caps the indent and exports cap the heading level at 3. |

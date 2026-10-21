@@ -166,6 +166,10 @@ export const useTabManager = ({
   const lastDeleteRef = useRef<DeleteSnapshot | null>(null);
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  // The tabs on screen after the last tab-list update.
+  const shownTabIdsRef = useRef(
+    new Set(initialTabState.tabList.map((tab) => tab.id)),
+  );
 
   // initialContent can arrive later than the first render.
   const hasHydratedRef = useRef(initialTabState.tabList.length > 0);
@@ -263,18 +267,25 @@ export const useTabManager = ({
     ) => {
       const tabList = getTabListFromNodes(currentTabNodes);
       const currentOrder = currentTabNodes.order.toArray();
+      // Only shown tabs can be open: a subtab under a deleted tab is still in
+      // the order list, but hidden.
+      const validTabIds = new Set(tabList.map((t) => t.id));
+      const wasShown = shownTabIdsRef.current;
+      shownTabIdsRef.current = validTabIds;
       const isDefaultIdValid = defaultTabId
-        ? currentOrder.includes(defaultTabId)
+        ? validTabIds.has(defaultTabId)
         : false;
 
       setTabs(tabList);
 
       const syncedId = getActiveTabIdFromNodes(currentTabNodes);
       const firstTabId =
-        currentOrder.length > 0 ? currentOrder[0] : DEFAULT_TAB_ID;
+        tabList[0]?.id ??
+        (currentOrder.length > 0 ? currentOrder[0] : DEFAULT_TAB_ID);
 
       if (shouldSyncActiveTab) {
-        const nextActiveTabId = syncedId || firstTabId;
+        const nextActiveTabId =
+          syncedId && validTabIds.has(syncedId) ? syncedId : firstTabId;
         _setActiveTabId((prev) =>
           prev === nextActiveTabId ? prev : nextActiveTabId,
         );
@@ -290,30 +301,32 @@ export const useTabManager = ({
       } else {
         // Validate current tab still exists (peer may have deleted it).
         // A deleted subtab falls back to its nearest remaining parent.
-        const validTabIds = new Set(tabList.map((t) => t.id));
-        _setActiveTabId((prev) => {
-          if (validTabIds.has(prev)) return prev;
-          const seen = new Set<string>([prev]);
-          let ancestorId = currentTabNodes.parentById.get(prev);
+        const fallbackFor = (tabId: string) => {
+          if (validTabIds.has(tabId)) return tabId;
+          const seen = new Set<string>([tabId]);
+          let ancestorId = currentTabNodes.parentById.get(tabId);
           while (ancestorId && !seen.has(ancestorId)) {
-            if (validTabIds.has(ancestorId)) break;
+            if (validTabIds.has(ancestorId)) return ancestorId;
             seen.add(ancestorId);
             ancestorId = currentTabNodes.parentById.get(ancestorId);
           }
-          const nextId =
-            ancestorId && validTabIds.has(ancestorId) ? ancestorId : firstTabId;
-          if (
-            isRemoteChange &&
-            currentTabNodes.parentById.size > 0 &&
-            prev !== nextId
-          ) {
-            toast({
-              title: 'This tab was deleted',
-              description: 'Someone else deleted the tab you were in.',
-            });
-          }
-          return nextId;
-        });
+          return firstTabId;
+        };
+        const openTabId = activeTabIdRef.current;
+        // Only for a tab the person could see: a doc still loading is not a
+        // deletion.
+        if (
+          isRemoteChange &&
+          currentTabNodes.parentById.size > 0 &&
+          wasShown.has(openTabId) &&
+          fallbackFor(openTabId) !== openTabId
+        ) {
+          toast({
+            title: 'This tab was deleted',
+            description: 'Someone else deleted the tab you were in.',
+          });
+        }
+        _setActiveTabId(fallbackFor);
       }
     };
 
@@ -455,7 +468,9 @@ export const useTabManager = ({
     lastDeleteRef.current = null;
     if (!restored) return false;
 
-    _setActiveTabId(snapshot.tabs[0].tabId);
+    // Open it only if it is shown: someone may have deleted its parent since.
+    const restoredId = snapshot.tabs[0].tabId;
+    if (shownTabIdsRef.current.has(restoredId)) _setActiveTabId(restoredId);
     flushPendingUpdate?.();
 
     return true;

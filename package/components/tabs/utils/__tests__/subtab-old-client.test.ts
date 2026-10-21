@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { getTabsYdocNodes, PARENT_ROOT_KEY } from '../tab-utils';
+import {
+  deriveTabsFromEncodedState,
+  getTabsYdocNodes,
+  PARENT_ROOT_KEY,
+} from '../tab-utils';
 import { createSubtabInDoc, getTabTree } from '../tab-operations';
 import {
   deriveTabsFromEncodedState as v7Derive,
@@ -75,6 +79,29 @@ describe('an older app (7.0.0) on a doc with subtabs', () => {
     v7DeleteTab(old, 'plan');
     syncAll(fresh, old);
     expect(outline(fresh)).toEqual(['default']);
+    expect(allStoredText(fresh)).toContain('january');
+  });
+
+  it('a reopened doc never opens on a tab the old app hid', () => {
+    const fresh = withSubtabs();
+    getTabsYdocNodes(fresh).tabState.set('activeTabId', 'q4');
+    const old = copyDoc(fresh, 50);
+    v7DeleteTab(old, 'plan');
+    syncAll(fresh, old);
+
+    const reopened = deriveTabsFromEncodedState(encode(fresh), makeDoc(60));
+    expect(reopened.tabList.map((t) => t.id)).toEqual(['default']);
+    expect(reopened.activeTabId).toBe('default');
+  });
+
+  it('the old app deleting every top-level tab leaves the subtabs shown', () => {
+    const fresh = withSubtabs();
+    const old = copyDoc(fresh, 50);
+    // The old guard counts subtabs, so both top-level tabs can go.
+    v7DeleteTab(old, 'default');
+    v7DeleteTab(old, 'plan');
+    syncAll(fresh, old);
+    expect(outline(fresh)).toEqual(['q4', '  jan']);
     expect(allStoredText(fresh)).toContain('january');
   });
 
