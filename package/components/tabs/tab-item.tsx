@@ -330,6 +330,9 @@ export const TabItem = ({
       className={cn(
         'flex items-center active:cursor-grabbing relative justify-between h-[40px] px-[12px] py-[8px] rounded-[4px]',
         isActive && 'color-bg-default-hover',
+        // Desktop rows (the phone list always shows the menu): a touch
+        // screen would keep the hover colour after a tap.
+        !alwaysShowMenu && 'hover:color-bg-default-hover',
       )}
     >
       <div

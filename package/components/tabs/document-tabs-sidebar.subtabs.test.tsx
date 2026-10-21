@@ -234,3 +234,14 @@ describe('dragging a tab', () => {
     expect(screen.queryByTestId('tab-drag-preview')).toBeNull();
   });
 });
+
+describe('row hover', () => {
+  it('colours a row on hover at every level', () => {
+    renderSidebar();
+    ['r', 'i', 'r1', 'plan'].forEach((tabId) =>
+      expect(screen.getByTestId(`tab-item-${tabId}`).className).toContain(
+        'hover:color-bg-default-hover',
+      ),
+    );
+  });
+});
