@@ -2023,13 +2023,16 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   }
 }
 
-/* Shows the scrollbar only while the pointer is over the list. */
+/* Shows the scrollbar only while the pointer is over the list. !important
+   because hosts may force a scrollbar colour on every element (ddocs.new sets
+   `*, *:hover { scrollbar-color: ... !important }`); the class still wins on
+   specificity. */
 .ddoc-scrollbar-on-hover {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: transparent transparent !important;
 }
 .ddoc-scrollbar-on-hover:hover {
-  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent !important;
 }
 /* Safari, which has no scrollbar-color. */
 .ddoc-scrollbar-on-hover::-webkit-scrollbar {
