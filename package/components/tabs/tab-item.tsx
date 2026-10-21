@@ -101,7 +101,12 @@ export const SortableTabItem = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: props.id, disabled: isEditing });
+  } = useSortable({
+    id: props.id,
+    // A plain `false` would override the list's own `disabled` (viewers,
+    // version history), so pass nothing unless renaming.
+    disabled: isEditing || undefined,
+  });
 
   // Filter tabIndex keeping it makes the tab list a focus fallback when the editor blurs.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

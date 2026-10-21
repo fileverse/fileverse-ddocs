@@ -193,3 +193,44 @@ describe('desktop sidebar with subtabs', () => {
     expect(rowNames()).toEqual(['A', 'B']);
   });
 });
+
+describe('dragging a tab', () => {
+  // jsdom has no PointerEvent; the drag sensor needs isPrimary and button.
+  if (!window.PointerEvent) {
+    class TestPointerEvent extends MouseEvent {
+      isPrimary: boolean;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.isPrimary = init.isPrimary ?? true;
+      }
+    }
+    window.PointerEvent = TestPointerEvent as typeof PointerEvent;
+  }
+
+  // A press, then a move past the 5px activation distance.
+  const dragRow = (tabId: string) => {
+    const row = screen.getByTestId(`tab-item-${tabId}`);
+    fireEvent.pointerDown(row, {
+      button: 0,
+      isPrimary: true,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent.pointerMove(document, { clientX: 0, clientY: 30 });
+  };
+
+  it('starts in the editor', () => {
+    renderSidebar();
+    dragRow('plan');
+    expect(screen.queryByTestId('tab-drag-preview')).not.toBeNull();
+  });
+
+  it.each([
+    ['a viewer', { isPreviewMode: true }],
+    ['version history', { isVersionHistoryMode: true }],
+  ])('never starts for %s', (_label, mode) => {
+    renderSidebar(mode);
+    dragRow('plan');
+    expect(screen.queryByTestId('tab-drag-preview')).toBeNull();
+  });
+});
