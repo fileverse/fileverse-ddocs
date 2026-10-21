@@ -1756,14 +1756,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   }
 }
 
-.inline-comment--active {
-  background-color: hsl(var(--color-inline-comment-active));
-  cursor: pointer;
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
 .inline-comment--unresolved {
   background-color: hsl(var(--color-inline-comment));
   cursor: pointer;
@@ -1774,6 +1766,14 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
 
 .inline-comment--resolved {
   background-color: transparent;
+}
+
+.inline-comment--active {
+  background-color: hsl(var(--color-inline-comment-active));
+  cursor: pointer;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
 
 .inline-comment--draft {

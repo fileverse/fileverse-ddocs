@@ -33,6 +33,7 @@ export interface CommentFloatingDraftCard extends CommentFloatingBaseCard {
 export interface CommentFloatingThreadCard extends CommentFloatingBaseCard {
   type: 'thread';
   commentId: string;
+  createdAt?: Date;
 }
 
 export interface SuggestionFloatingDraftCard extends CommentFloatingBaseCard {

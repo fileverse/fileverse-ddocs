@@ -217,6 +217,28 @@ const computeFocusedFloatingCommentLayout = ({
     }
   }
 
+  // If cards share the focused anchor near the top, keep earlier cards visible.
+  const firstVisibleTop = Math.min(
+    0,
+    ...Array.from(placements.values(), (placement) =>
+      placement.isVisible ? (placement.translateY ?? 0) : 0,
+    ),
+  );
+  const hasSameAnchorBeforeFocus = floatingCards
+    .slice(0, focusedIndex)
+    .some((card) => card.anchorTop === focusedFloatingCard.anchorTop);
+  if (
+    hasSameAnchorBeforeFocus &&
+    focusedFloatingCard.anchorTop >= 0 &&
+    firstVisibleTop < 0
+  ) {
+    placements.forEach((placement) => {
+      if (placement.isVisible && placement.translateY !== null) {
+        placement.translateY -= firstVisibleTop;
+      }
+    });
+  }
+
   return {
     placements,
     stopIndex,

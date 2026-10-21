@@ -16,10 +16,21 @@ export const useFloatingCommentCardState =
   (): UseFloatingCommentCardStateResult => {
     const blurFloatingCard = useCommentStore((s) => s.blurFloatingCard);
     const closeFloatingCard = useCommentStore((s) => s.closeFloatingCard);
-    const floatingCards = useCommentStore((s) => s.floatingCards);
+    const storedFloatingCards = useCommentStore((s) => s.floatingCards);
+    const tabComments = useCommentStore((s) => s.tabComments);
     const isDesktopFloatingEnabled = useCommentStore(
       (s) => s.isDesktopFloatingEnabled,
     );
+    const floatingCards = useMemo(() => {
+      const createdAtById = new Map(
+        tabComments.map((comment) => [comment.id, comment.createdAt]),
+      );
+      return storedFloatingCards.map((card) =>
+        card.type === 'thread'
+          ? { ...card, createdAt: createdAtById.get(card.commentId) }
+          : card,
+      );
+    }, [storedFloatingCards, tabComments]);
 
     /**
      * Map for O(1) access by ID.
