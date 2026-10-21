@@ -2023,6 +2023,29 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   }
 }
 
+/* Shows the scrollbar only while the pointer is over the list. */
+.ddoc-scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.ddoc-scrollbar-on-hover:hover {
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+}
+/* Safari, which has no scrollbar-color. */
+.ddoc-scrollbar-on-hover::-webkit-scrollbar {
+  width: 8px;
+}
+.ddoc-scrollbar-on-hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ddoc-scrollbar-on-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 20px;
+}
+.ddoc-scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.5);
+}
+
 .autocomplete-suggestion {
   pointer-events: none;
   user-select: none;

@@ -386,7 +386,7 @@ export const TabSidebar = ({
                   )}
                 </div>
               </div>
-              <div className="w-full overflow-y-auto space-y-1">
+              <div className="w-full overflow-y-auto space-y-1 ddoc-scrollbar-on-hover">
                 {renderGroup(null)}
               </div>
             </div>
