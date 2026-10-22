@@ -11,7 +11,8 @@ export type UploadFnType = (image: File) => Promise<string>;
  * This function creates a Prosemirror plugin that handles pasting and dropping of media files.
  * It accepts an upload function as a parameter which is used to upload the media files.
  * The plugin prevents the default paste and drop event, uploads the media file (if an upload function is provided),
- * creates a new node with the uploaded media file and replaces the current selection with the new node.
+ * creates a new node with the uploaded media file. Paste replaces the current selection;
+ * drop inserts at the drop position without deleting selected text.
  * If no upload function is provided, it reads the media file as DataURL and uses this in the new node.
  * The function returns a new instance of the Plugin.
  */
@@ -119,6 +120,7 @@ export const getMediaPasteDropPlugin = (
                 view,
                 coordinates.pos,
                 ipfsImageUploadFn,
+                { replaceSelection: false },
               );
             } catch (error) {
               onError((error as Error).message || 'Error uploading media');
