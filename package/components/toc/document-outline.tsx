@@ -51,7 +51,9 @@ export const DocumentOutline = ({
     );
   }
 
-  return !isMediaMax1280px ? (
+  // A host that gives its own tab column (version history) decides when the
+  // column is shown; the sidebar then fills it at every width.
+  return !isMediaMax1280px || tabSectionContainer ? (
     <DocumentTabsSidebar
       tabs={tabs}
       setTabs={setTabs}
