@@ -447,8 +447,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
 
-    @media (min-width: 768px) {
+    @container ddoc-editor (min-width: 768px) {
       grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+
+    @media (min-width: 768px) {
+      &:where(:not(.ddoc-editor-cq *)) {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      }
     }
 
     & > [data-type='column'] > div > div {
@@ -603,8 +609,17 @@
   z-index: 5;
 }
 
-@media (min-width: 768px) {
+@container ddoc-editor (min-width: 768px) {
   .ProseMirror.main-doc-editor {
+    --padding-t: 72px;
+    --padding-r: 80px;
+    --padding-b: 20vh;
+    --padding-l: var(--padding-r);
+    padding: var(--padding-t) var(--padding-r) var(--padding-b) var(--padding-l);
+  }
+}
+@media (min-width: 768px) {
+  .ProseMirror.main-doc-editor:where(:not(.ddoc-editor-cq *)) {
     --padding-t: 72px;
     --padding-r: 80px;
     --padding-b: 20vh;
@@ -714,8 +729,13 @@
 /* Below the padding breakpoint the 36px gutter fits only one button — match
    the cluster's gate (767px, see isBelowLargeScreen) and keep just the
    collapse chevron (which self-reveals when collapsed). */
-@media (max-width: 767px) {
+@container ddoc-editor (max-width: 767px) {
   .ProseMirror .d-block-preview-copy-link {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .ProseMirror .d-block-preview-copy-link:where(:not(.ddoc-editor-cq *)) {
     display: none;
   }
 }
@@ -796,8 +816,13 @@
   max-width: 100%;
   margin-inline: auto;
 }
-@media (min-width: 1024px) {
+@container ddoc-editor (min-width: 1024px) {
   .ProseMirror [data-type='d-block'].is-table > [data-node-view-content] {
+    max-width: 90%;
+  }
+}
+@media (min-width: 1024px) {
+  .ProseMirror [data-type='d-block'].is-table > [data-node-view-content]:where(:not(.ddoc-editor-cq *)) {
     max-width: 90%;
   }
 }
@@ -830,8 +855,13 @@
   padding-top: 0.5rem;
 }
 
-@media (min-width: 1025px) {
+@container ddoc-editor (min-width: 1025px) {
   .node-dBlock:first-child > div > .is-table {
+    padding-top: 0;
+  }
+}
+@media (min-width: 1025px) {
+  .node-dBlock:first-child > div > .is-table:where(:not(.ddoc-editor-cq *)) {
     padding-top: 0;
   }
 }
@@ -841,8 +871,15 @@
   pointer-events: auto;
 }
 
-@media (max-width: 1025px) {
+@container ddoc-editor (max-width: 1025px) {
   .node-iframe iframe {
+    width: 100%;
+    aspect-ratio: 16/9;
+    height: auto;
+  }
+}
+@media (max-width: 1025px) {
+  .node-iframe iframe:where(:not(.ddoc-editor-cq *)) {
     width: 100%;
     aspect-ratio: 16/9;
     height: auto;
@@ -969,8 +1006,13 @@ ul[data-type='taskList'] li > label {
   user-select: none;
 }
 
-@media screen and (max-width: 768px) {
+@container ddoc-editor (max-width: 768px) {
   ul[data-type='taskList'] li > label {
+    margin-inline-end: 0.5rem;
+  }
+}
+@media screen and (max-width: 768px) {
+  ul[data-type='taskList'] li > label:where(:not(.ddoc-editor-cq *)) {
     margin-inline-end: 0.5rem;
   }
 }
@@ -1714,14 +1756,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
   }
 }
 
-.inline-comment--active {
-  background-color: hsl(var(--color-inline-comment-active));
-  cursor: pointer;
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
 .inline-comment--unresolved {
   background-color: hsl(var(--color-inline-comment));
   cursor: pointer;
@@ -1732,6 +1766,14 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
 
 .inline-comment--resolved {
   background-color: transparent;
+}
+
+.inline-comment--active {
+  background-color: hsl(var(--color-inline-comment-active));
+  cursor: pointer;
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
 
 .inline-comment--draft {
@@ -1779,11 +1821,102 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
 
 .suggestion-add {
   cursor: pointer;
+  white-space: pre-wrap;
   transition-property: all;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
   background-color: rgba(0, 102, 7, 0.04);
   color: #006607;
+
+  .suggestion-paragraph-line {
+    &::before {
+      content: '';
+      display: block;
+      height: 1.5em;
+    }
+  }
+
+  .suggestion-paragraph-after-heading {
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.38;
+  }
+
+  .suggestion-task-line {
+    display: inline-block;
+    margin-top: 0.5rem;
+  }
+
+  .suggestion-list-marker-anchor {
+    display: inline-block;
+    position: relative;
+    width: 0;
+    height: 0;
+    vertical-align: top;
+
+    .suggestion-list-marker {
+      position: absolute;
+      right: 0.25rem;
+      white-space: nowrap;
+    }
+  }
+
+  .suggestion-list-marker {
+    color: hsla(var(--color-text-default));
+    user-select: none;
+
+    &[data-bullet] {
+      top: 0.6em;
+      width: 0.35em;
+      height: 0.35em;
+      font-size: 1em;
+      line-height: 0;
+      color: transparent;
+      background-color: hsla(var(--color-text-default));
+    }
+
+    &[data-bullet='circle'] {
+      border: 1px solid hsla(var(--color-text-default));
+      border-radius: 50%;
+      background-color: transparent;
+    }
+
+    &[data-bullet='disc'] {
+      border-radius: 50%;
+    }
+
+    &[data-nested-ordered='true'] {
+      right: auto;
+      left: -1.4em;
+    }
+
+    &[data-task='true'] {
+      top: 0.125em;
+      right: 0.5rem;
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid hsla(var(--color-border-active));
+      border-radius: 4px;
+      background-color: hsla(var(--color-bg-default));
+      color: transparent;
+      line-height: 0;
+    }
+  }
+
+  &.suggestion-list-item-preview::marker,
+  &.suggestion-list-item-preview::before {
+    color: hsla(var(--color-text-default));
+  }
+
+  &.suggestion-list-item-preview[data-visual-caret='true'] > p::after {
+    content: '';
+    display: inline-block;
+    height: 1em;
+    margin-left: 1px;
+    border-left: 1px solid currentColor;
+    vertical-align: -0.15em;
+    animation: suggestion-preview-caret-blink 1s step-end infinite;
+  }
 
   &[data-active='true'],
   &:hover {
@@ -1799,6 +1932,16 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     &:hover {
       background-color: rgb(74 222 128 / 0.08);
     }
+  }
+}
+
+.suggestion-source-caret-hidden {
+  caret-color: transparent;
+}
+
+@keyframes suggestion-preview-caret-blink {
+  50% {
+    opacity: 0;
   }
 }
 
@@ -1878,6 +2021,32 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     background-color: rgba(155, 155, 155, 0.5); /* color of the scroll thumb */
     border-radius: 20px; /* roundness of the scroll thumb */
   }
+}
+
+/* Shows the scrollbar only while the pointer is over the list. !important
+   because hosts may force a scrollbar colour on every element (ddocs.new sets
+   `*, *:hover { scrollbar-color: ... !important }`); the class still wins on
+   specificity. */
+.ddoc-scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent !important;
+}
+.ddoc-scrollbar-on-hover:hover {
+  scrollbar-color: rgba(155, 155, 155, 0.5) transparent !important;
+}
+/* Safari, which has no scrollbar-color. */
+.ddoc-scrollbar-on-hover::-webkit-scrollbar {
+  width: 8px;
+}
+.ddoc-scrollbar-on-hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ddoc-scrollbar-on-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 20px;
+}
+.ddoc-scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.5);
 }
 
 .autocomplete-suggestion {

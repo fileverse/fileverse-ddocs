@@ -38,6 +38,9 @@ export interface CommentDrawerProps {
   onTabChange?: (tabId: string) => void;
   isPreviewMode: boolean;
   tabs: Tab[];
+  // The mobile sheet renders here, outside the scrolling canvas: iOS Safari
+  // clips a fixed element's painting to an ancestor scroller.
+  mobileContainer?: HTMLElement | null;
 }
 
 export interface CommentCardProps extends IComment {

@@ -24,6 +24,7 @@
   "include": [
     "./index.ts",
     "./headless-editor-utils.ts",
+    "./persistence.ts",
     "package/**/*",
     "demo/src/vite-env.d.ts",
     "demo/src/crypto"

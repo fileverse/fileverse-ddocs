@@ -59,5 +59,104 @@ describe('applyTabbedTemplate', () => {
     expect(getActiveTabIdFromNodes(tabNodes)).toBe(DEFAULT_TAB_ID);
     expect(editor.getText()).toContain('Fanfic Planner');
     expect(flushPendingUpdate).toHaveBeenCalledOnce();
+    // A doc without subtabs never gets a parent record.
+    expect(tabNodes.parentById.size).toBe(0);
+  });
+
+  describe('with subtabs', () => {
+    const TEMPLATE_REST = ['Plot & Outline', 'Characters', 'World & Canon'];
+
+    // `tabs` in reading order; `parentOf` holds only subtabs.
+    const applyIn = (
+      activeTabId: string,
+      tabs: string[],
+      parentOf: Record<string, string>,
+    ) => {
+      ydoc = new Y.Doc();
+      const tabNodes = getTabsYdocNodes(ydoc);
+      ydoc.transact(() => {
+        tabNodes.order.insert(0, tabs);
+        tabs.forEach((id) => {
+          tabNodes.nameById.set(id, id);
+          tabNodes.emojiById.set(id, null);
+          ydoc?.getXmlFragment(id);
+        });
+        Object.entries(parentOf).forEach(([id, parent]) =>
+          tabNodes.parentById.set(id, parent),
+        );
+        tabNodes.tabState.set(ACTIVE_TAB_STATE_KEY, activeTabId);
+      });
+      editor = new Editor({
+        extensions: getHeadlessExtensions({ ydoc, field: activeTabId }),
+      });
+      applyTabbedTemplate({
+        activeTabId,
+        editor,
+        template: FANFIC_TEMPLATE,
+        ydoc,
+      });
+      return getTabListFromNodes(tabNodes).map((tab) => ({
+        name: tab.name,
+        depth: tab.depth,
+      }));
+    };
+
+    it('adds the other tabs as siblings, right after the subtab', () => {
+      const tree = applyIn('S1', ['R', 'S1', 'S2', 'P'], { S1: 'R', S2: 'R' });
+
+      expect(tree).toEqual([
+        { name: 'R', depth: 1 },
+        { name: 'Ship Basis', depth: 2 },
+        ...TEMPLATE_REST.map((name) => ({ name, depth: 2 })),
+        { name: 'S2', depth: 2 },
+        { name: 'P', depth: 1 },
+      ]);
+      expect(getActiveTabIdFromNodes(getTabsYdocNodes(ydoc!))).toBe('S1');
+    });
+
+    it('keeps a level-3 subtab template at level 3', () => {
+      const tree = applyIn('L3', ['R', 'S1', 'L3', 'S2'], {
+        S1: 'R',
+        L3: 'S1',
+        S2: 'R',
+      });
+
+      expect(tree).toEqual([
+        { name: 'R', depth: 1 },
+        { name: 'S1', depth: 2 },
+        { name: 'Ship Basis', depth: 3 },
+        ...TEMPLATE_REST.map((name) => ({ name, depth: 3 })),
+        { name: 'S2', depth: 2 },
+      ]);
+    });
+
+    it('puts them after the subtab’s own subtabs', () => {
+      const tree = applyIn('S1', ['R', 'S1', 'L3', 'S2'], {
+        S1: 'R',
+        L3: 'S1',
+        S2: 'R',
+      });
+
+      expect(tree.map((tab) => tab.name)).toEqual([
+        'R',
+        'Ship Basis',
+        'L3',
+        ...TEMPLATE_REST,
+        'S2',
+      ]);
+    });
+
+    it('appends top-level tabs at the end, as before', () => {
+      const tree = applyIn('P', ['R', 'S1', 'P', 'Q'], { S1: 'R' });
+
+      expect(tree).toEqual([
+        { name: 'R', depth: 1 },
+        { name: 'S1', depth: 2 },
+        { name: 'Ship Basis', depth: 1 },
+        { name: 'Q', depth: 1 },
+        ...TEMPLATE_REST.map((name) => ({ name, depth: 1 })),
+      ]);
+      expect(getTabsYdocNodes(ydoc!).parentById.size).toBe(1);
+    });
   });
 });

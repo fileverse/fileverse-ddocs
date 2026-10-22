@@ -15,6 +15,7 @@ import { CommentDropdownProps } from './types';
 import { useCommentStore } from '../../stores/comment-store';
 import { useCommentRefs } from '../../stores/comment-store-provider';
 import { useCommentDraftAutoSubmitCountdown } from './use-comment-draft-auto-submit-countdown';
+import { shouldOfferNewCommentDraft } from '../editor-bubble-menu/props';
 
 export const CommentDropdown = ({
   activeCommentId,
@@ -34,6 +35,7 @@ export const CommentDropdown = ({
   const activeComment = useCommentStore((s) => s.activeComment);
   const selectedText = useCommentStore((s) => s.selectedText);
   const isCommentActive = useCommentStore((s) => s.isCommentActive);
+  const isCommentResolved = useCommentStore((s) => s.isCommentResolved);
   const handleAddReply = useCommentStore((s) => s.handleAddReply);
   const editRequest = useCommentStore((s) => s.editRequest);
   const clearEditRequest = useCommentStore((s) => s.clearEditRequest);
@@ -383,7 +385,7 @@ export const CommentDropdown = ({
     <div
       ref={dropdownRef}
       data-testid="comment-dropdown"
-      className="w-[300px] color-bg-default shadow-elevation-4 md:shadow-none rounded-md select-text"
+      className="w-[300px] color-bg-default shadow-elevation-4 ddoc-md:shadow-none rounded-md select-text"
     >
       {children}
     </div>
@@ -393,5 +395,7 @@ export const CommentDropdown = ({
     return isCommentActive ? renderDropdownWrapper(renderReplyView()) : null;
   }
 
-  return !isCommentActive ? renderDropdownWrapper(renderInitialView()) : null;
+  return shouldOfferNewCommentDraft(isCommentActive, isCommentResolved)
+    ? renderDropdownWrapper(renderInitialView())
+    : null;
 };

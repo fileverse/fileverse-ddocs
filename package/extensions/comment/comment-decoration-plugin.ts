@@ -13,15 +13,22 @@ import {
   type Editor,
 } from '@tiptap/core';
 import { type EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
-import { type Transform } from '@tiptap/pm/transform';
+import { canSplit, type Transform } from '@tiptap/pm/transform';
+import { TextSelection } from '@tiptap/pm/state';
+import { type ResolvedPos } from '@tiptap/pm/model';
+import { getSplittedAttributes } from '@tiptap/core';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   ySyncPluginKey,
+  yUndoPluginKey,
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
 } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
-import { SuggestionType } from '../../types';
+import { SuggestionMultilineStructure, SuggestionType } from '../../types';
+import { validMultilineStructure } from '../suggestion/multiline-structure';
+import { captureSplit, declareSplit } from '../caret-marks/split-declaration';
+import { suggestionTrackingPluginKey } from '../suggestion/suggestion-tracking-extension';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +44,9 @@ export interface CommentAnchor {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
+  isDraft?: boolean;
 }
 
 interface CommentDecorationPluginState {
@@ -138,6 +148,104 @@ export function resolveCommentAnchorPointInState(
   } catch {
     return null;
   }
+}
+
+const ACCEPTED_BREAK_POINTS = 'acceptedSuggestionBreakPoints';
+const SUGGESTION_ADD_POINT_OVERRIDES = 'suggestionAddPointOverrides';
+
+/** Each tab has its own Yjs fragment and its own pending Add overrides. */
+function getSuggestionAddPointOverrides(
+  state: EditorState,
+  create = false,
+): Y.Map<Uint8Array> | null {
+  const syncState = ySyncPluginKey.getState(state);
+  if (!syncState?.binding) return null;
+  const field = [...syncState.doc.share].find(
+    ([, sharedType]) => sharedType === syncState.type,
+  )?.[0];
+  if (!field) return null;
+  const root = syncState.doc.getMap(SUGGESTION_ADD_POINT_OVERRIDES) as Y.Map<
+    Y.Map<Uint8Array>
+  >;
+  let tabPoints = root.get(field);
+  if (!tabPoints && create) {
+    tabPoints = new Y.Map<Uint8Array>();
+    root.set(field, tabPoints);
+  }
+  return tabPoints instanceof Y.Map ? tabPoints : null;
+}
+
+function resolveSuggestionAddPointOverride(
+  anchor: CommentAnchor,
+  state: EditorState,
+): number | null {
+  const encoded = getSuggestionAddPointOverrides(state)?.get(anchor.id);
+  if (!(encoded instanceof Uint8Array)) return null;
+  try {
+    return resolveCommentAnchorPointInState(
+      { anchorFrom: Y.decodeRelativePosition(encoded) },
+      state,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve following Adds against the accepted break's persisted Yjs position. */
+export function resolveSuggestionAddPointInState(
+  anchor: CommentAnchor,
+  state: EditorState,
+  anchors: CommentAnchor[] | ReadonlyMap<string, CommentAnchor>,
+): number | null {
+  const point =
+    (anchor.followsSuggestionId
+      ? null
+      : resolveSuggestionAddPointOverride(anchor, state)) ??
+    resolveCommentAnchorPointInState(anchor, state);
+  if (point === null || !anchor.followsSuggestionId) return point;
+  const parent = Array.isArray(anchors)
+    ? anchors.find((entry) => entry.id === anchor.followsSuggestionId)
+    : anchors.get(anchor.followsSuggestionId);
+  if (!parent?.resolved || !parent.multilineStructure) return point;
+  if (
+    !validMultilineStructure(
+      parent.suggestedContent,
+      parent.multilineStructure,
+    ) ||
+    parent.multilineStructure.insertedTexts.some(Boolean) ||
+    parent.multilineStructure.structureType.length !== 1
+  )
+    return null;
+  const acceptedPoint: Uint8Array | undefined = ySyncPluginKey
+    .getState(state)
+    ?.doc.getMap(ACCEPTED_BREAK_POINTS)
+    .get(parent.id);
+  if (acceptedPoint) {
+    return resolveCommentAnchorPointInState(
+      { ...anchor, anchorFrom: Y.decodeRelativePosition(acceptedPoint) },
+      state,
+    );
+  }
+  // Compatibility for breaks accepted before their positions were persisted.
+  const parentPoint = resolveCommentAnchorPointInState(parent, state);
+  if (parentPoint === null) return null;
+  const kind = parent.multilineStructure.structureType[0];
+  if (kind === 'soft' || kind === 'text') return parentPoint + 1;
+  const currentBlockEnd = state.doc.resolve(parentPoint).after();
+  let nextTextblock: number | null = null;
+  state.doc.nodesBetween(
+    currentBlockEnd,
+    state.doc.content.size,
+    (node, pos) => {
+      if (nextTextblock !== null) return false;
+      if (node.isTextblock && pos >= currentBlockEnd) {
+        nextTextblock = pos + 1;
+        return false;
+      }
+      return true;
+    },
+  );
+  return nextTextblock;
 }
 
 export function hasResolvableCommentAnchorInState(
@@ -530,10 +638,97 @@ function createSuggestionWidget(
   text: string,
   commentId: string,
   isActive: boolean,
+  multilineStructure?: SuggestionMultilineStructure,
+  listMarker = '• ',
+  paragraphAfterHeading = false,
+  asFollowingListItem = false,
+  visualCaret = false,
+  listMarkerAt?: (nextItem: number) => string,
 ): HTMLElement {
+  if (asFollowingListItem && multilineStructure) {
+    const item = document.createElement('li');
+    item.className = 'suggestion-add suggestion-list-item-preview';
+    const paragraph = document.createElement('p');
+    paragraph.textContent = multilineStructure.insertedTexts[1] || '\u200b';
+    if (listMarker === '☐ ') {
+      item.classList.add('grid', 'task-item');
+      item.dataset.checked = 'false';
+      const label = document.createElement('label');
+      label.contentEditable = 'false';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.disabled = true;
+      checkbox.setAttribute('aria-label', 'Suggested task item checkbox');
+      label.append(checkbox, document.createElement('span'));
+      const content = document.createElement('div');
+      content.append(paragraph);
+      item.append(label, content);
+    } else {
+      item.append(paragraph);
+    }
+    item.dataset.suggestionId = commentId;
+    item.dataset.commentId = commentId;
+    item.dataset.active = isActive ? 'true' : 'false';
+    if (visualCaret) item.dataset.visualCaret = 'true';
+    return item;
+  }
   const span = document.createElement('span');
   span.className = 'suggestion-add';
-  span.textContent = text;
+  let currentLine: HTMLElement = span;
+  const appendPart = (part: string) => {
+    currentLine.append(document.createTextNode(part));
+  };
+  if (multilineStructure && validMultilineStructure(text, multilineStructure)) {
+    let listItemCount = 0;
+    multilineStructure.insertedTexts.forEach((part, index) => {
+      if (index > 0) {
+        const kind = multilineStructure.structureType[index - 1];
+        const breakNode = document.createElement('br');
+        breakNode.dataset.suggestionBreak = kind;
+        if (kind === 'listItem') {
+          // Keep the widget inline so the native caret stays beside the
+          // proposed text. The marker is positioned in the list gutter.
+          span.append(breakNode);
+          if (listMarker === '☐ ') {
+            currentLine = document.createElement('span');
+            currentLine.className = 'suggestion-task-line';
+            span.append(currentLine);
+          }
+          const markerAnchor = document.createElement('span');
+          markerAnchor.className = 'suggestion-list-marker-anchor';
+          const marker = document.createElement('span');
+          marker.className = 'suggestion-list-marker';
+          marker.textContent = listMarkerAt?.(listItemCount + 1) ?? listMarker;
+          if (listMarker === '• ') marker.dataset.bullet = 'disc';
+          if (listMarker === '◦ ') marker.dataset.bullet = 'circle';
+          if (listMarker === '▪ ') marker.dataset.bullet = 'square';
+          if (listMarker === '☐ ') marker.dataset.task = 'true';
+          if (/^[a-z]+\. $/.test(listMarker)) {
+            marker.dataset.nestedOrdered = 'true';
+          }
+          listItemCount++;
+          markerAnchor.append(marker);
+          currentLine.append(markerAnchor);
+        } else if (kind === 'block') {
+          // A block split has paragraph spacing, unlike a soft break.
+          breakNode.hidden = true;
+          span.append(breakNode);
+          currentLine = document.createElement('span');
+          currentLine.className = 'suggestion-paragraph-line';
+          if (paragraphAfterHeading) {
+            currentLine.classList.add('suggestion-paragraph-after-heading');
+          }
+          span.append(currentLine);
+        } else {
+          currentLine.append(breakNode);
+        }
+      }
+      // Keep an empty trailing proposed line visible after its break.
+      appendPart(part || (index > 0 ? '\u200b' : ''));
+    });
+  } else {
+    appendPart(text);
+  }
   // Both attributes so the layout engine can locate this widget as either a
   // suggestion-draft anchor (before submit) or a thread anchor (after submit).
   span.dataset.suggestionId = commentId;
@@ -543,8 +738,148 @@ function createSuggestionWidget(
 }
 
 const createSuggestionWidgetRenderer =
-  (text: string, commentId: string, isActive: boolean) => () =>
-    createSuggestionWidget(text, commentId, isActive);
+  (
+    text: string,
+    commentId: string,
+    isActive: boolean,
+    multilineStructure?: SuggestionMultilineStructure,
+    listMarker?: string,
+    paragraphAfterHeading?: boolean,
+    asFollowingListItem?: boolean,
+    visualCaret?: boolean,
+    listMarkerAt?: (nextItem: number) => string,
+  ) =>
+  () =>
+    createSuggestionWidget(
+      text,
+      commentId,
+      isActive,
+      multilineStructure,
+      listMarker,
+      paragraphAfterHeading,
+      asFollowingListItem,
+      visualCaret,
+      listMarkerAt,
+    );
+
+function breaksIntoParagraphAfterHeading(
+  state: EditorState,
+  position: number,
+  multilineStructure?: SuggestionMultilineStructure,
+): boolean {
+  if (!multilineStructure?.structureType.includes('block')) return false;
+  const $position = state.doc.resolve(position);
+  return (
+    $position.parent.type.name === 'heading' &&
+    $position.parentOffset === $position.parent.content.size
+  );
+}
+
+function followingListItemPreviewPosition(
+  state: EditorState,
+  pos: number,
+  multilineStructure?: SuggestionMultilineStructure,
+): number | null {
+  if (
+    multilineStructure?.insertedTexts.length !== 2 ||
+    multilineStructure.insertedTexts[0] !== '' ||
+    multilineStructure.structureType[0] !== 'listItem'
+  )
+    return null;
+  const $pos = state.doc.resolve(pos);
+  if (!hasOnlyHardBreaksAfterCursor($pos)) return null;
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    if (!['listItem', 'taskItem'].includes($pos.node(depth).type.name))
+      continue;
+    if (
+      $pos.node(depth).type.name === 'taskItem' &&
+      $pos.index(depth) < $pos.node(depth).childCount - 1
+    )
+      return null;
+    return $pos.after(depth);
+  }
+  return null;
+}
+
+function hasOnlyHardBreaksAfterCursor($pos: ResolvedPos): boolean {
+  let onlyHardBreaks = true;
+  $pos.parent.content.cut($pos.parentOffset).forEach((node) => {
+    if (node.type.name !== 'hardBreak') onlyHardBreaks = false;
+  });
+  return onlyHardBreaks;
+}
+
+function suggestionListMarker(
+  state: EditorState,
+  pos: number,
+  nextItem = 1,
+): string {
+  const $pos = state.doc.resolve(pos);
+  let listDepth = 0;
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (['bulletList', 'orderedList', 'taskList'].includes(node.type.name)) {
+      listDepth++;
+    }
+  }
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (node.type.name === 'orderedList') {
+      const number = (node.attrs.start ?? 1) + $pos.index(depth) + nextItem;
+      if (depth < 2 || $pos.node(depth - 1).type.name !== 'listItem') {
+        return `${number}. `;
+      }
+      const roman =
+        depth >= 3 &&
+        $pos.node(depth - 2).type.name === 'orderedList' &&
+        $pos.node(depth - 3).type.name === 'listItem';
+      return `${roman ? romanListMarker(number) : alphaListMarker(number)}. `;
+    }
+    if (node.type.name === 'taskList') return '☐ ';
+    if (node.type.name === 'bulletList') {
+      return ['• ', '◦ ', '▪ '][Math.min(listDepth - 1, 2)];
+    }
+  }
+  return '• ';
+}
+
+function alphaListMarker(number: number): string {
+  let value = number;
+  let label = '';
+  while (value > 0) {
+    value--;
+    label = String.fromCharCode(97 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
+}
+
+function romanListMarker(number: number): string {
+  const numerals: [number, string][] = [
+    [1000, 'm'],
+    [900, 'cm'],
+    [500, 'd'],
+    [400, 'cd'],
+    [100, 'c'],
+    [90, 'xc'],
+    [50, 'l'],
+    [40, 'xl'],
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let value = number;
+  let label = '';
+  for (const [amount, numeral] of numerals) {
+    while (value >= amount) {
+      label += numeral;
+      value -= amount;
+    }
+  }
+  return label;
+}
 
 function buildDecorations(
   anchors: CommentAnchor[],
@@ -563,6 +898,7 @@ function buildDecorations(
   }
 
   const decorations: Decoration[] = [];
+  const anchorsById = new Map(anchors.map((anchor) => [anchor.id, anchor]));
   for (const anchor of anchors) {
     // Skip deleted anchors entirely.
     if (anchor.deleted) continue;
@@ -585,27 +921,64 @@ function buildDecorations(
     // changes (typing / backspace during an Add draft).
     if (anchor.isSuggestion && anchor.suggestionType === 'add') {
       if (!anchor.suggestedContent) continue;
-      const directPoint = resolveCommentAnchorPointInState(anchor, state);
+      const directPoint = resolveSuggestionAddPointInState(
+        anchor,
+        state,
+        anchorsById,
+      );
+      const resolvedParent = anchor.followsSuggestionId
+        ? anchorsById.get(anchor.followsSuggestionId)?.resolved
+        : false;
       const fallbackPoint = resolveCommentAnchorPointFromDecorationSet(
         anchor.id,
         previousDecorations ?? undefined,
       );
-      const insertPoint = directPoint ?? fallbackPoint;
+      const insertPoint =
+        directPoint ?? (resolvedParent ? null : fallbackPoint);
       if (insertPoint === null) continue;
+      const followingItemPos = followingListItemPreviewPosition(
+        state,
+        insertPoint,
+        anchor.multilineStructure,
+      );
+      const visualCaret =
+        followingItemPos !== null &&
+        anchor.isDraft &&
+        state.selection.empty &&
+        state.selection.from === insertPoint;
+      if (visualCaret) {
+        const $source = state.doc.resolve(insertPoint);
+        const sourceStart = $source.before();
+        decorations.push(
+          Decoration.node(sourceStart, sourceStart + $source.parent.nodeSize, {
+            class: 'suggestion-source-caret-hidden',
+          }),
+        );
+      }
       decorations.push(
         Decoration.widget(
-          insertPoint,
+          followingItemPos ?? insertPoint,
           createSuggestionWidgetRenderer(
             anchor.suggestedContent,
             anchor.id,
             isActive,
+            anchor.multilineStructure,
+            suggestionListMarker(state, insertPoint),
+            breaksIntoParagraphAfterHeading(
+              state,
+              insertPoint,
+              anchor.multilineStructure,
+            ),
+            followingItemPos !== null,
+            Boolean(visualCaret),
+            (nextItem) => suggestionListMarker(state, insertPoint, nextItem),
           ),
           {
             commentId: anchor.id,
             active: isActive,
             suggestion: true,
             side: -1,
-            key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${
+            key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, insertPoint)}-${visualCaret ? 'caret' : 'no-caret'}-${
               isActive ? 'active' : 'inactive'
             }`,
           },
@@ -669,20 +1042,35 @@ function buildDecorations(
       // Key includes the content so PM redraws when the draft's suggestedContent
       // changes (typing / backspace during a Replace draft).
       if (suggestionType === 'replace' && suggestedContent) {
+        const followingItemPos = followingListItemPreviewPosition(
+          state,
+          range.to,
+          anchor.multilineStructure,
+        );
         decorations.push(
           Decoration.widget(
-            range.from,
+            followingItemPos ?? range.from,
             createSuggestionWidgetRenderer(
               suggestedContent,
               anchor.id,
               isActive,
+              anchor.multilineStructure,
+              suggestionListMarker(state, range.from),
+              breaksIntoParagraphAfterHeading(
+                state,
+                range.to,
+                anchor.multilineStructure,
+              ),
+              followingItemPos !== null,
+              false,
+              (nextItem) => suggestionListMarker(state, range.from, nextItem),
             ),
             {
               commentId: anchor.id,
               active: isActive,
               suggestion: true,
               side: -1,
-              key: `suggestion-insert-${anchor.id}-${suggestedContent}-${
+              key: `suggestion-insert-${anchor.id}-${suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, range.from)}-${
                 isActive ? 'active' : 'inactive'
               }`,
             },
@@ -752,6 +1140,7 @@ export const CommentDecorationExtension =
                   getAnchors(),
                   editorState,
                   getActiveCommentId(),
+                  null,
                 ),
               };
             },
@@ -810,6 +1199,37 @@ export const CommentDecorationExtension =
               );
             },
           },
+
+          view(editorView) {
+            const syncState = ySyncPluginKey.getState(editorView.state);
+            const overrides = syncState?.doc.getMap(
+              SUGGESTION_ADD_POINT_OVERRIDES,
+            );
+            let disposed = false;
+            let rebuildQueued = false;
+            const onOverridesChanged = () => {
+              if (disposed || rebuildQueued) return;
+              rebuildQueued = true;
+              // Yjs observers run during synchronization. Rebuild only after
+              // the editor state and Y.Doc have both settled.
+              queueMicrotask(() => {
+                rebuildQueued = false;
+                if (disposed) return;
+                editorView.dispatch(
+                  editorView.state.tr.setMeta(commentDecorationPluginKey, {
+                    rebuild: true,
+                  }),
+                );
+              });
+            };
+            overrides?.observeDeep(onOverridesChanged);
+            return {
+              destroy() {
+                disposed = true;
+                overrides?.unobserveDeep(onOverridesChanged);
+              },
+            };
+          },
         }),
       ];
     },
@@ -841,16 +1261,25 @@ export function createCommentAnchorFromEditor(
 export function createCommentAnchorPointFromEditor(
   editor: Editor,
   pos: number,
+  assoc: -1 | 1 = -1,
 ): CommentAnchorRelativeRange | null {
   const syncState = ySyncPluginKey.getState(editor.state);
   if (!syncState?.binding) return null;
   const { type, binding } = syncState;
   try {
-    const relPos = absolutePositionToRelativePosition(
-      pos,
-      type,
-      binding.mapping,
-    );
+    let relPos = absolutePositionToRelativePosition(pos, type, binding.mapping);
+    if (assoc === 1) {
+      const absolute = Y.createAbsolutePositionFromRelativePosition(
+        relPos,
+        syncState.doc,
+      );
+      if (!absolute) return null;
+      relPos = Y.createRelativePositionFromTypeIndex(
+        absolute.type,
+        absolute.index,
+        1,
+      );
+    }
     return { anchorFrom: relPos, anchorTo: relPos };
   } catch {
     return null;
@@ -888,13 +1317,19 @@ export function getCommentAtPosition(
   editor: Editor,
   pos: number,
   getAnchors: () => CommentAnchor[],
+  getCreatedAt?: (commentId: string) => Date | string | undefined,
 ): CommentAnchor | null {
-  // Find the active (undeleted) anchor containing the cursor position.
+  // Choose the newest unresolved regular comment at this position. Decoration
+  // spans can merge in the DOM, so their single rendered ID cannot decide it.
   // Used in transaction listener to auto-activate floating threads on selection.
   const anchors = getAnchors();
+  let unresolvedMatch: CommentAnchor | null = null;
+  let newestCreatedAt = Number.NEGATIVE_INFINITY;
+  let suggestionMatch: CommentAnchor | null = null;
+  let resolvedMatch: CommentAnchor | null = null;
 
   for (const anchor of anchors) {
-    if (anchor.deleted) {
+    if (anchor.deleted || (anchor.isSuggestion && anchor.resolved)) {
       continue;
     }
 
@@ -902,11 +1337,15 @@ export function getCommentAtPosition(
     // resolution rejects them. Match if the cursor sits at the insert point
     // or anywhere inside the widget's proposed content length.
     if (anchor.isSuggestion && anchor.suggestionType === 'add') {
-      const point = resolveCommentAnchorPointInState(anchor, editor.state);
+      const point = resolveSuggestionAddPointInState(
+        anchor,
+        editor.state,
+        anchors,
+      );
       if (point === null) continue;
       const widgetEnd = point + (anchor.suggestedContent?.length ?? 0);
       if (pos >= point && pos <= widgetEnd) {
-        return anchor;
+        suggestionMatch ??= anchor;
       }
       continue;
     }
@@ -918,11 +1357,33 @@ export function getCommentAtPosition(
     }
 
     if (pos >= range.from && pos <= range.to) {
-      return anchor;
+      if (!anchor.resolved) {
+        if (anchor.isSuggestion) {
+          suggestionMatch ??= anchor;
+          continue;
+        }
+        const createdAt = getCreatedAt?.(anchor.id);
+        const parsedTimestamp = createdAt
+          ? new Date(createdAt).getTime()
+          : Number.NaN;
+        const timestamp = Number.isFinite(parsedTimestamp)
+          ? parsedTimestamp
+          : Number.NEGATIVE_INFINITY;
+        if (
+          !unresolvedMatch ||
+          timestamp > newestCreatedAt ||
+          (getCreatedAt && timestamp === newestCreatedAt)
+        ) {
+          unresolvedMatch = anchor;
+          newestCreatedAt = timestamp;
+        }
+        continue;
+      }
+      resolvedMatch ??= anchor;
     }
   }
 
-  return null;
+  return unresolvedMatch ?? suggestionMatch ?? resolvedMatch;
 }
 
 export function getCommentAnchorRange(
@@ -932,7 +1393,10 @@ export function getCommentAnchorRange(
 ): CommentAnchorRange | null {
   // Find the current absolute range for a specific comment anchor.
   const anchor = getAnchors().find(
-    (entry) => entry.id === commentId && !entry.deleted,
+    (entry) =>
+      entry.id === commentId &&
+      !entry.deleted &&
+      !(entry.isSuggestion && entry.resolved),
   );
 
   if (!anchor) {
@@ -973,6 +1437,47 @@ function resolveAcceptedDeleteRange(
   return spaceBefore && spaceAfter ? { from, to: to + 1 } : { from, to };
 }
 
+function dBlockStartAt(state: EditorState, position: number): number | null {
+  const $position = state.doc.resolve(position);
+  for (let depth = $position.depth; depth > 0; depth--) {
+    if ($position.node(depth).type.name === 'dBlock') {
+      return $position.before(depth);
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the block we are about to split. Keep only unfinished additions that
+ * sit in that same block now; saved comments cannot reliably tell us this.
+ */
+function pendingIndependentAddsInDBlock(
+  state: EditorState,
+  sourcePoint: number,
+  acceptedId: string,
+  relatedAnchors: CommentAnchor[],
+) {
+  const sourceBlock = dBlockStartAt(state, sourcePoint);
+  if (sourceBlock === null) return [];
+  return relatedAnchors.flatMap((candidate) => {
+    if (
+      candidate.id === acceptedId ||
+      !candidate.isSuggestion ||
+      candidate.suggestionType !== 'add' ||
+      candidate.isDraft ||
+      candidate.resolved ||
+      candidate.deleted ||
+      candidate.followsSuggestionId
+    )
+      return [];
+    const point = resolveCommentAnchorPointForAnalysis(candidate, state);
+    if (point === null || dBlockStartAt(state, point) !== sourceBlock) {
+      return [];
+    }
+    return [{ anchor: candidate, point }];
+  });
+}
+
 /**
  * Apply the accepted suggestion's change to the document.
  * Called by the store's acceptSuggestion action before resolving on-chain.
@@ -981,8 +1486,9 @@ function resolveAcceptedDeleteRange(
 export function applyAcceptedSuggestion(
   editor: Editor,
   anchor: CommentAnchor,
+  relatedAnchors: CommentAnchor[] = [],
 ): boolean {
-  if (!anchor.isSuggestion) return false;
+  if (!anchor.isSuggestion || anchor.resolved || anchor.deleted) return false;
 
   const state = editor.state;
   const syncState = ySyncPluginKey.getState(state);
@@ -991,13 +1497,13 @@ export function applyAcceptedSuggestion(
   const { doc, type, binding } = syncState;
 
   try {
-    const from = relativePositionToAbsolutePosition(
+    let from = relativePositionToAbsolutePosition(
       doc,
       type,
       anchor.anchorFrom,
       binding.mapping,
     );
-    const to = relativePositionToAbsolutePosition(
+    let to = relativePositionToAbsolutePosition(
       doc,
       type,
       anchor.anchorTo,
@@ -1007,7 +1513,241 @@ export function applyAcceptedSuggestion(
     if (from === null || to === null) return false;
     if (from < 0 || to > state.doc.content.size) return false;
 
+    if (anchor.suggestionType === 'add') {
+      const logicalPoint = resolveSuggestionAddPointInState(
+        anchor,
+        state,
+        relatedAnchors,
+      );
+      if (logicalPoint === null) return false;
+      from = logicalPoint;
+      to = logicalPoint;
+    }
+
     const { suggestionType, suggestedContent } = anchor;
+
+    if (anchor.multilineStructure) {
+      if (
+        (suggestionType !== 'add' && suggestionType !== 'replace') ||
+        !validMultilineStructure(suggestedContent, anchor.multilineStructure) ||
+        (suggestionType === 'add' && from !== to) ||
+        (suggestionType === 'replace' && from >= to)
+      )
+        return false;
+      const $from = state.doc.resolve(from);
+      const $to = state.doc.resolve(to);
+      if (!$from.parent.isTextblock || !$to.parent.isTextblock) return false;
+      if (
+        suggestionType === 'replace' &&
+        state.doc.textBetween(from, to, '\n') !== anchor.originalContent
+      )
+        return false;
+
+      // Check where additions are before the split. Leave other blocks alone.
+      const pendingAdds =
+        state.schema.nodes.dBlock &&
+        anchor.multilineStructure.structureType.includes('block')
+          ? pendingIndependentAddsInDBlock(
+              state,
+              from,
+              anchor.id,
+              relatedAnchors,
+            )
+          : [];
+
+      const tr = state.tr;
+      if (suggestionType === 'replace') tr.delete(from, to);
+      tr.setSelection(TextSelection.create(tr.doc, from));
+      const line = anchor.multilineStructure;
+      for (let index = 0; index < line.insertedTexts.length; index++) {
+        if (index > 0) {
+          const kind = line.structureType[index - 1];
+          const position = tr.selection.from;
+          const $cursor = tr.doc.resolve(position);
+          if (kind === 'text') {
+            if ($cursor.parent.type.name !== 'codeBlock') return false;
+            tr.insertText('\n');
+          } else if (kind === 'soft') {
+            const hardBreak = state.schema.nodes.hardBreak;
+            if (
+              !hardBreak ||
+              !$cursor.parent.canReplaceWith(
+                $cursor.index(),
+                $cursor.index(),
+                hardBreak,
+              )
+            )
+              return false;
+            tr.insert(position, hardBreak.create());
+            tr.setSelection(TextSelection.create(tr.doc, position + 1));
+          } else {
+            const item = Array.from({ length: $cursor.depth + 1 }, (_, depth) =>
+              $cursor.node($cursor.depth - depth),
+            ).find(
+              (node) =>
+                node.type.name === 'listItem' || node.type.name === 'taskItem',
+            );
+            if (
+              kind === 'block' &&
+              (item || $cursor.parent.type.name === 'codeBlock')
+            )
+              return false;
+            if (kind === 'listItem' && !item) return false;
+            const capture = captureSplit(tr, editor);
+            const itemDepth =
+              kind === 'listItem'
+                ? Array.from(
+                    { length: $cursor.depth + 1 },
+                    (_, offset) => $cursor.depth - offset,
+                  ).find(
+                    (depth) => $cursor.node(depth).type.name === 'listItem',
+                  )
+                : undefined;
+            const depth =
+              kind === 'listItem' || $cursor.node(-1).type.name === 'dBlock'
+                ? 2
+                : 1;
+            const block = $cursor.parent;
+            const nextBlockType =
+              kind === 'block' &&
+              block.type.name === 'heading' &&
+              $cursor.parentOffset === block.content.size
+                ? state.schema.nodes.paragraph
+                : block.type;
+            if (!nextBlockType) return false;
+            const blockAttrs = getSplittedAttributes(
+              editor.extensionManager.attributes,
+              block.type.name,
+              block.attrs,
+            );
+            const wrapperAttrs =
+              kind === 'listItem' && item
+                ? getSplittedAttributes(
+                    editor.extensionManager.attributes,
+                    item.type.name,
+                    item.attrs,
+                  )
+                : $cursor.node(-1).attrs;
+            const types =
+              depth === 2
+                ? [
+                    {
+                      type: $cursor.node(-1).type,
+                      attrs: wrapperAttrs,
+                    },
+                    { type: nextBlockType, attrs: blockAttrs },
+                  ]
+                : [{ type: nextBlockType, attrs: blockAttrs }];
+            if (
+              itemDepth !== undefined &&
+              hasOnlyHardBreaksAfterCursor($cursor) &&
+              $cursor.index(itemDepth) < item!.childCount - 1
+            ) {
+              // Splitting the paragraph here moves its trailing sublist to
+              // the new item. Keep that sublist on the original item and
+              // insert the proposed sibling after the complete item.
+              const sibling = item!.type.create(wrapperAttrs, [
+                nextBlockType.create(blockAttrs),
+              ]);
+              const afterItem = $cursor.after(itemDepth);
+              tr.insert(afterItem, sibling);
+              tr.setSelection(TextSelection.create(tr.doc, afterItem + 2));
+              if (capture) declareSplit(tr, capture);
+            } else {
+              if (!canSplit(tr.doc, position, depth, types)) return false;
+              tr.split(position, depth, types);
+              tr.setSelection(
+                TextSelection.create(tr.doc, position + depth * 2),
+              );
+              if (capture) declareSplit(tr, capture);
+            }
+          }
+        }
+        const part = line.insertedTexts[index];
+        if (part) tr.insertText(part);
+      }
+      if (!tr.docChanged) return false;
+      tr.setMeta(suggestionTrackingPluginKey, true);
+      // Work out where these additions should be after the whole edit.
+      // Skip any point the edit removed.
+      const mappedAdds = pendingAdds.flatMap(({ anchor: candidate, point }) => {
+        const result = tr.mapping.mapResult(
+          point,
+          candidate.anchorFrom.assoc === 1 ? 1 : -1,
+        );
+        if (
+          result.deleted ||
+          result.pos < 0 ||
+          result.pos > tr.doc.content.size
+        )
+          return [];
+        return [{ anchor: candidate, point: result.pos }];
+      });
+      const persistAcceptedBreak =
+        suggestionType === 'replace' &&
+        line.structureType.length === 1 &&
+        !line.insertedTexts.some(Boolean);
+      let wroteOverride = false;
+      if (persistAcceptedBreak || mappedAdds.length > 0) {
+        // Save the edit and corrected positions together, so other people,
+        // reload, and Undo see the same result.
+        doc.transact(() => {
+          // Include this tab's overrides in the same Yjs undo item as the
+          // structural edit. Other tabs have separate editors/undo managers.
+          const tabOverrides =
+            mappedAdds.length > 0
+              ? getSuggestionAddPointOverrides(editor.state, true)
+              : null;
+          if (tabOverrides) {
+            yUndoPluginKey
+              .getState(editor.state)
+              ?.undoManager?.addToScope(tabOverrides);
+          }
+          editor.view.dispatch(tr);
+          if (persistAcceptedBreak) {
+            const point = createCommentAnchorPointFromEditor(
+              editor,
+              editor.state.selection.from,
+            );
+            if (point) {
+              doc
+                .getMap(ACCEPTED_BREAK_POINTS)
+                .set(anchor.id, Y.encodeRelativePosition(point.anchorFrom));
+            }
+          }
+          if (mappedAdds.length > 0 && editor.state.doc.eq(tr.doc)) {
+            // Once the shared document has the split, save a new position
+            // only if an addition now points to the wrong place. Leave the
+            // original saved comment as it is.
+            for (const { anchor: candidate, point } of mappedAdds) {
+              if (
+                resolveSuggestionAddPointInState(
+                  candidate,
+                  editor.state,
+                  relatedAnchors,
+                ) === point
+              )
+                continue;
+              const mappedAnchor = createCommentAnchorPointFromEditor(
+                editor,
+                point,
+                candidate.anchorFrom.assoc === 1 ? 1 : -1,
+              );
+              if (!mappedAnchor || !tabOverrides) continue;
+              tabOverrides.set(
+                candidate.id,
+                Y.encodeRelativePosition(mappedAnchor.anchorFrom),
+              );
+              wroteOverride = true;
+            }
+          }
+        }, ySyncPluginKey);
+      } else {
+        editor.view.dispatch(tr);
+      }
+      if (wroteOverride) triggerDecorationRebuild(editor);
+      return true;
+    }
 
     // Insert as an explicit text node (NOT a string). When passed a string,
     // TipTap parses it as HTML via DOMParser, wrapping in <p>. Inserting a

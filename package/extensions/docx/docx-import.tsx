@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Extension } from '@tiptap/core';
-import mammoth from 'mammoth';
 import { inlineLoader } from '../../utils/inline-loader';
 import { IpfsImageUploadResponse } from '../../types';
 import { handleMarkdownContent } from '../mardown-paste-handler';
@@ -100,6 +99,7 @@ export const DocxFileHandler = Extension.create({
 
             try {
               const arrayBuffer = await file.arrayBuffer();
+              const { default: mammoth } = await import('mammoth');
 
               const { value: extractedHtml } = await mammoth.convertToHtml(
                 { arrayBuffer },

@@ -1,5 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { isBubbleMenuHidden } from './props';
+import {
+  canCreateInlineComment,
+  isBubbleMenuHidden,
+  shouldOfferNewCommentDraft,
+} from './props';
+
+describe('inline comment creation', () => {
+  it('keeps publication and inline-comment permissions', () => {
+    expect(
+      canCreateInlineComment({
+        isCollabDocumentPublished: true,
+        disableInlineComment: false,
+      }),
+    ).toBe(true);
+    expect(
+      canCreateInlineComment({
+        isCollabDocumentPublished: false,
+        disableInlineComment: false,
+      }),
+    ).toBe(false);
+    expect(
+      canCreateInlineComment({
+        isCollabDocumentPublished: true,
+        disableInlineComment: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('offers a fresh draft over resolved text without changing active-thread behavior', () => {
+    expect(shouldOfferNewCommentDraft(true, true)).toBe(true);
+    expect(shouldOfferNewCommentDraft(true, false)).toBe(false);
+    expect(shouldOfferNewCommentDraft(false, false)).toBe(true);
+  });
+});
 
 const nothingOpen = {
   isCommentOpen: false,

@@ -1,5 +1,6 @@
 import cn from 'classnames';
 import { useState, type Dispatch, type SetStateAction } from 'react';
+import { createPortal } from 'react-dom';
 import { LucideIcon } from '@fileverse/ui';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
@@ -8,6 +9,10 @@ import { ConfirmDeleteModal } from './confirm-delete-modal';
 import { RenameTabModal } from './rename-tab-modal';
 import { TabEmojiPicker } from './tab-emoji-picker';
 import { Tab } from './utils/tab-utils';
+import { deleteTabDialogCopy, useTabTreeView } from './use-tab-tree-view';
+
+// Width of the expand arrow plus its gap, when the doc has subtabs.
+const EXPAND_COLUMN_PX = 24;
 
 export interface DocumentMobileTabPanelProps {
   tabs: Tab[];
@@ -23,6 +28,7 @@ export interface DocumentMobileTabPanelProps {
     payload: { newName?: string; emoji?: string },
   ) => void;
   createTab: () => void;
+  createSubtab?: (parentId: string) => void;
   duplicateTab: (tabId: string) => void;
   orderTab: DocumentOutlineProps['orderTab'];
   deleteTab?: (tabId: string) => void;
@@ -32,6 +38,9 @@ export interface DocumentMobileTabPanelProps {
   isVersionHistoryMode: boolean;
   isConnected?: boolean;
   isFocusMode?: boolean;
+  layout?: DocumentOutlineProps['layout'];
+  tabPanelSlot?: HTMLElement | null;
+  ddocId?: string;
 }
 
 export const DocumentMobileTabPanel = ({
@@ -44,6 +53,7 @@ export const DocumentMobileTabPanel = ({
   orientation,
   renameTab,
   createTab,
+  createSubtab,
   duplicateTab,
   orderTab,
   deleteTab,
@@ -53,13 +63,23 @@ export const DocumentMobileTabPanel = ({
   isVersionHistoryMode,
   isConnected,
   isFocusMode,
+  layout = 'viewport',
+  tabPanelSlot,
+  ddocId,
 }: DocumentMobileTabPanelProps) => {
   const [showContent, setShowContent] = useState(false);
   const [pendingDeleteTab, setPendingDeleteTab] = useState<Tab | null>(null);
   const [pendingRenameTab, setPendingRenameTab] = useState<Tab | null>(null);
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const canDeleteTab = tabs.length > 1;
+  const tree = useTabTreeView({ tabs, activeTabId, ddocId });
+  const canCreateSubtabs = Boolean(
+    tabConfig?.enableSubtabs && createSubtab && !isPreviewMode,
+  );
+  const addSubtabUnder = (tab: Tab) => {
+    tree.expand(tab.id);
+    createSubtab?.(tab.id);
+  };
   const canNavigatePrev = activeTabIndex > 0;
   const canNavigateNext =
     activeTabIndex >= 0 && activeTabIndex < tabs.length - 1;
@@ -100,6 +120,17 @@ export const DocumentMobileTabPanel = ({
         label: 'New tab',
         icon: 'Plus' as const,
         onSelect: createTab,
+      },
+      {
+        id: 'add-subtab',
+        label: 'Add subtab',
+        icon: 'Plus' as const,
+        onSelect: () => {
+          if (activeTab) addSubtabUnder(activeTab);
+        },
+        visible: Boolean(
+          canCreateSubtabs && activeTab && tree.canAddSubtabTo(activeTab),
+        ),
       },
     ],
     [
@@ -143,10 +174,10 @@ export const DocumentMobileTabPanel = ({
         textClassName: 'color-text-danger',
         iconStroke: 'hsl(var(--color-icon-danger))',
         onSelect: () => {
-          if (!activeTab || !deleteTab || !canDeleteTab) return;
+          if (!activeTab || !deleteTab || !tree.canDelete(activeTab)) return;
           setPendingDeleteTab(activeTab);
         },
-        visible: Boolean(activeTab && deleteTab && canDeleteTab),
+        visible: Boolean(activeTab && deleteTab && tree.canDelete(activeTab)),
       },
     ],
   ];
@@ -154,20 +185,29 @@ export const DocumentMobileTabPanel = ({
   const shouldShowTabNav = isVersionHistoryMode || isPreviewMode;
   const showTabList = showContent && !isVersionHistoryMode;
 
-  return (
+  const isContained = layout === 'contained';
+
+  const panel = (
     <div
       data-testid="mobile-tab-panel"
-      className={cn('fixed w-full flex flex-col z-[9] color-bg-secondary')}
-      style={{
-        // 24px = the consumer app's footer height; the env() term keeps the
-        // panel above the iOS home indicator in home-screen (standalone)
-        // installs, where the footer grows by the same inset (0 elsewhere).
-        bottom: isVersionHistoryMode
-          ? 'var(--version-sheet-bottom, 24px)'
-          : isFocusMode
-            ? 'env(safe-area-inset-bottom, 0px)'
-            : 'calc(24px + env(safe-area-inset-bottom, 0px))',
-      }}
+      className={cn(
+        'w-full flex flex-col z-[9] color-bg-secondary',
+        isContained ? 'absolute bottom-0 left-0' : 'fixed',
+      )}
+      style={
+        isContained
+          ? undefined
+          : {
+              // 24px = the consumer app's footer height; the env() term keeps the
+              // panel above the iOS home indicator in home-screen (standalone)
+              // installs, where the footer grows by the same inset (0 elsewhere).
+              bottom: isVersionHistoryMode
+                ? 'var(--version-sheet-bottom, 24px)'
+                : isFocusMode
+                  ? 'env(safe-area-inset-bottom, 0px)'
+                  : 'calc(24px + env(safe-area-inset-bottom, 0px))',
+            }
+      }
     >
       <div
         className={cn(
@@ -201,59 +241,87 @@ export const DocumentMobileTabPanel = ({
                 'transition-opacity duration-300',
               )}
             >
-              {tabs.map((tab, tabIndex) => (
-                <div
-                  key={tab.id}
-                  className="w-full flex mt-[8px] flex-col gap-[8px]"
-                >
-                  <TabItem
-                    tabId={tab.id}
-                    alwaysShowMenu
-                    onRename={() => setPendingRenameTab(tab)}
-                    hideContentMenu={isPreviewMode && !tabConfig?.onCopyTabLink}
-                    menuPopoverClassName="z-[1000]"
-                    name={tab.name}
-                    emoji={tab.emoji || ''}
-                    onNameChange={(nextName: string, nextEmoji?: string) =>
-                      handleNameChange(tab.id, nextName, nextEmoji)
-                    }
-                    onEmojiChange={(nextEmoji: string) =>
-                      handleEmojiChange(tab.id, nextEmoji)
-                    }
-                    onDuplicate={() => duplicateTab(tab.id)}
-                    isActive={tab.id === activeTabId}
-                    onClick={() => setActiveTabId(tab.id)}
-                    commentCount={tabCommentCounts[tab.id] || 0}
-                    isPreviewMode={isPreviewMode}
-                    onCopyLink={() => tabConfig?.onCopyTabLink?.(tab.id)}
-                    onDelete={
-                      deleteTab && canDeleteTab
-                        ? () => setPendingDeleteTab(tab)
-                        : undefined
-                    }
-                    canMoveUp={tabIndex > 0}
-                    canMoveDown={tabIndex < tabs.length - 1}
-                    onMoveUp={() => orderTab(tabs[tabIndex - 1].id, tab.id)}
-                    onMoveDown={() => orderTab(tabs[tabIndex + 1].id, tab.id)}
-                    isConnected={isConnected}
-                  />
+              {tree.visibleTabs.map((tab) => {
+                const previousSibling = tree.previousSiblingOf(tab);
+                const nextSibling = tree.nextSiblingOf(tab);
+                const expandState = tree.expandStateOf(tab);
+                const indent = tree.indentOf(tab);
+                const outlineOffset =
+                  indent + (expandState ? EXPAND_COLUMN_PX : 0);
+                return (
                   <div
-                    className={cn(
-                      'table-of-contents transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                      tab.id === activeTabId
-                        ? 'opacity-100 translate-x-0'
-                        : 'opacity-0 -translate-x-2 h-0 overflow-hidden',
-                    )}
+                    key={tab.id}
+                    className="w-full flex mt-[8px] flex-col gap-[8px]"
                   >
-                    <MemorizedToC
-                      editor={editor}
-                      items={items}
-                      setItems={setItems}
-                      orientation={orientation}
+                    <TabItem
+                      tabId={tab.id}
+                      alwaysShowMenu
+                      onRename={() => setPendingRenameTab(tab)}
+                      hideContentMenu={
+                        isPreviewMode && !tabConfig?.onCopyTabLink
+                      }
+                      menuPopoverClassName="z-[1000]"
+                      name={tab.name}
+                      emoji={tab.emoji || ''}
+                      onNameChange={(nextName: string, nextEmoji?: string) =>
+                        handleNameChange(tab.id, nextName, nextEmoji)
+                      }
+                      onEmojiChange={(nextEmoji: string) =>
+                        handleEmojiChange(tab.id, nextEmoji)
+                      }
+                      onDuplicate={() => duplicateTab(tab.id)}
+                      isActive={tab.id === activeTabId}
+                      onClick={() => setActiveTabId(tab.id)}
+                      commentCount={tabCommentCounts[tab.id] || 0}
+                      isPreviewMode={isPreviewMode}
+                      onCopyLink={() => tabConfig?.onCopyTabLink?.(tab.id)}
+                      onDelete={
+                        deleteTab && tree.canDelete(tab)
+                          ? () => setPendingDeleteTab(tab)
+                          : undefined
+                      }
+                      canMoveUp={Boolean(previousSibling)}
+                      canMoveDown={Boolean(nextSibling)}
+                      onMoveUp={() => {
+                        if (previousSibling)
+                          orderTab(previousSibling.id, tab.id);
+                      }}
+                      onMoveDown={() => {
+                        if (nextSibling) orderTab(nextSibling.id, tab.id);
+                      }}
+                      isConnected={isConnected}
+                      onAddSubtab={
+                        canCreateSubtabs && tree.canAddSubtabTo(tab)
+                          ? () => addSubtabUnder(tab)
+                          : undefined
+                      }
+                      indent={indent}
+                      expandState={expandState}
+                      onToggleExpand={() => tree.toggleExpand(tab.id)}
                     />
+                    <div
+                      className={cn(
+                        'table-of-contents transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                        tab.id === activeTabId
+                          ? 'opacity-100 translate-x-0'
+                          : 'opacity-0 -translate-x-2 h-0 overflow-hidden',
+                      )}
+                      style={
+                        outlineOffset
+                          ? { paddingLeft: outlineOffset }
+                          : undefined
+                      }
+                    >
+                      <MemorizedToC
+                        editor={editor}
+                        items={items}
+                        setItems={setItems}
+                        orientation={orientation}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         ) : shouldShowTabNav ? (
@@ -389,6 +457,8 @@ export const DocumentMobileTabPanel = ({
         }}
         documentTitle={pendingDeleteTab?.name || ''}
         isLoading={false}
+        title={deleteTabDialogCopy(pendingDeleteTab).title}
+        text={deleteTabDialogCopy(pendingDeleteTab).text}
         primaryLabel="Delete tab"
       />
       <RenameTabModal
@@ -402,4 +472,7 @@ export const DocumentMobileTabPanel = ({
       />
     </div>
   );
+
+  if (!isContained) return panel;
+  return tabPanelSlot ? createPortal(panel, tabPanelSlot) : null;
 };

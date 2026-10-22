@@ -9,7 +9,7 @@ import {
   DialogTitle,
   LucideIcon,
 } from '@fileverse/ui';
-import { useMediaQuery } from 'usehooks-ts';
+import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
 
 export const DeleteConfirmOverlay = ({
   isVisible,
@@ -30,7 +30,7 @@ export const DeleteConfirmOverlay = ({
   description?: string;
   confirmLabel?: string;
 }) => {
-  const isMobile = useMediaQuery('(max-width: 1000px)', { defaultValue: true });
+  const isMobile = useEditorMediaQuery('(max-width: 1000px)');
   const resolvedDescription =
     description ?? 'Do you really want to delete this comment?';
 

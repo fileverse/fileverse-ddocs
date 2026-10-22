@@ -2,6 +2,7 @@
 
 > Updated 2026-02-23 to reflect the actual implementation on `tab-feature` branch (PR #435).
 > Updated 2026-09-05: tab switching now uses one editor per tab with a warm cache (§2c) and the collab transport is `useSyncManager` (§2a).
+> Updated 2026-10-20: §1 rewritten for the flat data model and subtabs (TEC-3246). Later sections still describe the screens without subtabs.
 
 ## Overview
 
@@ -13,92 +14,69 @@ Users can create, rename, duplicate, reorder, and switch between multiple tabs w
 
 ## 1. Yjs Data Model
 
-All tab state lives inside the single `Y.Doc`, making it automatically collaborative and persisted via IndexedDB.
+> Rewritten 2026-10-20 for subtabs (TEC-3246). The old nested `ddocTabs` map is legacy: it is still read and migrated by the clean-up pass, never written.
+
+All tab state lives inside the single `Y.Doc`, next to the text, as flat top-level roots (`tab-utils.ts`):
 
 ```
-Y.Doc (ydoc)
-├── Y.Map('ddocTabs')                           // Root map for all tab state
-│   ├── 'order':      Y.Array<string>           // Tab IDs in display order
-│   ├── 'tabs':       Y.Map<string, Y.Map>      // Per-tab metadata (keyed by tab ID)
-│   │   ├── '<tabId>': Y.Map
-│   │   │   ├── 'name':        string           // Display name, e.g. "Tab 1"
-│   │   │   ├── 'showOutline': boolean          // Per-tab ToC visibility
-│   │   │   └── 'emoji':       string | null    // Emoji icon
-│   │   └── ...
-│   └── 'activeTabId': Y.Text                   // Persisted active tab (owner-only, non-collab)
-│
-├── Y.XmlFragment('default')                    // Content for the first/legacy tab
-├── Y.XmlFragment('<tabId-2>')                  // Content for tab 2
-└── ...                                         // One fragment per tab
+Y.Doc
+├── Y.Array('tabs_order')              tab ids in reading order (subtabs included)
+├── Y.Map('tabs_name_registry')        tab id -> name
+├── Y.Map('tabs_emoji_registry')       tab id -> emoji | null
+├── Y.Map('tabs_state')                'activeTabId' (owner only, written with the 'self' origin)
+├── Y.Map('tabs_delete_registry')      tab id -> true for deleted tabs
+├── Y.Map('tabs_parent_registry')      subtab id -> parent id (written once, at creation)
+├── Y.Map('ddocMeta')                  'schemaVersion'
+├── Y.XmlFragment('default')           text of the first tab
+└── Y.XmlFragment('<tabId>')           text of every other tab, keyed by tab id
 ```
+
+A doc without subtabs never has `tabs_parent_registry` written, so it is byte-for-byte what it was before subtabs.
 
 ### Key Design Decisions
 
-- **Tab ID = Fragment key**: The tab's ID string is directly used as the `Y.XmlFragment` name. No separate `fragmentId` field. The first/legacy tab uses `'default'` as its ID, matching TipTap's native fragment name.
-- **`activeTabId` is `Y.Text`**: Enables collaborative observation (though currently only owner writes to it in non-collab mode).
-- **Soft-delete**: When a tab is deleted, only metadata and order entry are removed. The `Y.XmlFragment` content is intentionally preserved for potential future undo.
-- **Root map key is `'ddocTabs'`** (not `'tabsMeta'` as in the original plan).
+- **Tab id = fragment key.** The first tab is `'default'`, TipTap's own fragment name.
+- **Soft delete, never erase.** Deleting a tab removes its name, emoji and order entry and marks it deleted. Its fragment, and its parent entry, stay in the doc. Ctrl+Z within 10 seconds restores it.
+- **A parent never changes.** A subtab gets its parent once, when it is created. Moves only reorder siblings. This rules out loops and keeps depth fixed under concurrent edits.
+- **Up to three levels.** A level-3 subtab cannot have subtabs (`MAX_TAB_DEPTH`).
+- **Expand/collapse is not in the doc.** It is local view state.
 
-### Tab Interface
+### Reading the tree (`getTabListFromNodes`)
 
-```typescript
-// package/components/tabs/utils/tab-utils.ts
+Every screen, export and check reads one list, in reading order (a parent, then its subtabs). Each tab has `parentId`, `depth` and `hasChildren` when the doc has subtabs; a doc without subtabs takes the flat path, unchanged. The same stored data gives the same tree on every device:
 
-interface Tab {
-  id: string;            // Unique tab ID (base64-encoded random bytes), or 'default' for legacy
-  name: string;          // Display name
-  showOutline: boolean;  // Whether ToC is visible for this tab
-  emoji: string | null;  // Emoji icon (null = show FileText icon)
-}
+| Rule | Meaning |
+|------|---------|
+| T1 | A tab is live if it is in `tabs_order` with a name. |
+| T2 | A tab under a deleted tab is hidden. Its text stays in the doc. A deleted tab that is back in `tabs_order` with a name counts as live. If hiding would leave no tab at all, nothing is hidden. |
+| T3 | Siblings keep the order of their first appearance in `tabs_order`. |
+| T4 | A tab whose parent is unknown (not synced yet, or bad data), or whose parent chain loops, is shown at the top level. Unknown data never hides a tab. |
+| T5 | Depth is reported as found; the sidebar caps the indent and exports cap the heading level at 3. |
 
-const DEFAULT_TAB_ID = 'default';
-const DEFAULT_TAB_NAME = 'Tab 1';
-```
+### Writing (`tab-operations.ts`)
 
-### Tab ID Generation
+Each action is one Yjs transaction. On a doc without subtabs, each takes exactly the 7.0 writes.
 
-```typescript
-import { generateRandomBytes } from '@fileverse/crypto/utils';
-import { fromUint8Array } from 'js-base64';
+| Action | Writes |
+|--------|--------|
+| Add tab | Name `Tab N`, emoji, id appended to `tabs_order`. |
+| Add subtab | Name `Subtab N` (N = siblings + 1), emoji, parent entry, id right after the parent's last subtab. |
+| Move | The tab and its subtabs move as one block in `tabs_order`, only past a sibling. |
+| Duplicate | New ids for the whole group, text copied, parents remapped, copies right after the original group. Only the top copy gets " (Copy)". |
+| Delete | For the tab and every tab under it: name and emoji removed, deleted mark added, id out of `tabs_order`. Text and parent entries kept. The last top-level tab cannot be deleted. |
+| Undo delete | The whole group back at its old positions. |
 
-const tabId = fromUint8Array(generateRandomBytes(), true); // URL-safe base64
-```
+### Older apps
 
-### Utility Functions (`tab-utils.ts`)
-
-| Function | Purpose |
-|----------|---------|
-| `getTabsYdocNodes(doc)` | Returns `{ root, order, tabs, activeTab }` — lazy-creates missing Y.Map/Array/Text containers |
-| `deriveTabsFromEncodedState(encoded, doc, opts?)` | Applies encoded Yjs state to doc, bootstraps default tab structure if missing, returns `{ tabList, activeTabId }` |
-| `cloneFragmentContent(fragment)` | Deep-clones all children of a Y.XmlFragment via Yjs `.clone()` (used by `duplicateTab`) |
+An app on 7.0.x does not read `tabs_parent_registry`. It shows subtabs as plain tabs in reading order, and its clean-up pass never touches the new root. If it deletes a parent, new apps hide the subtabs too (T2). Nothing it does erases text. Tests: `utils/__tests__/subtab-old-client.test.ts`, against a frozen copy of the 7.0 code in `utils/__tests__/v7/`.
 
 ### Backward Compatibility (Migration)
 
-Handled by `deriveTabsFromEncodedState`:
+`deriveTabsFromEncodedState` and `syncTabState` (the clean-up pass) build one canonical tab state from every signal in the doc: the flat roots, the legacy `ddocTabs` map, and names with no order entry. They write it back to the flat roots. They never write `tabs_parent_registry`. `mergeTabAwareYjsUpdates` resolves tab state per input before a raw merge, so legacy conflicts cannot lose tabs.
 
-1. Apply the encoded state update to the Y.Doc
-2. Check if `ddocTabs.order` exists and has entries
-3. **If NO** (legacy document) AND `createDefaultTabIfMissing` is `true`:
-   - Create the full `ddocTabs` structure inside `transact('self')`:
-     - `order: ['default']`
-     - `tabs: { 'default': { name: 'Tab 1', showOutline: true, emoji: null } }`
-     - `activeTabId: 'default'`
-   - Also calls `doc.getXmlFragment(tabId)` for each tab to ensure fragment registration
-   - This write syncs via IndexedDB automatically — migration is one-time
-4. **If YES**: Read tab metadata from `order` + `tabs` map normally
+### Persistence
 
-### Why This Design Works Automatically
-
-The existing infrastructure handles Y.Doc as an opaque blob — all tab data (metadata + content fragments) flows through unchanged:
-
-| System | Knows about tabs? | Change needed? |
-|--------|-------------------|----------------|
-| IndexedDB (`y-indexeddb`) | No — persists all Y.Doc types | None |
-| Sync machine (WebSocket) | No — syncs all Y.Doc updates | None |
-| `onChange` callback | No — `Y.encodeStateAsUpdate(ydoc)` encodes everything | None |
-| ddocs.new Dexie | No — stores opaque base64 blob | None |
-| IPFS publish | No — encrypts arbitrary bytes | None |
-| 3-phase merge | No — CRDT merge handles all Y.Doc types | None |
+The whole `Y.Doc`, tab roots included, is stored by `y-indexeddb` as a log of small updates (compacted by the package). The host's Dexie row no longer carries the body (TEC-2476). Sync and IPFS publish treat the doc as opaque bytes. The content fingerprint counts every root except the `activeTabId` pointer, so adding, moving or deleting a subtab is a content change and gets published; switching tabs is not.
 
 ---
 

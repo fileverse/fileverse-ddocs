@@ -8,6 +8,7 @@ import {
   getAnchorElements,
   getAnchorIdentity,
   getAnchorStartPos,
+  getSharedThreadAnchorElement,
   type AnchorRecord,
   type FloatingCardRuntimeState,
 } from './floating-comment-layout-utils';
@@ -140,6 +141,14 @@ export const useAnchorRegistry = (): UseAnchorRegistryResult => {
           anchorId,
           anchorType,
         });
+        if (!elements.length && anchorType === 'thread') {
+          const sharedElement = getSharedThreadAnchorElement({
+            editor,
+            editorRoot,
+            anchorId,
+          });
+          if (sharedElement) elements.push(sharedElement);
+        }
 
         if (!elements.length) {
           // Give missing anchors a short grace period before closing the card.

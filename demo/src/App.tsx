@@ -46,6 +46,10 @@ import { fromUint8Array } from 'js-base64';
 import { crypto as cryptoUtils } from './crypto';
 import { collabStore } from './storage/collab-store';
 import { docStore } from './storage/doc-store';
+import {
+  readDdocContent,
+  repairDdocContent,
+} from '../../package/persistence';
 import { DocumentStylingPanel } from './DocumentStylingPanel';
 import {
   DocumentStyling,
@@ -132,6 +136,70 @@ function App() {
     [docId],
   );
 
+  // --- Where the doc is kept ---
+  // By default the demo works like ddocs.new: the doc lives only in the
+  // package's y-indexeddb store. It reads the store before mounting the
+  // editor (the editor waits while initialContent is null) and passes what
+  // the store holds as initialContent, with isNewDocument false so the editor
+  // does not take it for a new doc. It saves nothing itself (onLocalChange,
+  // no onChange) and shows store errors.
+  // The stored body must be passed: left to load the store by itself, the
+  // editor builds before the store loads, cannot see the doc's schema marker,
+  // and binding a schema-2 doc with the schema-1 editor deletes its text from
+  // the store. A store that cannot be read keeps the editor waiting.
+  // `?localCopy=1` keeps the older host behaviour instead: a localStorage copy
+  // saved through onChange and passed back as initialContent.
+  const storeOnly = useMemo(
+    () => new URLSearchParams(window.location.search).get('localCopy') !== '1',
+    [],
+  );
+  const [storeCheck, setStoreCheck] = useState<
+    | { status: 'pending' | 'new' | 'unreadable' }
+    | { status: 'existing'; content: string }
+  >({ status: 'pending' });
+  useEffect(() => {
+    if (!storeOnly) return;
+    let cancelled = false;
+    setStoreCheck({ status: 'pending' });
+    void (async () => {
+      let stored = await readDdocContent(docId);
+      if (stored.status === 'corrupt') {
+        await repairDdocContent(docId);
+        stored = await readDdocContent(docId);
+      }
+      if (cancelled) return;
+      if (stored.status === 'available' && stored.encodedState) {
+        setStoreCheck({ status: 'existing', content: stored.encodedState });
+      } else if (stored.status === 'missing' || stored.status === 'empty') {
+        setStoreCheck({ status: 'new' });
+      } else {
+        console.error('[demo] could not read the store:', stored.status);
+        toast({
+          title: "Couldn't read this doc's store",
+          description: `Status: ${stored.status}. Reload to try again.`,
+          variant: 'error',
+          iconType: 'icon',
+        });
+        setStoreCheck({ status: 'unreadable' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storeOnly, docId]);
+  const handleLocalChange = useCallback(() => {
+    setLastSavedAt(Date.now());
+  }, []);
+  const handleIndexedDbError = useCallback((error: Error) => {
+    console.error('[demo] local save problem:', error);
+    toast({
+      title: 'Local save problem',
+      description: error.message,
+      variant: 'error',
+      iconType: 'icon',
+    });
+  }, []);
+
   // --- Tab deep linking ---
   const handleCopyTabLink = useCallback(
     (tabId: string) => {
@@ -152,6 +220,7 @@ function App() {
     () => ({
       defaultTabId: urlTabId,
       onCopyTabLink: handleCopyTabLink,
+      enableSubtabs: true,
     }),
     [urlTabId, handleCopyTabLink],
   );
@@ -209,6 +278,7 @@ function App() {
 
   const [zoomLevel, setZoomLevel] = useState<string>('1');
   const [isNavbarVisible, setIsNavbarVisible] = useState(true);
+  const [navbarHost, setNavbarHost] = useState<HTMLElement | null>(null);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   // Controlled focus mode (D6) — the second-level nav's View menu drives it.
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -529,7 +599,7 @@ function App() {
     });
 
     return (
-      <>
+      <nav className="color-bg-default p-2 flex gap-10 items-center justify-between w-full shrink-0 border-b color-border-default z-[45]">
         {/* Split view's markdown pane is the sole input surface — the doc
             menus must not be reachable while it is active. */}
         {!isSplitView && (
@@ -733,7 +803,7 @@ function App() {
             </div>
           </div>
         </div>
-      </>
+      </nav>
     );
   };
 
@@ -820,103 +890,127 @@ function App() {
   ]);
 
   return (
-    <div>
+    <div className="h-[100dvh] w-full flex flex-col">
       <DocumentStylingPanel
         isOpen={showStylingControls}
         onClose={() => setShowStylingControls(false)}
         documentStyling={documentStyling}
         onStylingChange={setDocumentStyling}
       />
-      <DdocEditor
-        ref={editorRef}
-        fonts={demoFonts}
-        collaboration={collaboration}
-        username={username}
-        setUsername={setUsername}
-        isPreviewMode={isPreviewMode}
-        disableInlineComment={disableInlineComment}
-        onChange={handleContentChange}
-        initialContent={initialContent}
-        enableIndexeddbSync={true}
-        ddocId={docId}
-        // Only consulted at doc creation; existing docs follow their marker.
-        preferredSchemaVersion={
-          new URLSearchParams(window.location.search).get('v2') === '1'
-            ? 2
-            : undefined
-        }
-        tabConfig={tabConfig}
-        onError={(error) => {
-          toast({
-            title: 'Error',
-            description: error,
-            variant: 'error',
-            iconType: 'icon',
-          });
-        }}
-        renderNavbar={renderNavbar}
-        ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
-        selectedTags={selectedTags}
-        setSelectedTags={setSelectedTags}
-        isCommentSectionOpen={isCommentSectionOpen}
-        setIsCommentSectionOpen={setIsCommentSectionOpen}
-        setInlineCommentData={setInlineCommentData}
-        inlineCommentData={inlineCommentData}
-        commentDrawerOpen={commentDrawerOpen}
-        setCommentDrawerOpen={setCommentDrawerOpen}
-        isPresentationMode={isPresentationMode}
-        setIsPresentationMode={setIsPresentationMode}
-        isFocusMode={isFocusMode}
-        onFocusModeChange={setIsFocusMode}
-        isSplitView={isSplitView}
-        setIsSplitView={setIsSplitView}
-        zoomLevel={zoomLevel}
-        setZoomLevel={setZoomLevel}
-        isNavbarVisible={isNavbarVisible}
-        setIsNavbarVisible={setIsNavbarVisible}
-        onComment={(): void => {}}
-        onInlineComment={(): void => {}}
-        onMarkdownImport={(): void => {}}
-        onMarkdownExport={(): void => {}}
-        onPdfExport={(): void => {}}
-        onHtmlExport={(): void => {}}
-        onTxtExport={(): void => {}}
-        onDocxImport={(): void => {}}
-        initialComments={initialComments}
-        onCommentReply={handleReplyOnComment}
-        onNewComment={handleNewComment}
-        setInitialComments={setInitialComment}
-        onResolveComment={handleResolveComment}
-        onUnresolveComment={handleUnresolveComment}
-        onDeleteComment={handleDeleteComment}
-        showTOC={showTOC}
-        setShowTOC={setShowTOC}
-        isConnected={isConnected}
-        connectViaWallet={async () => {}}
-        isLoading={false}
-        connectViaUsername={handleConnectViaUsername}
-        onCopyHeadingLink={(link: string) => {
-          navigator.clipboard.writeText(link);
-          // Mirror the consumer (protected-document-context.tsx): the
-          // package only supplies the slug; feedback is the host's job.
-          toast({
-            title: 'Anchor link copied to clipboard',
-            toastType: 'mini',
-            iconType: 'icon',
-            customIcon: 'Link',
-          });
-        }}
-        onCollaboratorChange={onCollaboratorChange}
-        documentStyling={documentStyling}
-        isDDocOwner={isDDocOwner}
-        viewerMode={isDDocOwner ? undefined : viewerMode}
-        initialCommentAnchors={initialCommentAnchors}
-        setCharacterCount={setCharacterCount}
-        setWordCount={setWordCount}
-        setPageCount={setPageCount}
-        // Mirrors ddocs.new: the fixed DemoFooter overlaps the viewport bottom.
-        footerHeight="25px"
+      <div
+        ref={setNavbarHost}
+        className={`ddoc-navbar-row ${
+          isFocusMode || !isNavbarVisible ? 'ddoc-navbar-row--hidden' : ''
+        }`}
       />
+      <div className="flex-1 min-h-0">
+        <DdocEditor
+          ref={editorRef}
+          navbarContainer={navbarHost}
+          fonts={demoFonts}
+          collaboration={collaboration}
+          username={username}
+          setUsername={setUsername}
+          isPreviewMode={isPreviewMode}
+          disableInlineComment={disableInlineComment}
+          onChange={storeOnly ? undefined : handleContentChange}
+          onLocalChange={storeOnly ? handleLocalChange : undefined}
+          initialContent={
+            storeOnly
+              ? storeCheck.status === 'existing'
+                ? storeCheck.content
+                : storeCheck.status === 'new'
+                  ? undefined
+                  : null
+              : initialContent
+          }
+          isNewDocument={
+            storeOnly && storeCheck.status !== 'pending'
+              ? storeCheck.status === 'new'
+              : undefined
+          }
+          onIndexedDbError={handleIndexedDbError}
+          enableIndexeddbSync={true}
+          ddocId={docId}
+          // Only consulted at doc creation; existing docs follow their marker.
+          preferredSchemaVersion={
+            new URLSearchParams(window.location.search).get('v1') === '1'
+              ? 1
+              : 2
+          }
+          tabConfig={tabConfig}
+          onError={(error) => {
+            toast({
+              title: 'Error',
+              description: error,
+              variant: 'error',
+              iconType: 'icon',
+            });
+          }}
+          renderNavbar={renderNavbar}
+          ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
+          selectedTags={selectedTags}
+          setSelectedTags={setSelectedTags}
+          isCommentSectionOpen={isCommentSectionOpen}
+          setIsCommentSectionOpen={setIsCommentSectionOpen}
+          setInlineCommentData={setInlineCommentData}
+          inlineCommentData={inlineCommentData}
+          commentDrawerOpen={commentDrawerOpen}
+          onCommentDrawerOpenChange={setCommentDrawerOpen}
+          isPresentationMode={isPresentationMode}
+          onPresentationModeChange={setIsPresentationMode}
+          isFocusMode={isFocusMode}
+          onFocusModeChange={setIsFocusMode}
+          isSplitView={isSplitView}
+          onSplitViewChange={setIsSplitView}
+          zoomLevel={zoomLevel}
+          onZoomLevelChange={setZoomLevel}
+          isNavbarVisible={isNavbarVisible}
+          onNavbarVisibleChange={setIsNavbarVisible}
+          onComment={(): void => {}}
+          onInlineComment={(): void => {}}
+          onMarkdownImport={(): void => {}}
+          onMarkdownExport={(): void => {}}
+          onPdfExport={(): void => {}}
+          onHtmlExport={(): void => {}}
+          onTxtExport={(): void => {}}
+          onDocxImport={(): void => {}}
+          initialComments={initialComments}
+          onCommentReply={handleReplyOnComment}
+          onNewComment={handleNewComment}
+          setInitialComments={setInitialComment}
+          onResolveComment={handleResolveComment}
+          onUnresolveComment={handleUnresolveComment}
+          onDeleteComment={handleDeleteComment}
+          showTOC={showTOC}
+          onShowTOCChange={setShowTOC}
+          isConnected={isConnected}
+          connectViaWallet={async () => {}}
+          isLoading={false}
+          connectViaUsername={handleConnectViaUsername}
+          onCopyHeadingLink={(link: string) => {
+            navigator.clipboard.writeText(link);
+            // Mirror the consumer (protected-document-context.tsx): the
+            // package only supplies the slug; feedback is the host's job.
+            toast({
+              title: 'Anchor link copied to clipboard',
+              toastType: 'mini',
+              iconType: 'icon',
+              customIcon: 'Link',
+            });
+          }}
+          onCollaboratorChange={onCollaboratorChange}
+          documentStyling={documentStyling}
+          isDDocOwner={isDDocOwner}
+          viewerMode={isDDocOwner ? undefined : viewerMode}
+          initialCommentAnchors={initialCommentAnchors}
+          onStatsChange={(stats) => {
+            setCharacterCount(stats.characters);
+            setWordCount(stats.words);
+            setPageCount(stats.pages ?? 0);
+          }}
+        />
+      </div>
       <DemoFooter wordCount={wordCount} pageCount={pageCount} />
       <WordCountModal
         open={wordCountModalOpen}

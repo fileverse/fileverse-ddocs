@@ -51,6 +51,14 @@ export type CommentMutationType =
 
 export type SuggestionType = 'add' | 'replace' | 'delete' | 'link';
 
+export type SuggestionStructureType = 'block' | 'listItem' | 'soft' | 'text';
+
+export interface SuggestionMultilineStructure {
+  version: 1;
+  insertedTexts: string[];
+  structureType: SuggestionStructureType[];
+}
+
 export interface CommentMutationMeta {
   type: CommentMutationType;
   updateChunk?: string;
@@ -61,6 +69,8 @@ export interface CommentMutationMeta {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
 }
 
 export interface SerializedCommentAnchor {
@@ -73,6 +83,8 @@ export interface SerializedCommentAnchor {
   suggestionType?: SuggestionType;
   originalContent?: string;
   suggestedContent?: string;
+  multilineStructure?: SuggestionMultilineStructure;
+  followsSuggestionId?: string;
 }
 
 export interface CommentAccountProps {
@@ -163,6 +175,14 @@ export interface DocumentStyling {
    */
   customCSS?: string;
 }
+export type DdocStats = {
+  words: number;
+  characters: number;
+  selectedWords: number;
+  /** null until the active tab has been measured. */
+  pages: number | null;
+};
+
 export interface DdocProps extends CommentAccountProps {
   /**
    * Optional catalog of fonts available to the editor in addition to the
@@ -174,6 +194,11 @@ export interface DdocProps extends CommentAccountProps {
   tabConfig?: {
     onCopyTabLink?: (tabId: string) => void;
     defaultTabId?: string;
+    /**
+     * Shows "Add subtab" in the tab menu. Off by default. Docs that already
+     * have subtabs show them either way.
+     */
+    enableSubtabs?: boolean;
   };
   versionHistoryState?: {
     enabled: boolean;
@@ -183,6 +208,15 @@ export interface DdocProps extends CommentAccountProps {
   };
   tabSectionContainer?: HTMLElement;
   isCollabDocumentPublished?: boolean;
+  /**
+   * Storage-agnostic image fetch function. Receives the stored location of an
+   * encrypted image (`url` + `contentRef`, e.g. an IPFS gateway URL + CID or a
+   * Swarm URL + reference) along with its decryption parameters, and returns
+   * the decrypted image. Preferred over the deprecated `ipfsImageFetchFn`;
+   * when both are provided, `imageFetchFn` wins.
+   */
+  imageFetchFn?: ImageFetchFn;
+  /** @deprecated Use the storage-agnostic `imageFetchFn` instead. */
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
@@ -190,6 +224,8 @@ export interface DdocProps extends CommentAccountProps {
   disableInlineComment?: boolean;
   //Comments V2 Props
   commentDrawerOpen?: boolean;
+  onCommentDrawerOpenChange?: (open: boolean) => void;
+  /** @deprecated Use onCommentDrawerOpenChange. */
   setCommentDrawerOpen?: React.Dispatch<SetStateAction<boolean>>;
   initialComments?: IComment[];
   initialCommentAnchors?: SerializedCommentAnchor[];
@@ -217,6 +253,8 @@ export interface DdocProps extends CommentAccountProps {
   onDeleteReply?: (activeCommentId: string, replyId: string) => void;
   //Comments V2 Props
   showTOC?: boolean;
+  onShowTOCChange?: (show: boolean) => void;
+  /** @deprecated Use onShowTOCChange. */
   setShowTOC?: React.Dispatch<SetStateAction<boolean>>;
   extensions?: Record<string, Extension | any>;
   selectedTags?: TagType[];
@@ -228,15 +266,30 @@ export interface DdocProps extends CommentAccountProps {
     React.SetStateAction<InlineCommentData>
   >;
   theme?: ThemeKey;
-  zoomLevel: string;
-  setZoomLevel: React.Dispatch<SetStateAction<string>>;
-  isNavbarVisible: boolean;
-  setIsNavbarVisible: React.Dispatch<SetStateAction<boolean>>;
+  /** Defaults to '1' when omitted. */
+  zoomLevel?: string;
+  onZoomLevelChange?: (zoomLevel: string) => void;
+  /** @deprecated Use onZoomLevelChange. */
+  setZoomLevel?: React.Dispatch<SetStateAction<string>>;
+  /** Defaults to true when omitted. */
+  isNavbarVisible?: boolean;
+  onNavbarVisibleChange?: (visible: boolean) => void;
+  /** @deprecated Use onNavbarVisibleChange. */
+  setIsNavbarVisible?: React.Dispatch<SetStateAction<boolean>>;
   editorCanvasClassNames?: string;
   isCommentSectionOpen?: boolean;
-  isPreviewMode: boolean;
+  isPreviewMode?: boolean;
   viewerMode?: 'suggest' | 'view-only';
   ensResolutionUrl?: string;
+  /**
+   * Storage-agnostic image upload function. Encrypts and stores the file on
+   * the host's storage backend (IPFS, Swarm, ...) and returns its location
+   * (`url` + `contentRef`) plus the decryption parameters. Preferred over the
+   * deprecated `ipfsImageUploadFn`; when both are provided, `imageUploadFn`
+   * wins.
+   */
+  imageUploadFn?: ImageUploadFn;
+  /** @deprecated Use the storage-agnostic `imageUploadFn` instead. */
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
   enableIndexeddbSync?: boolean;
   ddocId?: string;
@@ -250,6 +303,13 @@ export interface DdocProps extends CommentAccountProps {
   walletAddress?: string | null;
   username?: string | null;
   setUsername?: React.Dispatch<SetStateAction<string>>;
+  /**
+   * Host element to render the navbar into. Omit to render it as the editor's
+   * first row. Pass null while the element is not attached yet.
+   */
+  navbarContainer?: HTMLElement | null;
+  /** Show the toolbar's navbar collapse chevron. Default true. */
+  showNavbarToggle?: boolean;
   renderNavbar?: ({
     editor,
     liveEditor,
@@ -263,6 +323,24 @@ export interface DdocProps extends CommentAccountProps {
     updatedDocContent: string | JSONContent,
     updateChunk: string,
   ) => void;
+  /**
+   * Called when the document changes, from the same places as `onChange`
+   * (after typing pauses, on a flushed structural change, and when a
+   * collaborator's update arrives), but with no arguments. A host that passes
+   * this and not `onChange` never pays for encoding the whole document on
+   * every change. A host that keeps the content elsewhere (the package's
+   * y-indexeddb store) only needs to know that an edit happened.
+   */
+  onLocalChange?: () => void;
+  /**
+   * Whether this is a brand-new document. When omitted the editor derives it
+   * as "owner, no collaboration, no `initialContent`". A host that loads an
+   * existing document from the package's y-indexeddb store passes no
+   * `initialContent`, so it must pass `false` here: a new document is stamped
+   * with the preferred schema version, which would relabel an existing older
+   * document.
+   */
+  isNewDocument?: boolean;
   onCollaboratorChange?: (collaborators: undefined | IDocCollabUsers[]) => void;
   onTextSelection?: (data: IEditorSelectionData) => void;
   onCommentInteraction?: (data: IEditorSelectionData) => void;
@@ -275,20 +353,31 @@ export interface DdocProps extends CommentAccountProps {
    */
   enableFanficTemplate?: boolean;
   onError?: (error: string) => void;
+  /** Active-tab stats. Fires with all four fields whenever one changes. */
+  onStatsChange?: (stats: DdocStats) => void;
+  /** @deprecated Use onStatsChange. */
   setCharacterCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setWordCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setSelectedWordCount?: React.Dispatch<SetStateAction<number>>;
+  /** @deprecated Use onStatsChange. */
   setPageCount?: React.Dispatch<SetStateAction<number>>;
   tags?: Array<{ name: string; color: string }>;
   className?: string;
   unFocused?: boolean;
   isPresentationMode?: boolean;
+  onPresentationModeChange?: (active: boolean) => void;
+  /** @deprecated Use onPresentationModeChange. */
   setIsPresentationMode?: React.Dispatch<SetStateAction<boolean>>;
   /** Split View: edit markdown on the left, see the read-only ddoc render on the right. */
   isSplitView?: boolean;
+  onSplitViewChange?: (active: boolean) => void;
+  /** @deprecated Use onSplitViewChange. */
   setIsSplitView?: React.Dispatch<SetStateAction<boolean>>;
   onComment?: () => void;
   onInlineComment?: () => void;
+  /** @deprecated Use onFocusModeChange. Still fires on every change. */
   onFocusMode?: (isFocusMode: boolean) => void;
   /** Controlled focus mode (D6). Omit for the legacy internal-state behavior. */
   isFocusMode?: boolean;
@@ -314,6 +403,7 @@ export interface DdocProps extends CommentAccountProps {
   renderToolbarLeading?: () => React.ReactNode;
   metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
+  /** @deprecated No effect. The host footer sits outside the editor. */
   footerHeight?: string;
   activeModel?: CustomModel;
   maxTokens?: number;
@@ -324,11 +414,23 @@ export interface DdocProps extends CommentAccountProps {
    */
   documentStyling?: DocumentStyling;
   /**
-   * Callback when IndexedDB initialization fails
-   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, quota exceeded, corrupted DB). The editor will continue to function without local persistence.
+   * Callback when local saving to IndexedDB has a problem
+   * @description Called when the IndexedDB persistence provider fails to initialize (e.g., private browsing, corrupted DB), when a save is rejected (e.g., quota exceeded), when the browser closes or another tab deletes the database (the editor detaches from it), and when a corrupt store was repaired on load. The editor keeps working in memory; `refreshYjsIndexedDbProvider` attaches again and saves what it holds.
    */
   onIndexedDbError?: (error: Error) => void;
+  /**
+   * Called when the schema-version stamp was refused or reverted
+   * @description The editor stamps brand-new docs with the preferred schema. If the host passed an empty body for a doc that turns out to hold v1 content, the stamp is blocked (or reverted when the content arrived late). Hosts report these to see how often an existing doc is mounted without its body.
+   */
+  onSchemaStampGuard?: (event: SchemaStampGuardEvent) => void;
 }
+
+export type SchemaStampGuardEvent =
+  | { kind: 'blocked'; preferredSchemaVersion: number }
+  | { kind: 'reverted'; preferredSchemaVersion: number }
+  // Mounted as "owner, no collab, no body" without isNewDocument: the old
+  // inference would have stamped; now the doc opens unstamped (TEC-3272).
+  | { kind: 'unasserted-new'; preferredSchemaVersion: number };
 
 export interface IEditorSelectionData {
   from: number;
@@ -347,6 +449,38 @@ export interface IUser {
 }
 
 export { type IComment };
+/**
+ * Storage-agnostic result of an image upload. The editor treats both fields
+ * as opaque: `url` is a fetchable location of the encrypted blob (e.g. an
+ * IPFS gateway URL or a Swarm `/bytes` URL) and `contentRef` is the backend's
+ * content address (IPFS CID, Swarm reference, ...). Both are stored in the
+ * document and handed back verbatim to `imageFetchFn`.
+ */
+export interface StorageImageUploadResponse {
+  encryptionKey: string;
+  nonce: string;
+  authTag: string;
+  url: string;
+  contentRef: string;
+}
+/**
+ * Storage-agnostic payload handed to `imageFetchFn`: the `url`/`contentRef`
+ * returned by `imageUploadFn` at upload time, plus the parameters needed to
+ * decrypt the blob.
+ */
+export interface StorageImageFetchPayload {
+  encryptionKey: string;
+  nonce: string;
+  authTag: string;
+  mimeType: string;
+  url: string;
+  contentRef: string;
+}
+export type ImageUploadFn = (file: File) => Promise<StorageImageUploadResponse>;
+export type ImageFetchFn = (
+  _data: StorageImageFetchPayload,
+) => Promise<{ url: string; file: File }>;
+/** @deprecated Use the storage-agnostic {@link StorageImageUploadResponse} instead. */
 export interface IpfsImageUploadResponse {
   encryptionKey: string;
   nonce: string;
@@ -354,6 +488,7 @@ export interface IpfsImageUploadResponse {
   ipfsHash: string;
   authTag: string;
 }
+/** @deprecated Use the storage-agnostic {@link StorageImageFetchPayload} instead. */
 export interface IpfsImageFetchPayload {
   encryptionKey: string;
   nonce: string;

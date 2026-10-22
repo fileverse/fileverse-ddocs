@@ -93,6 +93,22 @@ export interface CommentStoreProviderProps {
   setUsername?: React.Dispatch<React.SetStateAction<string>>;
 }
 
+export const createCommentTimestampLookup = () => {
+  let previousTabComments: IComment[] | null = null;
+  let createdAtByCommentId = new Map<IComment['id'], IComment['createdAt']>();
+
+  return (tabComments: IComment[]) => {
+    if (tabComments !== previousTabComments) {
+      previousTabComments = tabComments;
+      createdAtByCommentId = new Map(
+        tabComments.map((comment) => [comment.id, comment.createdAt]),
+      );
+    }
+
+    return createdAtByCommentId;
+  };
+};
+
 export const CommentStoreProvider = ({
   children,
   // External deps (ref-based)
@@ -213,6 +229,7 @@ export const CommentStoreProvider = ({
             .filter(
               (anchor) =>
                 !anchor.deleted &&
+                !(anchor.isSuggestion && anchor.resolved) &&
                 hasResolvableCommentAnchorInState(anchor, editor.state),
             )
             .map((anchor) => anchor.id)
@@ -438,6 +455,43 @@ export const CommentStoreProvider = ({
     refreshCommentAnchorState,
   ]);
 
+  // Some consumers keep suggestion metadata and resolution status on the
+  // comment while their serialized anchor record contains the original
+  // positions. Reconcile those fields without changing the anchor positions.
+  useEffect(() => {
+    if (!commentAnchorsRef) return;
+    const commentsById = new Map(
+      initialComments.map((comment) => [comment.id, comment]),
+    );
+    let changed = false;
+    commentAnchorsRef.current = commentAnchorsRef.current.map((anchor) => {
+      const comment = commentsById.get(anchor.id);
+      if (!comment?.isSuggestion) return anchor;
+      const multilineStructure =
+        anchor.multilineStructure ?? comment.multilineStructure;
+      const followsSuggestionId =
+        anchor.followsSuggestionId ?? comment.followsSuggestionId;
+      const resolved = comment.resolved ?? anchor.resolved;
+      const deleted = comment.deleted ?? anchor.deleted;
+      if (
+        multilineStructure === anchor.multilineStructure &&
+        followsSuggestionId === anchor.followsSuggestionId &&
+        resolved === anchor.resolved &&
+        deleted === anchor.deleted
+      )
+        return anchor;
+      changed = true;
+      return {
+        ...anchor,
+        multilineStructure,
+        followsSuggestionId,
+        resolved,
+        deleted,
+      };
+    });
+    if (changed && editor) triggerDecorationRebuild(editor);
+  }, [initialComments, commentAnchorsRef, editor]);
+
   useEffect(() => {
     store.getState().setUsername(username);
   }, [username, store]);
@@ -570,6 +624,7 @@ export const CommentStoreProvider = ({
 
     let prevCommentActive = false;
     let prevCommentResolved = false;
+    const getCommentTimestamps = createCommentTimestampLookup();
 
     // Watch editor selection here so landing on a live anchor opens the matching
     // floating thread without waiting for a separate UI interaction.
@@ -591,6 +646,7 @@ export const CommentStoreProvider = ({
       let decorationComment: CommentAnchor | null = null;
       let markComment = activeMarkComment;
       const pointerSelectionMeta = Boolean(transaction?.getMeta('pointer'));
+      const createdAtByCommentId = getCommentTimestamps(state.tabComments);
       const probeForComments = (probePositions: number[]) => {
         for (const probePos of probePositions) {
           if (!markComment) {
@@ -602,6 +658,7 @@ export const CommentStoreProvider = ({
               editor,
               probePos,
               () => commentAnchorsRef.current,
+              (commentId) => createdAtByCommentId.get(commentId),
             );
 
             if (matchedComment) {
@@ -810,7 +867,9 @@ export const CommentStoreProvider = ({
           const restoredAnchors: CommentAnchor[] = [];
 
           removedAnchorsRef.current.forEach((removedAnchor, commentId) => {
-            if (hasResolvableCommentAnchorInState(removedAnchor, editor.state)) {
+            if (
+              hasResolvableCommentAnchorInState(removedAnchor, editor.state)
+            ) {
               restoredAnchors.push(removedAnchor);
               removedAnchorsRef.current.delete(commentId);
             }
@@ -848,9 +907,9 @@ export const CommentStoreProvider = ({
               return false;
             }
 
-            if (anchor.isSuggestion && anchor.suggestionType === 'add') {
-              return true;
-            }
+            // Submitted suggestions retain their original relative positions.
+            // Acceptance validates them against the document at that time.
+            if (anchor.isSuggestion) return false;
 
             return (
               resolveCommentAnchorRangeForAnalysis(anchor, oldState) !== null
