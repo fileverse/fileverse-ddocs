@@ -220,6 +220,7 @@ function App() {
     () => ({
       defaultTabId: urlTabId,
       onCopyTabLink: handleCopyTabLink,
+      enableSubtabs: true,
     }),
     [urlTabId, handleCopyTabLink],
   );

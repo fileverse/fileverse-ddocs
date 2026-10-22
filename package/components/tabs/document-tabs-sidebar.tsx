@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import cn from 'classnames';
 import { IconButton, LucideIcon, Tooltip } from '@fileverse/ui';
 import {
+  CollisionDetection,
   DndContext,
   DragOverlay,
   PointerSensor,
@@ -21,6 +22,14 @@ import { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { createPortal } from 'react-dom';
 import { ConfirmDeleteModal } from './confirm-delete-modal';
+import {
+  deleteTabDialogCopy,
+  TabExpandState,
+  useTabTreeView,
+} from './use-tab-tree-view';
+
+// Width of the expand arrow plus its gap, when the doc has subtabs.
+const EXPAND_COLUMN_PX = 24;
 
 export interface DocumentTabsSidebarProps {
   tabs: Tab[];
@@ -36,6 +45,7 @@ export interface DocumentTabsSidebarProps {
   setItems: DocumentOutlineProps['setItems'];
   orientation?: DocumentOutlineProps['orientation'];
   createTab: () => void;
+  createSubtab?: (parentId: string) => void;
   renameTab: (
     tabId: string,
     payload: { newName?: string; emoji?: string },
@@ -51,6 +61,7 @@ export interface DocumentTabsSidebarProps {
   isConnected?: boolean;
   isFocusMode?: boolean;
   layout?: DocumentOutlineProps['layout'];
+  ddocId?: string;
 }
 
 export const DocumentTabsSidebar = ({
@@ -78,6 +89,7 @@ export const TabSidebar = ({
   setItems,
   orientation,
   createTab,
+  createSubtab,
   renameTab,
   duplicateTab,
   orderTab,
@@ -88,6 +100,7 @@ export const TabSidebar = ({
   isConnected,
   isFocusMode,
   layout = 'viewport',
+  ddocId,
 }: DocumentTabsSidebarProps) => {
   const handleNameChange = (
     tabId: string,
@@ -173,11 +186,102 @@ export const TabSidebar = ({
 
   const shouldExpand = !showTOC && isHovered;
 
+  const tree = useTabTreeView({ tabs, activeTabId, ddocId });
+  const canCreateSubtabs = Boolean(
+    tabConfig?.enableSubtabs && createSubtab && !isPreviewMode,
+  );
+
+  // A tab can only be dropped among its siblings: other rows are not targets.
+  const parentIdById = useMemo(
+    () => new Map(tabs.map((tab) => [tab.id, tab.parentId ?? null])),
+    [tabs],
+  );
+  const siblingOnlyCollision: CollisionDetection = useCallback(
+    (args) => {
+      const groupParent = parentIdById.get(String(args.active.id)) ?? null;
+      return closestCenter({
+        ...args,
+        droppableContainers: args.droppableContainers.filter(
+          (container) =>
+            (parentIdById.get(String(container.id)) ?? null) === groupParent,
+        ),
+      });
+    },
+    [parentIdById],
+  );
+
+  // One sortable group per parent; a tab's subtabs render inside its row so
+  // they move with it while dragging.
+  const renderGroup = (parentId: string | null): React.ReactNode => {
+    const siblings = tree.childrenOf(parentId);
+    return (
+      <SortableContext
+        disabled={isPreviewMode || isVersionHistoryMode}
+        items={siblings.map((tab) => tab.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {siblings.map((tab) => {
+          const previousSibling = tree.previousSiblingOf(tab);
+          const nextSibling = tree.nextSiblingOf(tab);
+          const expandState = tree.expandStateOf(tab);
+          return (
+            <DdocTab
+              key={tab.id}
+              tab={tab}
+              canMoveUp={Boolean(previousSibling)}
+              canMoveDown={Boolean(nextSibling)}
+              canDelete={tree.canDelete(tab)}
+              indent={tree.indentOf(tab)}
+              expandState={expandState}
+              onToggleExpand={() => tree.toggleExpand(tab.id)}
+              onAddSubtab={
+                canCreateSubtabs && tree.canAddSubtabTo(tab)
+                  ? () => {
+                      tree.expand(tab.id);
+                      createSubtab?.(tab.id);
+                    }
+                  : undefined
+              }
+              handleEmojiChange={handleEmojiChange}
+              handleNameChange={handleNameChange}
+              onClick={() => handleTabClick(tab.id)}
+              editor={editor}
+              tocItem={items}
+              setTocItems={setItems}
+              orientation={orientation}
+              activeTabId={activeTabId}
+              duplicateTab={duplicateTab}
+              isPreviewMode={isPreviewMode}
+              onDelete={(targetTab) => setPendingDeleteTab(targetTab)}
+              isVersionHistoryMode={isVersionHistoryMode}
+              commentCount={tabCommentCounts[tab.id] || 0}
+              moveTabUp={() => {
+                if (previousSibling) orderTab(previousSibling.id, tab.id);
+              }}
+              moveTabDown={() => {
+                if (nextSibling) orderTab(nextSibling.id, tab.id);
+              }}
+              tabConfig={tabConfig}
+              showOutline={getOutlineVisibility(tab.id)}
+              onShowOutlineChange={(value) =>
+                handleTabOutlineChange(tab.id, value)
+              }
+              isConnected={isConnected}
+            >
+              {expandState === 'expanded' ? renderGroup(tab.id) : null}
+            </DdocTab>
+          );
+        })}
+      </SortableContext>
+    );
+  };
+  const deleteCopy = deleteTabDialogCopy(pendingDeleteTab);
+
   return (
     <>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={siblingOnlyCollision}
         onDragStart={(e) => setActiveDragId(e.active.id as string)}
         onDragEnd={(e) => {
           const { active, over } = e;
@@ -189,150 +293,105 @@ export const TabSidebar = ({
           }
         }}
       >
-        <SortableContext
-          disabled={isPreviewMode || isVersionHistoryMode}
-          items={tabs.map((tab) => tab.id)}
-          strategy={verticalListSortingStrategy}
+        <div
+          data-testid="tab-sidebar"
+          className={cn(
+            'flex flex-col items-start w-full h-full justify-start left-0 px-4',
+            // Keep landscape TOC responsive: it can shrink to 182px on tighter widths
+            // and grow up to the original 263px when space allows.
+            orientation === 'landscape'
+              ? layout === 'contained'
+                ? 'w-[clamp(182px,calc((var(--ddoc-canvas-w)-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+                : 'w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
+              : 'max-w-[263px]',
+            !hasToC && 'hidden',
+            isVersionHistoryMode
+              ? 'top-[16px] max-h-[calc(100vh-32px)]'
+              : layout === 'contained'
+                ? isFocusMode
+                  ? 'max-h-[calc(var(--ddoc-canvas-h)-140px)]'
+                  : isPreviewMode
+                    ? 'max-h-[calc(var(--ddoc-canvas-h)-22px)]'
+                    : 'max-h-[calc(var(--ddoc-canvas-h)-32px)]'
+                : isFocusMode
+                  ? 'top-[48px] max-h-[calc(100vh-140px)]'
+                  : isPreviewMode
+                    ? 'top-[70px] max-h-[calc(100vh-86px)]'
+                    : 'top-[124px] max-h-[calc(100vh-140px)]',
+          )}
         >
-          <div
-            data-testid="tab-sidebar"
-            className={cn(
-              'flex flex-col items-start w-full h-full justify-start left-0 px-4',
-              // Keep landscape TOC responsive: it can shrink to 182px on tighter widths
-              // and grow up to the original 263px when space allows.
-              orientation === 'landscape'
-                ? layout === 'contained'
-                  ? 'w-[clamp(182px,calc((var(--ddoc-canvas-w)-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
-                  : 'w-[clamp(182px,calc((100vw-1190px)/2),263px)] min-w-[182px] max-w-[263px]'
-                : 'max-w-[263px]',
-              !hasToC && 'hidden',
-              isVersionHistoryMode
-                ? 'top-[16px] max-h-[calc(100vh-32px)]'
-                : layout === 'contained'
-                  ? isFocusMode
-                    ? 'max-h-[calc(var(--ddoc-canvas-h)-140px)]'
-                    : isPreviewMode
-                      ? 'max-h-[calc(var(--ddoc-canvas-h)-22px)]'
-                      : 'max-h-[calc(var(--ddoc-canvas-h)-32px)]'
-                  : isFocusMode
-                    ? 'top-[48px] max-h-[calc(100vh-140px)]'
-                    : isPreviewMode
-                      ? 'top-[70px] max-h-[calc(100vh-86px)]'
-                      : 'top-[124px] max-h-[calc(100vh-140px)]',
-            )}
-          >
-            {(!isFocusMode || showTOC) && (
-              <Tooltip
-                text={
-                  showTOC ? 'Hide tabs and outlines' : 'Show tabs and outlines'
-                }
-                position="right"
-                asTriggerChild
+          {(!isFocusMode || showTOC) && (
+            <Tooltip
+              text={
+                showTOC ? 'Hide tabs and outlines' : 'Show tabs and outlines'
+              }
+              position="right"
+              asTriggerChild
+            >
+              <button
+                data-testid="tab-sidebar-toggle"
+                type="button"
+                onMouseEnter={() => !showTOC && setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                onClick={() => setShowTOC?.((prev) => !prev)}
+                className={cn(
+                  'group flex items-center h-[30px]  !min-w-[30px]  min-h-[30px] p-[8px] rounded-[4px] hover:color-bg-secondary-hover transition-[width,background-color] duration-200 ease-out overflow-hidden',
+                  !showTOC && 'hover:min-w-[156px] gap-[8px]',
+                  tabs.length > 0 && !showTOC && 'color-bg-default-hover',
+                )}
               >
-                <button
-                  data-testid="tab-sidebar-toggle"
-                  type="button"
-                  onMouseEnter={() => !showTOC && setIsHovered(true)}
-                  onMouseLeave={() => setIsHovered(false)}
-                  onClick={() => setShowTOC?.((prev) => !prev)}
+                <LucideIcon
+                  name={showTOC ? 'ChevronLeft' : 'List'}
+                  className="!w-[16px]"
+                />
+
+                <span
                   className={cn(
-                    'group flex items-center h-[30px]  !min-w-[30px]  min-h-[30px] p-[8px] rounded-[4px] hover:color-bg-secondary-hover transition-[width,background-color] duration-200 ease-out overflow-hidden',
-                    !showTOC && 'hover:min-w-[156px] gap-[8px]',
-                    tabs.length > 0 && !showTOC && 'color-bg-default-hover',
+                    `whitespace-nowrap text-heading-xsm color-text-default max-w-[110px] truncate transition-opacity duration-150`,
+                    tabs.length === 1 && !shouldExpand && !showTOC && 'hidden',
                   )}
                 >
-                  <LucideIcon
-                    name={showTOC ? 'ChevronLeft' : 'List'}
-                    className="!w-[16px]"
-                  />
+                  {!shouldExpand
+                    ? showTOC
+                      ? null
+                      : tabs.length > 1
+                        ? tabs.length
+                        : null
+                    : activeTab?.name}
+                </span>
+              </button>
+            </Tooltip>
+          )}
 
+          {showTOC && (
+            <div className="flex flex-col gap-[8px] mt-[16px] w-full min-h-0 flex-1">
+              <div className="w-full">
+                <div className="flex items-center px-[12px] py-[8px] justify-between">
                   <span
-                    className={cn(
-                      `whitespace-nowrap text-heading-xsm color-text-default max-w-[110px] truncate transition-opacity duration-150`,
-                      tabs.length === 1 &&
-                        !shouldExpand &&
-                        !showTOC &&
-                        'hidden',
-                    )}
+                    data-testid="tab-sidebar-heading"
+                    className="text-heading-xsm truncate color-text-default"
                   >
-                    {!shouldExpand
-                      ? showTOC
-                        ? null
-                        : tabs.length > 1
-                          ? tabs.length
-                          : null
-                      : activeTab?.name}
+                    Document tabs
                   </span>
-                </button>
-              </Tooltip>
-            )}
 
-            {showTOC && (
-              <div className="flex flex-col gap-[8px] mt-[16px] w-full min-h-0 flex-1">
-                <div className="w-full">
-                  <div className="flex items-center px-[12px] py-[8px] justify-between">
-                    <span
-                      data-testid="tab-sidebar-heading"
-                      className="text-heading-xsm truncate color-text-default"
-                    >
-                      Document tabs
-                    </span>
-
-                    {!isPreviewMode && (
-                      <IconButton
-                        data-testid="tab-create-button"
-                        icon="Plus"
-                        variant="ghost"
-                        size="sm"
-                        className="h-[24px] w-[24px] min-w-[24px]"
-                        onClick={createTab}
-                      />
-                    )}
-                  </div>
-                </div>
-                <div className="w-full overflow-y-auto space-y-1">
-                  {tabs.map((tab, tabIndex) => (
-                    <DdocTab
-                      key={tab.id}
-                      tab={tab}
-                      tabIndex={tabIndex}
-                      tabCount={tabs.length}
-                      handleEmojiChange={handleEmojiChange}
-                      handleNameChange={handleNameChange}
-                      onClick={() => handleTabClick(tab.id)}
-                      editor={editor}
-                      tocItem={items}
-                      setTocItems={setItems}
-                      orientation={orientation}
-                      activeTabId={activeTabId}
-                      duplicateTab={duplicateTab}
-                      isPreviewMode={isPreviewMode}
-                      onDelete={(targetTab) => setPendingDeleteTab(targetTab)}
-                      isVersionHistoryMode={isVersionHistoryMode}
-                      commentCount={tabCommentCounts[tab.id] || 0}
-                      moveTabUp={() => {
-                        if (tabIndex <= 0) return;
-                        orderTab(tabs[tabIndex - 1].id, tab.id);
-                      }}
-                      moveTabDown={() => {
-                        if (tabIndex >= tabs.length - 1) {
-                          return;
-                        }
-                        orderTab(tabs[tabIndex + 1].id, tab.id);
-                      }}
-                      tabConfig={tabConfig}
-                      showOutline={getOutlineVisibility(tab.id)}
-                      onShowOutlineChange={(value) =>
-                        handleTabOutlineChange(tab.id, value)
-                      }
-                      isConnected={isConnected}
+                  {!isPreviewMode && (
+                    <IconButton
+                      data-testid="tab-create-button"
+                      icon="Plus"
+                      variant="ghost"
+                      size="sm"
+                      className="h-[24px] w-[24px] min-w-[24px]"
+                      onClick={createTab}
                     />
-                  ))}
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        </SortableContext>
+              <div className="w-full overflow-y-auto space-y-1 ddoc-scrollbar-on-hover">
+                {renderGroup(null)}
+              </div>
+            </div>
+          )}
+        </div>
 
         <DragOverlay>
           {activeDragId ? (
@@ -358,6 +417,8 @@ export const TabSidebar = ({
         }}
         documentTitle={pendingDeleteTab?.name || ''}
         isLoading={false}
+        title={deleteCopy.title}
+        text={deleteCopy.text}
         primaryLabel="Delete tab"
       />
     </>
@@ -366,8 +427,14 @@ export const TabSidebar = ({
 
 export const DdocTab = ({
   tab,
-  tabIndex,
-  tabCount,
+  canMoveUp,
+  canMoveDown,
+  canDelete,
+  indent,
+  expandState,
+  onToggleExpand,
+  onAddSubtab,
+  children,
   handleEmojiChange,
   handleNameChange,
   onClick,
@@ -389,8 +456,14 @@ export const DdocTab = ({
   isConnected,
 }: {
   tab: Tab;
-  tabIndex: number;
-  tabCount: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  canDelete: boolean;
+  indent: number;
+  expandState?: TabExpandState;
+  onToggleExpand: () => void;
+  onAddSubtab?: () => void;
+  children?: React.ReactNode;
   handleNameChange: (
     tabId: string,
     nextName: string,
@@ -415,7 +488,8 @@ export const DdocTab = ({
   onShowOutlineChange: (value: boolean) => void;
   isConnected?: boolean;
 }) => {
-  const canDeleteTab = tabCount > 1;
+  // Headings line up under this tab's own name: same shift as the row.
+  const outlineOffset = indent + (expandState ? EXPAND_COLUMN_PX : 0);
   return (
     <div className="w-full flex flex-col gap-2">
       <SortableTabItem
@@ -430,14 +504,14 @@ export const DdocTab = ({
         onEmojiChange={(nextEmoji: string) =>
           handleEmojiChange(tab.id, nextEmoji)
         }
-        onDelete={canDeleteTab ? () => onDelete?.(tab) : undefined}
+        onDelete={canDelete ? () => onDelete?.(tab) : undefined}
         onDuplicate={() => duplicateTab(tab.id)}
         isActive={tab.id === activeTabId}
         onClick={onClick}
         commentCount={commentCount}
         showOutline={showOutline}
-        canMoveUp={tabCount > 1 && tabIndex > 0}
-        canMoveDown={tabCount > 1 && tabIndex < tabCount - 1}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
         onMoveUp={moveTabUp}
         onMoveDown={moveTabDown}
         onCopyLink={() => tabConfig?.onCopyTabLink?.(tab.id)}
@@ -445,18 +519,29 @@ export const DdocTab = ({
         isPreviewMode={isPreviewMode}
         isVersionHistoryMode={isVersionHistoryMode}
         isConnected={isConnected}
-      />
-
-      {showOutline && !isVersionHistoryMode ? (
-        <div className="table-of-contents animate-in fade-in slide-in-from-left-5">
-          <MemorizedToC
-            editor={editor}
-            items={tocItem}
-            setItems={setTocItems}
-            orientation={orientation}
-          />
-        </div>
-      ) : null}
+        onAddSubtab={onAddSubtab}
+        indent={indent}
+        expandState={expandState}
+        onToggleExpand={onToggleExpand}
+      >
+        {showOutline && !isVersionHistoryMode ? (
+          <div
+            data-testid={`tab-outline-${tab.id}`}
+            className="table-of-contents animate-in fade-in slide-in-from-left-5 mt-2"
+            style={outlineOffset ? { paddingLeft: outlineOffset } : undefined}
+          >
+            <MemorizedToC
+              editor={editor}
+              items={tocItem}
+              setItems={setTocItems}
+              orientation={orientation}
+            />
+          </div>
+        ) : null}
+        {children ? (
+          <div className="flex flex-col gap-1 mt-1">{children}</div>
+        ) : null}
+      </SortableTabItem>
     </div>
   );
 };

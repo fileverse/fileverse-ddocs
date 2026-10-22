@@ -30,6 +30,7 @@ export const ConfirmDeleteModal = ({
   hasCloseIcon,
   primaryLabel,
   hideTitleIcon,
+  text,
 }: IConfirmDeleteModalProps) => {
   const isMobile = useMediaQuery('(max-width: 1000px)', { defaultValue: true });
 
@@ -52,7 +53,7 @@ export const ConfirmDeleteModal = ({
         noOverlay={noOverlay}
         content={
           <p className="text-body-sm color-text-default">
-            This tab and the content within it will be deleted
+            {text || 'This tab and the content within it will be deleted'}
           </p>
         }
         primaryAction={{

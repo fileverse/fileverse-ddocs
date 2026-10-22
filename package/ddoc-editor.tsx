@@ -393,6 +393,7 @@ const DdocEditor = forwardRef(
       activeTabId,
       setActiveTabId: setActiveTabIdRaw,
       createTab,
+      createSubtab,
       renameTab,
       duplicateTab,
       orderTab,
@@ -1033,17 +1034,19 @@ const DdocEditor = forwardRef(
                   shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
                   !isMobile &&
                     'max-w-[263px] w-full sticky top-0 self-start z-[2]',
+                  // The top gap is padding, not margin: a sticky rail with a
+                  // margin rests below top-0 and jumps up when the page scrolls.
                   !isPreviewMode &&
                     !isFocusMode &&
                     isNavbarVisible &&
-                    '-mt-[1.5rem] ddoc-md:mt-[0.8rem]',
-                  isPreviewMode && 'ddoc-md:mt-[1rem]',
-                  { 'ddoc-md:mt-[0.7rem]': !isPreviewMode && !isFocusMode },
+                    '-mt-[1.5rem] ddoc-md:mt-0 ddoc-md:pt-[0.8rem]',
+                  isPreviewMode && 'ddoc-md:pt-[1rem]',
+                  { 'ddoc-md:pt-[0.7rem]': !isPreviewMode && !isFocusMode },
                   {
-                    '-mt-[1.5rem] ddoc-md:mt-[0.7rem]':
+                    '-mt-[1.5rem] ddoc-md:mt-0 ddoc-md:pt-[0.7rem]':
                       !isNavbarVisible && !isPreviewMode,
                   },
-                  isFocusMode && 'mt-[48px]',
+                  isFocusMode && 'pt-[48px]',
                   isFocusMode && !showTOC && shouldHideRight && 'hidden',
                 )}
               >
@@ -1062,6 +1065,7 @@ const DdocEditor = forwardRef(
                     activeTabId={activeTabId}
                     setActiveTabId={setActiveTabId}
                     createTab={createTab}
+                    createSubtab={createSubtab}
                     renameTab={renameTab}
                     duplicateTab={duplicateTab}
                     orderTab={orderTab}
@@ -1073,6 +1077,7 @@ const DdocEditor = forwardRef(
                     isFocusMode={isFocusMode}
                     layout="contained"
                     tabPanelSlot={tabPanelSlot}
+                    ddocId={ddocId}
                   />
                 )}
               </div>
@@ -1790,6 +1795,7 @@ const DdocEditor = forwardRef(
                             activeTabId={activeTabId}
                             setActiveTabId={setActiveTabId}
                             createTab={createTab}
+                            createSubtab={createSubtab}
                             renameTab={renameTab}
                             duplicateTab={duplicateTab}
                             orderTab={orderTab}
@@ -1801,6 +1807,7 @@ const DdocEditor = forwardRef(
                             isFocusMode={isFocusMode}
                             layout="contained"
                             tabPanelSlot={tabPanelSlot}
+                            ddocId={ddocId}
                           />
                         </div>
                       )}

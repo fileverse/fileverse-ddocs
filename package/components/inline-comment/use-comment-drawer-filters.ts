@@ -1,7 +1,11 @@
 import { useCallback, useState } from 'react';
 import type { IComment } from '../../extensions/comment';
 import type { Tab } from '../tabs/utils/tab-utils';
-import { DEFAULT_TAB_ID, DEFAULT_TAB_NAME } from '../tabs/utils/tab-utils';
+import {
+  DEFAULT_TAB_ID,
+  DEFAULT_TAB_NAME,
+  MAX_TAB_DEPTH,
+} from '../tabs/utils/tab-utils';
 import { ALL_TABS_OPTION_ID } from './comment-drawer-constants';
 
 export const commentTypeOptions = [
@@ -32,9 +36,11 @@ export const useCommentDrawerFilters = ({
       : [{ id: DEFAULT_TAB_ID, name: DEFAULT_TAB_NAME, emoji: null }];
   const tabList = [
     { id: ALL_TABS_OPTION_ID, label: 'All tabs' },
+    // Tabs come in reading order; a subtab carries its depth for the indent.
     ...resolvedTabs.map((tabOption) => ({
       id: tabOption.id,
       label: tabOption.name,
+      depth: Math.min(tabOption.depth ?? 1, MAX_TAB_DEPTH),
     })),
   ];
   const tabNameById = Object.fromEntries(

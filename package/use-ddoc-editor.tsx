@@ -324,6 +324,7 @@ export const useDdocEditor = ({
     setTabs: tabManager.setTabs,
     setActiveTabId: tabManager.setActiveTabId,
     createTab: tabManager.createTab,
+    createSubtab: tabManager.createSubtab,
     deleteTab: tabManager.deleteTab,
     renameTab: tabManager.renameTab,
     duplicateTab: tabManager.duplicateTab,

@@ -5,6 +5,11 @@ export interface Tab {
   id: string;
   name: string;
   emoji: string | null;
+  // Set only when the doc has subtabs. A missing value means a top-level tab
+  // with no subtabs, which is every tab of a doc without subtabs.
+  parentId?: string | null;
+  depth?: number;
+  hasChildren?: boolean;
 }
 
 export interface TabsYdocNodes {
@@ -13,6 +18,8 @@ export interface TabsYdocNodes {
   emojiById: Y.Map<string | null>;
   tabState: Y.Map<unknown>;
   deletedById: Y.Map<boolean>;
+  // Subtab id -> parent id. Written once when the subtab is created.
+  parentById: Y.Map<string>;
 }
 
 export interface SyncedTabsYdocNodes extends TabsYdocNodes {
@@ -50,6 +57,16 @@ export const EMOJI_ROOT_KEY = 'tabs_emoji_registry';
 export const STATE_ROOT_KEY = 'tabs_state';
 export const DELETED_ROOT_KEY = 'tabs_delete_registry';
 export const ACTIVE_TAB_STATE_KEY = 'activeTabId';
+export const PARENT_ROOT_KEY = 'tabs_parent_registry';
+// A level-3 subtab cannot have subtabs.
+export const MAX_TAB_DEPTH = 3;
+
+/**
+ * The heading level of a tab's title in exports: 1 for a tab, 2 or 3 for a
+ * subtab, so an exported file keeps the tree. Deeper data stays at 3.
+ */
+export const getTabHeadingLevel = (tab: Pick<Tab, 'depth'>) =>
+  Math.min(Math.max(tab.depth ?? 1, 1), MAX_TAB_DEPTH);
 
 // New schema: every shared tab structure is a deterministic top-level Yjs type.
 function getTabsNodesV2(doc: Y.Doc) {
@@ -61,6 +78,9 @@ function getTabsNodesV2(doc: Y.Doc) {
     // Soft-deleted tabs keep their fragment for undo and late peer updates.
     // This tombstone stops self-heal from resurrecting deleted tabs from stale tab metadata.
     deletedById: doc.getMap<boolean>(DELETED_ROOT_KEY),
+    // Reading a root that was never written adds nothing to the doc, so a doc
+    // without subtabs stays byte-for-byte the same.
+    parentById: doc.getMap<string>(PARENT_ROOT_KEY),
   };
 }
 
@@ -516,10 +536,18 @@ export function deriveTabsFromEncodedState(
     createDefaultTabIfMissing: options?.createDefaultTabIfMissing ?? true,
   });
   const tabNodesV2 = getTabsNodesV2(doc);
+  const tabList = getTabListFromNodes(tabNodesV2);
+  const storedActiveTabId =
+    getActiveTabIdFromNodes(tabNodesV2) || DEFAULT_TAB_ID;
 
   return {
-    tabList: getTabListFromNodes(tabNodesV2),
-    activeTabId: getActiveTabIdFromNodes(tabNodesV2) || DEFAULT_TAB_ID,
+    tabList,
+    // A stored open tab that is not shown (under a deleted tab) opens the
+    // first tab instead.
+    activeTabId:
+      tabList.length === 0 || tabList.some((t) => t.id === storedActiveTabId)
+        ? storedActiveTabId
+        : tabList[0].id,
     didWrite,
   };
 }
@@ -599,7 +627,107 @@ export function getTabMetadata(
   };
 }
 
+/**
+ * The tab list every screen and export reads, in reading order: a parent, then
+ * its subtabs. A doc without subtabs takes the flat path, unchanged since 7.0.
+ *
+ * The tree rules, the same on every device for the same stored data:
+ * T1 a tab is live if it is in the order list with a name;
+ * T2 a tab under a deleted tab is hidden (its text stays in the doc), unless
+ *    that would hide every tab;
+ * T3 siblings keep the order of their first appearance in tabs_order;
+ * T4 a tab whose parent is unknown, or whose parent chain loops, is shown at
+ *    the top level, so bad or half-synced data never hides a tab;
+ * T5 depth is reported as found; the sidebar caps the indent.
+ */
 export function getTabListFromNodes(
+  tabNodes: Pick<TabsYdocNodes, 'order' | 'nameById' | 'emojiById'> &
+    Partial<Pick<TabsYdocNodes, 'parentById' | 'deletedById'>>,
+): Tab[] {
+  const flatTabs = getFlatTabList(tabNodes);
+  const parentById = tabNodes.parentById;
+  if (!parentById || parentById.size === 0) return flatTabs;
+  return buildTabTree(flatTabs, parentById, tabNodes.deletedById);
+}
+
+function buildTabTree(
+  flatTabs: Tab[],
+  parentById: Y.Map<string>,
+  deletedById: Y.Map<boolean> | undefined,
+): Tab[] {
+  // A tab counts as deleted only while it is gone. The clean-up pass can bring
+  // a deleted tab back (a delete racing a move); then its subtabs show too.
+  const liveIds = new Set(flatTabs.map((tab) => tab.id));
+  const deletedIds = new Set<string>();
+  deletedById?.forEach((value, tabId) => {
+    if (value === true && !liveIds.has(tabId)) deletedIds.add(tabId);
+  });
+  const parentOf = (tabId: string) => {
+    const parentId = parentById.get(tabId);
+    return typeof parentId === 'string' && parentId !== tabId ? parentId : null;
+  };
+
+  // T2: walk the stored chain; stop at a loop.
+  const isUnderDeletedTab = (tabId: string) => {
+    const seen = new Set([tabId]);
+    let parentId = parentOf(tabId);
+    while (parentId && !seen.has(parentId)) {
+      if (deletedIds.has(parentId)) return true;
+      seen.add(parentId);
+      parentId = parentOf(parentId);
+    }
+    return false;
+  };
+
+  // Never hide every tab: an older app can delete the last top-level tab and
+  // leave only its subtabs. They are then shown at the top level (T4).
+  const shownTabs = flatTabs.filter((tab) => !isUnderDeletedTab(tab.id));
+  const visibleTabs = shownTabs.length > 0 ? shownTabs : flatTabs;
+  const visibleIds = new Set(visibleTabs.map((tab) => tab.id));
+
+  // T4: the parent must be shown, and the chain above must not lead back here.
+  const shownParentOf = (tabId: string) => {
+    const parentId = parentOf(tabId);
+    if (!parentId || !visibleIds.has(parentId)) return null;
+    const seen = new Set<string>();
+    let ancestorId: string | null = parentId;
+    while (ancestorId && visibleIds.has(ancestorId) && !seen.has(ancestorId)) {
+      if (ancestorId === tabId) return null;
+      seen.add(ancestorId);
+      ancestorId = parentOf(ancestorId);
+    }
+    return parentId;
+  };
+
+  // T3: children keep their order of appearance.
+  const ROOT = '';
+  const childrenOf = new Map<string, Tab[]>();
+  visibleTabs.forEach((tab) => {
+    const key = shownParentOf(tab.id) ?? ROOT;
+    const siblings = childrenOf.get(key);
+    if (siblings) siblings.push(tab);
+    else childrenOf.set(key, [tab]);
+  });
+
+  // Every shown tab is reached from the top: a tab gets a parent only when
+  // that parent's chain does not lead back to it, so there is no loop left.
+  const result: Tab[] = [];
+  const visit = (parentKey: string, depth: number) => {
+    childrenOf.get(parentKey)?.forEach((tab) => {
+      result.push({
+        ...tab,
+        parentId: parentKey === ROOT ? null : parentKey,
+        depth,
+        hasChildren: (childrenOf.get(tab.id)?.length ?? 0) > 0,
+      });
+      visit(tab.id, depth + 1);
+    });
+  };
+  visit(ROOT, 1);
+  return result;
+}
+
+function getFlatTabList(
   tabNodes: Pick<TabsYdocNodes, 'order' | 'nameById' | 'emojiById'>,
 ): Tab[] {
   const seen = new Set<string>();

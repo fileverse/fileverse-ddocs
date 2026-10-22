@@ -5,6 +5,7 @@ import {
   ACTIVE_TAB_STATE_KEY,
   getTabsYdocNodes,
 } from '../components/tabs/utils/tab-utils';
+import { insertSiblingTabsInDoc } from '../components/tabs/utils/tab-operations';
 import {
   setJSONContent,
   type TabbedJSONContent,
@@ -57,7 +58,8 @@ export const applyTabbedTemplate = ({
       tabNodes.order.push([activeTabId]);
     }
     if (tabIds.length > 1) {
-      tabNodes.order.push(tabIds.slice(1));
+      // In a subtab, the template's other tabs become its siblings.
+      insertSiblingTabsInDoc(ydoc, activeTabId, tabIds.slice(1));
     }
     tabNodes.tabState.set(ACTIVE_TAB_STATE_KEY, activeTabId);
   });

@@ -13,7 +13,13 @@ import type { IComment } from '../../extensions/comment';
 interface DrawerSelectOption {
   id: string;
   label: string;
+  depth?: number;
 }
+
+// Indent a subtab's row in the list only; the closed select shows the plain
+// name. 8px is the item's own left padding.
+const tabOptionStyle = (depth = 1) =>
+  depth > 1 ? { paddingLeft: 8 + (depth - 1) * 12 } : undefined;
 
 interface CommentDrawerDesktopProps {
   activeCommentId: string | null;
@@ -127,7 +133,11 @@ export const CommentDrawerDesktop = ({
               </SelectTrigger>
               <SelectContent>
                 {tabList.map((option) => (
-                  <SelectItem key={option.id} value={option.id}>
+                  <SelectItem
+                    key={option.id}
+                    value={option.id}
+                    style={tabOptionStyle(option.depth)}
+                  >
                     {option.label}
                   </SelectItem>
                 ))}

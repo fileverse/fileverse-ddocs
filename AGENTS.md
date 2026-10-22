@@ -31,7 +31,7 @@ Release: `.github/workflows/release.yml` builds, tags `v<version>` and publishes
 - `headless-editor-utils.ts` is a separate entry (`@fileverse-dev/ddoc/headless-editor-utils`) exposing only the Yjs convertor / merge runtime, for consumers that must not load the editor.
 - `package/ddoc-editor.tsx` is the large top-level component. Its state comes from `package/use-ddoc-editor.tsx`, a thin composition of:
   - `hooks/use-yjs-setup.ts`: owns the single `Y.Doc`, `y-indexeddb` persistence, the `SyncManager`, and the debounced `onChange` (which emits `Y.encodeStateAsUpdate` as base64).
-  - `hooks/use-tab-manager.ts`: tab CRUD over the `ddocTabs` Y.Map. One `Y.XmlFragment` per tab, tab id == fragment name, `'default'` is the first/legacy tab. See `docs/TABS_SPEC.md`.
+  - `hooks/use-tab-manager.ts`: tab and subtab state for the UI. The writes live in `components/tabs/utils/tab-operations.ts` (one transaction each) and the tree in `getTabListFromNodes` (`tab-utils.ts`), over flat `tabs_*` roots plus `tabs_parent_registry`. One `Y.XmlFragment` per tab, tab id == fragment name, `'default'` is the first tab. A doc without subtabs must keep the 7.0 writes byte for byte (`utils/__tests__/existing-docs.test.ts`). See `docs/TABS_SPEC.md` §1.
   - `hooks/use-doc-schema-version.ts`: resolves v1/v2 and stamps new docs. Must stay after `useTabManager` in hook order because it reads the marker that `useTabManager` decoded synchronously during render.
   - `hooks/use-tab-editor.tsx`: builds one Tiptap `Editor` per tab via `buildExtensionsForTab`, keeps the 4 most recent warm (`use-tab-editor-cache.ts`), and handles hydration, ToC, page count and print.
 

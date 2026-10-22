@@ -194,6 +194,11 @@ export interface DdocProps extends CommentAccountProps {
   tabConfig?: {
     onCopyTabLink?: (tabId: string) => void;
     defaultTabId?: string;
+    /**
+     * Shows "Add subtab" in the tab menu. Off by default. Docs that already
+     * have subtabs show them either way.
+     */
+    enableSubtabs?: boolean;
   };
   versionHistoryState?: {
     enabled: boolean;

@@ -18,6 +18,7 @@ export const DocumentOutline = ({
   activeTabId,
   setActiveTabId,
   createTab,
+  createSubtab,
   renameTab,
   duplicateTab,
   orderTab,
@@ -31,6 +32,7 @@ export const DocumentOutline = ({
   isFocusMode,
   layout = 'viewport',
   tabPanelSlot,
+  ddocId,
 }: DocumentOutlineProps) => {
   const isMediaMax1280px = useEditorMediaQuery('(max-width:1280px)');
 
@@ -49,7 +51,9 @@ export const DocumentOutline = ({
     );
   }
 
-  return !isMediaMax1280px ? (
+  // A host that gives its own tab column (version history) decides when the
+  // column is shown; the sidebar then fills it at every width.
+  return !isMediaMax1280px || tabSectionContainer ? (
     <DocumentTabsSidebar
       tabs={tabs}
       setTabs={setTabs}
@@ -64,6 +68,7 @@ export const DocumentOutline = ({
       setItems={setItems}
       orientation={orientation}
       createTab={createTab}
+      createSubtab={createSubtab}
       renameTab={renameTab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
@@ -76,6 +81,7 @@ export const DocumentOutline = ({
       isConnected={isConnected}
       isFocusMode={isFocusMode}
       layout={layout}
+      ddocId={ddocId}
     />
   ) : (
     <DocumentMobileTabPanel
@@ -89,6 +95,7 @@ export const DocumentOutline = ({
       orientation={orientation}
       renameTab={renameTab}
       createTab={createTab}
+      createSubtab={createSubtab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
       deleteTab={deleteTab}
@@ -100,6 +107,7 @@ export const DocumentOutline = ({
       isFocusMode={isFocusMode}
       layout={layout}
       tabPanelSlot={tabPanelSlot}
+      ddocId={ddocId}
     />
   );
 };
