@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CommentDrawerProps } from './types';
 import { useCommentStore } from '../../stores/comment-store';
 import { useResponsive } from '../../utils/responsive';
@@ -21,6 +22,7 @@ export const CommentDrawer = ({
   onTabChange,
   isPreviewMode,
   tabs,
+  mobileContainer,
 }: CommentDrawerProps) => {
   const comments = useCommentStore((s) => s.initialComments);
   const isConnected = useCommentStore((s) => s.isConnected);
@@ -119,7 +121,7 @@ export const CommentDrawer = ({
     onClose();
   };
 
-  return (
+  const drawer = (
     <div ref={mobileDrawerRef} data-testid="comment-drawer">
       {isBelow1280px ? (
         <CommentDrawerMobile
@@ -203,4 +205,8 @@ export const CommentDrawer = ({
       )}
     </div>
   );
+
+  return isBelow1280px && mobileContainer
+    ? createPortal(drawer, mobileContainer)
+    : drawer;
 };

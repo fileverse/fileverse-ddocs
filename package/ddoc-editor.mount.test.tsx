@@ -36,8 +36,11 @@ describe('DdocEditor mounted structure', () => {
     const rows = Array.from(root.children);
     const canvas = root.querySelector('#editor-canvas')!;
 
-    expect(rows.at(-2)).toBe(canvas);
-    expect(rows.at(-1)?.classList.contains('ddoc-tab-panel-slot')).toBe(true);
+    expect(rows.at(-3)).toBe(canvas);
+    expect(rows.at(-2)?.classList.contains('ddoc-tab-panel-slot')).toBe(true);
+    expect(rows.at(-1)?.classList.contains('ddoc-mobile-comment-slot')).toBe(
+      true,
+    );
     expect(rows.indexOf(root.querySelector('#toolbar')!)).toBeGreaterThan(-1);
     expect(rows.indexOf(root.querySelector('#toolbar')!)).toBeLessThan(
       rows.indexOf(canvas),
