@@ -86,6 +86,17 @@ export const FontSize = Extension.create({
       return attrs;
     };
 
+    const getCurrentFontSize = (attrs: { fontSize?: string }) => {
+      // Unstyled headings inherit their size from CSS, not textStyle marks.
+      const level = this.editor.isActive('heading')
+        ? this.editor.getAttributes('heading').level
+        : null;
+      const defaultSize =
+        level === 1 ? 32 : level === 2 ? 24 : level === 3 ? 18 : 16;
+      const size = parseInt(attrs.fontSize || String(defaultSize), 10);
+      return isNaN(size) ? defaultSize : size;
+    };
+
     return {
       setFontSize:
         (fontSize: string) =>
@@ -134,8 +145,7 @@ export const FontSize = Extension.create({
         () =>
         ({ chain, state }) => {
           const attrs = getExistingTextStyleAttrs(this.editor);
-          let currentSizeNum = parseInt(attrs.fontSize || '16');
-          if (isNaN(currentSizeNum)) currentSizeNum = 16;
+          const currentSizeNum = getCurrentFontSize(attrs);
 
           const nextSize = FONT_SIZES.find((size) => size > currentSizeNum);
           if (!nextSize) return false;
@@ -153,8 +163,7 @@ export const FontSize = Extension.create({
         () =>
         ({ chain, state }) => {
           const attrs = getExistingTextStyleAttrs(this.editor);
-          let currentSizeNum = parseInt(attrs.fontSize || '16');
-          if (isNaN(currentSizeNum)) currentSizeNum = 16;
+          const currentSizeNum = getCurrentFontSize(attrs);
 
           const nextSize = [...FONT_SIZES]
             .reverse()
