@@ -137,7 +137,7 @@ describe('demoMenuTree', () => {
     expect(hasColumns(insert.children)).toBe(false);
   });
 
-  it('View ▸ Zoom children labels are Fit/50%/75%/100%/150%/200%', () => {
+  it('View ▸ Zoom children labels are Fit/50%/75%/100%/125%/150%/200%', () => {
     const view = projectMenu(demoMenuTree, ctxFor('owner')).find(
       (m) => m.id === 'view',
     )!;
@@ -149,6 +149,7 @@ describe('demoMenuTree', () => {
       '50%',
       '75%',
       '100%',
+      '125%',
       '150%',
       '200%',
     ]);
