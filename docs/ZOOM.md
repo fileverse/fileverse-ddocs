@@ -42,7 +42,7 @@ The cause, confirmed in the demo at 150%: the canvas colour sits on `#editor-wra
 Rule: UI chrome (block controls, bubble menu, floating toolbars) renders at its 100% size at every zoom and lines up with the scaled content it belongs to.
 
 - **Drag handle cause, confirmed:** Tiptap's `DragHandle` puts `.drag-handle` inside a zero-size `position: absolute` wrapper within the scaled layer. Floating-ui finds the offset parent's scale as `rect.width / offsetWidth`, which falls back to 1 for a zero-width element. It therefore writes viewport-pixel `top`/`left`, and the transform scales them again. At 150% the handle sat 97px below its block, and it renders 1.5× too big.
-- **Drag handle fix:** add a floating-ui `platform` override to `COMPUTE_POSITION_CONFIG` whose `getScale` returns the current zoom. Zoom is read from a ref, so the config keeps its identity (see the comment on that constant). Counter-scale the cluster with `scale(1/z)` and `transform-origin: right center`, so it keeps its size and its right edge stays against the block. If the override does not hold across Tiptap's own handlers, the fallback is to render the cluster outside the scaled layer. The builder decides after a browser probe at 50% and 200%.
+- **Drag handle fix:** add a floating-ui `platform` override to `COMPUTE_POSITION_CONFIG` whose `getScale` returns the current zoom, read from the DOM with `getZoomScale` (§8), so the config stays a module constant and keeps its identity (see the comment on that constant). Counter-scale the cluster with `scale(1/z)` and `transform-origin: right center`, so it keeps its size and its right edge stays against the block. If the override does not hold across Tiptap's own handlers, the fallback is to render the cluster outside the scaled layer. The builder decides after a browser probe at 50% and 200%.
 - **Bubble menu:** counter-scale only when it is mounted inside the scaled layer (below 1280px, `appendTo` undefined). At 1280px and wider it is appended to `#editor-canvas`, which is unscaled, so the current unconditional `scale(1/z)` shrinks it above 100% and enlarges it below. (Read from the code; not yet seen in a browser.)
 - **Audit:** everything else that positions from rects inside the scaled layer is checked at 50% and 200%, on both schemas: table menus, media resize and caption, link preview, comment anchors and drawer, slash menu, caret scroll band, sync cursors, and the page-break overlay.
 
@@ -59,15 +59,28 @@ Rule: UI chrome (block controls, bubble menu, floating toolbars) renders at its 
 - Delete `zoom-service.ts` and its effect in `use-tab-editor.tsx`. It moves `.template-buttons` with `-translate-x-[300%]` at 200% through DOM class changes. The builder checks the empty-document template buttons at every preset without it. If they are misplaced, fix that in layout, not by changing classes.
 - Public API unchanged: `zoomLevel`, `onZoomLevelChange`, and the deprecated `setZoomLevel`.
 
-## 8. Non-goals
+## 8. Pages mode (TEC-3006)
+
+Pages mode (Linear tech spec "Pages mode: tech spec") builds on this zoom and must not need it reworked. What it relies on, and what this design guarantees:
+
+- **Transform, unscaled layout.** Pagination measures `offsetTop` / `offsetHeight` (unscaled) and divides client rects and `posAtCoords` input by the scale. Zoom stays `transform: scale()` on one layer; never CSS `zoom`.
+- **`baseWidth` is an input.** Pages swaps it for the paper width (A4 794, Letter 816, landscape 1123 / 1056). Fit, the page box, the scroll anchor and the rail decisions all take `baseWidth`; nothing in zoom code hard-codes 850 or 1190.
+- **The scaled layer stays the one place for page content.** `PageSheets` renders inside it, behind ProseMirror, so sheets scale, anchor and scroll with the text.
+- **Scale readable outside React.** The layer carries `data-ddoc-zoom-layer` and `data-ddoc-zoom="<scale>"`; `getZoomScale(node)` in `utils/zoom.ts` reads the closest layer (1 when none). The pagination plugin and the drag-handle platform both use it. React consumers (`PageSheets` windowing) use `useZoom()`. A pass on zoom change is Pages' own effect in `ddoc-editor.tsx`, keyed on `scale`.
+- **Page box height comes from the layer's `offsetHeight`**, which includes spacers and the sheet stack's `min-height`, so the desk colour covers every sheet. The observer watches the layer and writes to the wrapper outside it, so it cannot loop with Pages' observer on the content children.
+- **Background stays one style value on the wrapper** (`getCanvasStyle()`), so Pages can paint the desk there and the sheet fill on the sheets. No colour classes on the layer.
+- **Breakpoints and Split View agree.** Zoom is off at 850px and below and in Split View; Pages is off below 1024px and in Split View.
+- Fit produces non-preset scales (rounded to 2 decimals). Pages rounds spacer heights to whole pixels for fractional zoom, so this needs nothing extra; its QA matrix covers zoom 0.5 to 2, Fit included.
+
+## 9. Non-goals
 
 - Continuous zoom, Ctrl+wheel, pinch, a slider.
 - Zoom on mobile or in Split View.
 - Any change to print or export.
 - Changes in ddocs.new (it persists the string as-is, so `'fit'` and `'1.25'` need nothing there).
 
-## 9. Tests
+## 10. Tests
 
-- Unit: preset stepping (never onto Fit; from Fit; at the ends), legacy and empty normalisation, the Fit computation with and without the comment column, and the shortcut handler (`=` / `-` zoom from any focus; Shift variants and `Mod+0` pass through).
+- Unit: preset stepping (never onto Fit; from Fit; at the ends), legacy and empty normalisation, the Fit computation with and without the comment column, `getZoomScale` inside and outside the layer, and the shortcut handler (`=` / `-` zoom from any focus; Shift variants and `Mod+0` pass through).
 - `layout-contract.test.ts`: the scaled layer has no percentage height, and the wrapper gets a scaled height.
 - Manual QA in the demo, on both schemas, at every preset and at 1280px and wider: canvas colour to the end of the document, block controls aligned and normal size, bubble menu size, rail fixed during horizontal scroll, scroll position kept across zoom changes, shortcuts in and out of focus, and Fit with and without floating comments (adding the first comment re-fits, and the cards are not clipped).
