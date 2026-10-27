@@ -1,15 +1,15 @@
 # Zoom
 
-Status: design for TEC-3271 (sub-issues TEC-3267, TEC-3270, TEC-3301, TEC-3302, TEC-2465). Architecture borrows from Edentext (`src/lib/utils/zoom.ts`, `Editor.svelte`): a CSS-transform page plus a box that reserves the scaled footprint, a fixed scroll anchor, and chrome that keeps its own size.
+Status: implemented on branch TEC-3271 (sub-issues TEC-3267, TEC-3270, TEC-3301, TEC-3302, TEC-2465). Architecture borrows from Edentext (`src/lib/utils/zoom.ts`, `Editor.svelte`): a CSS-transform page plus a box that reserves the scaled footprint, a fixed scroll anchor, and chrome that keeps its own size.
 
 ## 1. Model
 
 - Zoom is `transform: scale(z)` on the page layer. Layout, wrapping, page count, print and export stay at 100%. Not CSS `zoom`: it changes what `getBoundingClientRect` returns, and that differs between browsers. ProseMirror's `coordsAtPos` / `posAtCoords` depend on those values.
 - Presets only: Fit, 50%, 75%, 100%, 125%, 150%, 200%. The value stays a string on the public API: `'fit'`, `'0.5'`, `'0.75'`, `'1'`, `'1.25'`, `'1.5'`, `'2'`.
 - Legacy and bad values: `'1.4'` (the old hard-coded Fit) reads as `'fit'`. Empty or unknown strings read as `'1'`. Normalisation happens at read time; the consumer's stored value is never rewritten.
-- Fit is the largest scale at which the page fits the canvas next to the floating comments, as in Google Docs: `(canvasWidth - leftRailWidth - commentColumn - 2 * gutter) / baseWidth`, clamped to `[0.5, 2]` and not snapped to a preset. *(The clamp, the gutter and the no-snap rule are design calls.)*
+- Fit is the largest scale at which the page fits the canvas next to the floating comments, as in Google Docs: `(canvasWidth - leftRail - commentColumn - 2 * gutter) / baseWidth`, clamped to `[0.5, 2]`, rounded to 2 decimals and not snapped to a preset. `gutter` is 24px. `leftRail` is 181px while the outline renders: the rail's min-content (148px outline + `px-4`), since the flexible rail cannot shrink below it. *(The clamp, the gutter and the no-snap rule are design calls.)*
 - `commentColumn` is the floating-comment slot beside the page: the `12px` slot gap + `FLOATING_CARD_WIDTH` (300px) + `FLOATING_COMMENT_RIGHT_SPACE` (48px) = 360px. The cards live outside the scaled layer, so the column does not scale. It counts only while floating comments are showing: the container renders (`shouldRender`) and is not hidden (drawer open or inline comments disabled). It is not mounted in focus mode. Otherwise it is `0`.
-- At Fit with the column showing, `.editor-comment-layout` reserves the column in flow (`margin-right: commentColumn`), so the page and the column centre as a pair and the cards are never clipped. Other presets keep today's layout. *(Design call.)*
+- At Fit, `.editor-comment-layout` gets `margin-right: gutter + commentColumn` (the column only while it shows). The flexible left rail absorbs all slack, so this margin is what keeps the right gutter and keeps the cards in view. Other presets keep today's layout: at 150% and 200% the column can sit past the canvas edge. *(Design call.)*
 - Fit recomputes when the canvas resizes (`use-canvas-metrics.ts` already observes it), on orientation change, and when the comment column appears or disappears. That last case means adding the first comment re-zooms, as in Google Docs. The scroll anchor (§4) keeps the reading position.
 - No zoom on mobile and none in Split View (both already render unscaled). Shortcuts do nothing there.
 
@@ -18,7 +18,8 @@ Status: design for TEC-3271 (sub-issues TEC-3267, TEC-3270, TEC-3301, TEC-3302, 
 - `Mod+=` goes to the next preset and `Mod+-` to the previous one. They step through the percentage presets only and never land on Fit. From Fit, the step goes to the nearest preset above or below the computed Fit scale. At either end of the list the shortcut does nothing (no wrap-around). *(Design call.)*
 - `Mod+=` and `Mod+-` always zoom the editor, wherever focus is, while a zoomable `DdocEditor` is mounted. They are bound on `window` (keydown) and `preventDefault` stops browser zoom.
 - Matched on `event.key` exactly `'='` or `'-'` with Shift up. `Mod++` (Shift+`=`) and `Mod+_` (Shift+`-`) are left to the browser, as is `Mod+0`.
-- When the editor cannot zoom (mobile, Split View), nothing is bound and the browser handles every key.
+- When the editor cannot zoom (mobile, Split View) or is presenting, nothing is bound and the browser handles every key.
+- The listener uses the capture phase, so editor keymaps cannot swallow the shortcut.
 - Not a ProseMirror keymap: zoom must also work when focus is in the toolbar, the rail or outside the editor.
 
 ## 3. Layout: the page box (fixes TEC-3267)
@@ -42,21 +43,22 @@ The cause, confirmed in the demo at 150%: the canvas colour sits on `#editor-wra
 Rule: UI chrome (block controls, bubble menu, floating toolbars) renders at its 100% size at every zoom and lines up with the scaled content it belongs to.
 
 - **Drag handle cause, confirmed:** Tiptap's `DragHandle` puts `.drag-handle` inside a zero-size `position: absolute` wrapper within the scaled layer. Floating-ui finds the offset parent's scale as `rect.width / offsetWidth`, which falls back to 1 for a zero-width element. It therefore writes viewport-pixel `top`/`left`, and the transform scales them again. At 150% the handle sat 97px below its block, and it renders 1.5× too big.
-- **Drag handle fix:** add a floating-ui `platform` override to `COMPUTE_POSITION_CONFIG` whose `getScale` returns the current zoom, read from the DOM with `getZoomScale` (§8), so the config stays a module constant and keeps its identity (see the comment on that constant). Counter-scale the cluster with `scale(1/z)` and `transform-origin: right center`, so it keeps its size and its right edge stays against the block. If the override does not hold across Tiptap's own handlers, the fallback is to render the cluster outside the scaled layer. The builder decides after a browser probe at 50% and 200%.
-- **Bubble menu:** counter-scale only when it is mounted inside the scaled layer (below 1280px, `appendTo` undefined). At 1280px and wider it is appended to `#editor-canvas`, which is unscaled, so the current unconditional `scale(1/z)` shrinks it above 100% and enlarges it below. (Read from the code; not yet seen in a browser.)
-- **Audit:** everything else that positions from rects inside the scaled layer is checked at 50% and 200%, on both schemas: table menus, media resize and caption, link preview, comment anchors and drawer, slash menu, caret scroll band, sync cursors, and the page-break overlay.
+- **Drag handle fix:** `COMPUTE_POSITION_CONFIG` carries `platform: zoomAwarePlatform` (`extensions/d-block/zoom-platform.ts`), a module constant, so the config keeps its identity. Overriding `getScale` alone is not enough: floating-ui measures the offset parent's scale with an internal helper in `getElementRects` and uses `platform.getScale` only for overflow clipping. So `zoomAwarePlatform` overrides both. Inside the layer, `getElementRects` divides the reference rect by `zoom / measuredScale`, which is a no-op if floating-ui ever measures the zoom itself.
+- **Cluster size:** `handleNodeChange` already writes the cluster's `transform` (the first-line offset), so the counter-scale goes into the same write: `getClusterTransform(lineHeight, z)` gives `translateY(offset) scale(1/z)` with `transform-origin: top right`, where the offset centres a `24/z` (layer units) cluster on the first line. A zoom change while hovering re-applies it.
+- **Bubble menu:** counter-scaled (`counterScaleStyle`) only below 1280px, where it mounts inside the layer. At 1280px and wider it is appended to the unscaled `#editor-canvas` and has no transform (seen in the browser: 46×625 at 100% and 200%).
+- **Audit:** slash, emoji and table-cell menus mount on `body`, and the comment bubble card on `#editor-canvas`, so they are unscaled. Caret scroll band, sync cursors and the page-break node view work in content or screen space. Floating comment cards line up with their anchors. The columns menu mounts inside the layer and is counter-scaled. Media resize divides the pointer delta by the zoom (`toLayoutDelta`).
 
 ## 6. Left rail (fixes TEC-3302)
 
 - When `scaledWidth > canvasWidth - leftWidth`, the canvas scrolls sideways. The rail is `sticky top-0` only, so it scrolls away with the page.
-- Make the rail `sticky left-0` as well, with an opaque background and its existing `z-[2]`, so the page slides under it. The rail stays inside the scroller, so the scrollbar stays at the container edge (layout contract in `AGENTS.md`).
+- Make the rail `sticky left-0` as well, with its existing `z-[2]`, so the page slides under it. Its background is the canvas's (`color-bg-secondary`, or `color-bg-default` when presenting, plus `documentStyling.background` outside focus mode). While the canvas scrolls sideways it also takes `min-height: var(--ddoc-canvas-h)`, so it covers the whole visible column and not only its content. The rail stays inside the scroller, so the scrollbar stays at the container edge (layout contract in `AGENTS.md`).
 - The right rail already hides through `shouldHideRight`.
 
 ## 7. State plumbing (TEC-2465, revised)
 
 - Zoom state already goes through `useControllableState` in `ddoc-editor.tsx`. What remains is the prop drilling and the `zoom-service.ts` singleton.
 - Add a `ZoomContext` provided in `ddoc-editor.tsx`: `{ zoomLevel, scale, setZoomLevel, stepZoom }`. `scale` is the resolved number, and for Fit it is the computed scale. The toolbar dropdown, fullscreen toolbar, bubble menu, drag handle and shortcuts read from it. *(Design call: a React context, not the per-instance zustand store the ticket proposed. The state lives in one hook, and the value only changes on a zoom change, which is when every consumer needs it.)*
-- Delete `zoom-service.ts` and its effect in `use-tab-editor.tsx`. It moves `.template-buttons` with `-translate-x-[300%]` at 200% through DOM class changes. The builder checks the empty-document template buttons at every preset without it. If they are misplaced, fix that in layout, not by changing classes.
+- Delete `zoom-service.ts` and its effect in `use-tab-editor.tsx`. It moved `.template-buttons` with `-translate-x-[300%]` at 200% through DOM class changes. Without it the empty-document chips stay at the page's top right and scale with the page, so at 200% on a canvas narrower than the page they need a sideways scroll, like the page's right half. *(Design call; the alternative is anchoring them after the placeholder.)*
 - Public API unchanged: `zoomLevel`, `onZoomLevelChange`, and the deprecated `setZoomLevel`.
 
 ## 8. Pages mode (TEC-3006)
