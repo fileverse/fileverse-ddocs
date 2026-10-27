@@ -62,9 +62,7 @@ export interface CommentCardProps extends IComment {
   isCommentDrawerContext?: boolean;
 }
 
-export type CommentBubbleMenuProps = Omit<BubbleMenuProps, 'children'> & {
-  zoomLevel: string;
-};
+export type CommentBubbleMenuProps = Omit<BubbleMenuProps, 'children'>;
 
 export interface CommentReplyProps {
   commentId: string;

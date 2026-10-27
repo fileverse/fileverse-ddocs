@@ -38,6 +38,7 @@ import {
 import { useMobileToolbarStore } from '../../stores/mobile-toolbar-store';
 import { Editor } from '@tiptap/react';
 import { useEditorContext } from '../../context/editor-context';
+import { useZoom } from '../../hooks/use-zoom';
 
 const MemoizedFontSizePicker = React.memo(FontSizePicker);
 const MemoizedLineHeightPicker = React.memo(LineHeightPicker);
@@ -46,7 +47,6 @@ const BUBBLE_MENU_Z_INDEX = '61';
 const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   const {
     editor,
-    zoomLevel,
     onError,
     isPreviewMode,
     setCommentDrawerOpen,
@@ -66,6 +66,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   const onSetLineHeight = editor ? editorStates.onSetLineHeight : () => {};
   const { isBelow1280px, isNativeMobile } = useResponsive();
   const { isFocusMode } = useEditorContext();
+  const { scale } = useZoom();
   const shouldUseFloatingComments = !isBelow1280px && !isNativeMobile;
   const { toolRef, setToolVisibility, toolVisibility } = useEditorToolbar({
     editor: editor ?? null,
@@ -323,7 +324,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
         isNativeMobile ? '!-translate-y-[120%]' : '',
       )}
       style={{
-        transform: `scale(${1 / parseFloat(zoomLevel)})`,
+        transform: `scale(${1 / scale})`,
         transformOrigin: 'center',
       }}
     >

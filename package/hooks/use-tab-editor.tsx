@@ -33,7 +33,6 @@ import customTextInputRules from '../extensions/customTextInputRules';
 import { PageBreak } from '../extensions/page-break/page-break';
 import { toUint8Array } from 'js-base64';
 import { isJSONString } from '../utils/isJsonString';
-import { zoomService } from '../zoom-service';
 import { sanitizeContent } from '../utils/sanitize-content';
 import { CommentExtension as Comment } from '../extensions/comment';
 import {
@@ -231,7 +230,6 @@ interface UseTabEditorArgs {
   setIsContentLoading: Dispatch<SetStateAction<boolean>>;
   setIsCollabContentLoading: Dispatch<SetStateAction<boolean>>;
   unFocused?: boolean;
-  zoomLevel?: string;
   isPresentationMode?: boolean;
   onInvalidContentError?: DdocProps['onInvalidContentError'];
   ignoreCorruptedData?: boolean;
@@ -284,7 +282,6 @@ export const useTabEditor = ({
   setIsContentLoading,
   setIsCollabContentLoading,
   unFocused,
-  zoomLevel,
   isPresentationMode,
   onInvalidContentError,
   ignoreCorruptedData,
@@ -864,9 +861,6 @@ export const useTabEditor = ({
         }
       }
 
-      if (zoomLevel) {
-        zoomService.setZoom(zoomLevel);
-      }
       if (isVersionMode) {
         versionHydrationKeyRef.current = hydrationKey;
         setIsContentLoading(false);
@@ -898,7 +892,6 @@ export const useTabEditor = ({
     collabEnabled,
     editor,
     ydoc,
-    zoomLevel,
     isVersionMode,
     hasTabState,
     activeTabId,
@@ -927,19 +920,6 @@ export const useTabEditor = ({
     collaboration,
     collaborationCleanupRef,
   });
-
-  // ZOOM handler
-  useEffect(() => {
-    if (!zoomLevel) return;
-
-    zoomService.setZoom(zoomLevel);
-
-    const timeoutId = window.setTimeout(() => {
-      zoomService.setZoom(zoomLevel);
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [zoomLevel, isContentLoading, initialContent, editor?.isEmpty]);
 
   // FOR REAL TIME TEXT STYLE CLEANUP WHEN PASTING
   useEffect(() => {

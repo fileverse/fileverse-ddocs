@@ -35,8 +35,6 @@ const TiptapToolBar = ({
   isPresentationMode,
   setIsPresentationMode,
   enableCollaboration,
-  zoomLevel,
-  setZoomLevel,
   isNavbarVisible,
   setIsNavbarVisible,
   showNavbarToggle = true,
@@ -65,8 +63,6 @@ const TiptapToolBar = ({
   isPresentationMode?: boolean;
   setIsPresentationMode: () => void;
   enableCollaboration?: boolean;
-  zoomLevel: string;
-  setZoomLevel: (zoom: string) => void;
   isNavbarVisible: boolean;
   setIsNavbarVisible: React.Dispatch<React.SetStateAction<boolean>>;
   showNavbarToggle?: boolean;
@@ -229,7 +225,7 @@ const TiptapToolBar = ({
         </div>
 
         {/* Zoom Levels Dropdown */}
-        <ZoomLevelDropdown zoomLevel={zoomLevel} setZoomLevel={setZoomLevel} />
+        <ZoomLevelDropdown />
 
         <div className="w-[1px] h-4 vertical-divider mx-1"></div>
 

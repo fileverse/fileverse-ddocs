@@ -20,7 +20,6 @@ export type EditorBubbleMenuProps = Omit<BubbleMenuProps, 'children'> & {
   isPreviewMode: boolean;
   disableInlineComment: boolean;
   onError?: (errorString: string) => void;
-  zoomLevel: string;
   setIsCommentSectionOpen?: (isOpen: boolean) => void;
   inlineCommentData?: InlineCommentData;
   setInlineCommentData?: React.Dispatch<
