@@ -18,6 +18,7 @@ export interface CommentFloatingContainerProps {
   scrollContainerRef: RefObject<HTMLDivElement>;
   tabName: string;
   isHidden: boolean;
+  onVisibleChange?: (visible: boolean) => void;
 }
 
 export interface FloatingCardShellProps {

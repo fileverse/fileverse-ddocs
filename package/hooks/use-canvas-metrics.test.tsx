@@ -32,16 +32,22 @@ describe('computeWidthDecisions', () => {
 
 let size = { width: 1000, height: 600 };
 let renders = 0;
-let latest = { shouldHideRight: false, shouldScroll: false };
+let latest = { shouldHideRight: false, shouldScroll: false, fitScale: 1 };
 
 const Harness = ({
   scaledWidth,
   leftWidth,
   widthStore,
+  baseWidth = 850,
+  fitReservedWidth = 0,
+  isFit = false,
 }: {
   scaledWidth: number;
   leftWidth: number;
   widthStore?: EditorWidthStore;
+  baseWidth?: number;
+  fitReservedWidth?: number;
+  isFit?: boolean;
 }) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -52,6 +58,9 @@ const Harness = ({
     scaledWidth,
     leftWidth,
     widthStore,
+    baseWidth,
+    fitReservedWidth,
+    isFit,
   });
   return (
     <div
@@ -113,12 +122,18 @@ describe('useCanvasMetrics', () => {
     const root = getByTestId('root');
     expect(root.style.getPropertyValue('--ddoc-canvas-w')).toBe('1000px');
     expect(root.style.getPropertyValue('--ddoc-canvas-h')).toBe('600px');
-    expect(latest).toEqual({ shouldHideRight: true, shouldScroll: false });
+    expect(latest).toMatchObject({
+      shouldHideRight: true,
+      shouldScroll: false,
+    });
   });
 
   it('re-renders only when a decision changes', () => {
     const resize = installObserver();
-    const { getByTestId } = render(<Harness scaledWidth={850} leftWidth={0} />);
+    // A small base width keeps fitScale clamped at 2 across the resize.
+    const { getByTestId } = render(
+      <Harness scaledWidth={850} leftWidth={0} baseWidth={100} />,
+    );
     const settled = renders;
     size = { width: 950, height: 600 };
     resize();
@@ -159,5 +174,63 @@ describe('useCanvasMetrics', () => {
     size = { width: 500, height: 600 };
     resize();
     expect(store.get()).toBe(500);
+  });
+
+  it('reports fitScale from the canvas width', () => {
+    installObserver();
+    size = { width: 1400, height: 600 };
+    render(
+      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+    );
+    expect(latest.fitScale).toBe(1.42);
+  });
+
+  it('re-renders when only fitScale changes', () => {
+    const resize = installObserver();
+    size = { width: 1400, height: 600 };
+    render(
+      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+    );
+    const settled = renders;
+    const { shouldHideRight, shouldScroll } = latest;
+    size = { width: 1300, height: 600 };
+    resize();
+    expect(renders).toBe(settled + 1);
+    expect(latest).toEqual({ shouldHideRight, shouldScroll, fitScale: 1.3 });
+  });
+
+  it('fitScale follows the reserve', () => {
+    installObserver();
+    size = { width: 1400, height: 600 };
+    const { rerender } = render(
+      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+    );
+    rerender(
+      <Harness
+        scaledWidth={850}
+        leftWidth={148}
+        fitReservedWidth={196 + 360}
+      />,
+    );
+    expect(latest.fitScale).toBe(0.99);
+  });
+
+  it('decides the rails from the fit width at Fit', () => {
+    installObserver();
+    size = { width: 1400, height: 600 };
+    const { rerender } = render(
+      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+    );
+    expect(latest.shouldHideRight).toBe(false);
+    rerender(
+      <Harness
+        scaledWidth={850}
+        leftWidth={148}
+        fitReservedWidth={196}
+        isFit
+      />,
+    );
+    expect(latest.shouldHideRight).toBe(true);
+    expect(latest.shouldScroll).toBe(false);
   });
 });

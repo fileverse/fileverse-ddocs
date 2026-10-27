@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { EditorWidthStore } from '../utils/editor-width-store';
+import { computeFitScale } from '../utils/zoom';
 
 const RAIL_WIDTH = 148;
 
@@ -19,7 +20,9 @@ export const computeWidthDecisions = (
   shouldScroll: scaledWidth > width - leftWidth,
 });
 
-type WidthDecisions = ReturnType<typeof computeWidthDecisions>;
+type WidthDecisions = ReturnType<typeof computeWidthDecisions> & {
+  fitScale: number;
+};
 
 export const useCanvasMetrics = ({
   canvasRef,
@@ -27,17 +30,31 @@ export const useCanvasMetrics = ({
   scaledWidth,
   leftWidth,
   widthStore,
+  baseWidth,
+  fitReservedWidth,
+  isFit = false,
 }: {
   canvasRef: RefObject<HTMLElement | null>;
   rootRef: RefObject<HTMLElement | null>;
   scaledWidth: number;
   leftWidth: number;
   widthStore?: EditorWidthStore;
+  baseWidth: number;
+  fitReservedWidth: number;
+  // At Fit the page width comes from the measured fitScale, not scaledWidth.
+  isFit?: boolean;
 }): WidthDecisions => {
-  const [decisions, setDecisions] = useState<WidthDecisions>(() =>
-    computeWidthDecisions(0, scaledWidth, leftWidth),
-  );
-  const inputsRef = useRef({ scaledWidth, leftWidth });
+  const [decisions, setDecisions] = useState<WidthDecisions>(() => ({
+    ...computeWidthDecisions(0, scaledWidth, leftWidth),
+    fitScale: 1,
+  }));
+  const inputsRef = useRef({
+    scaledWidth,
+    leftWidth,
+    baseWidth,
+    fitReservedWidth,
+    isFit,
+  });
   const decisionsRef = useRef(decisions);
 
   const measure = useCallback(() => {
@@ -48,15 +65,25 @@ export const useCanvasMetrics = ({
     root?.style.setProperty('--ddoc-canvas-w', `${canvas.clientWidth}px`);
     root?.style.setProperty('--ddoc-canvas-h', `${canvas.clientHeight}px`);
     if (root) widthStore?.set(root.clientWidth);
-    const next = computeWidthDecisions(
+    const inputs = inputsRef.current;
+    const fitScale = computeFitScale(
       canvas.clientWidth,
-      inputsRef.current.scaledWidth,
-      inputsRef.current.leftWidth,
+      inputs.baseWidth,
+      inputs.fitReservedWidth,
     );
+    const next = {
+      ...computeWidthDecisions(
+        canvas.clientWidth,
+        inputs.isFit ? inputs.baseWidth * fitScale : inputs.scaledWidth,
+        inputs.leftWidth,
+      ),
+      fitScale,
+    };
     const prev = decisionsRef.current;
     if (
       prev.shouldHideRight === next.shouldHideRight &&
-      prev.shouldScroll === next.shouldScroll
+      prev.shouldScroll === next.shouldScroll &&
+      prev.fitScale === next.fitScale
     )
       return;
     decisionsRef.current = next;
@@ -64,9 +91,15 @@ export const useCanvasMetrics = ({
   }, [canvasRef, rootRef, widthStore]);
 
   useLayoutEffect(() => {
-    inputsRef.current = { scaledWidth, leftWidth };
+    inputsRef.current = {
+      scaledWidth,
+      leftWidth,
+      baseWidth,
+      fitReservedWidth,
+      isFit,
+    };
     measure();
-  }, [scaledWidth, leftWidth, measure]);
+  }, [scaledWidth, leftWidth, baseWidth, fitReservedWidth, isFit, measure]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

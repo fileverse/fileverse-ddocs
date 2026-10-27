@@ -88,7 +88,12 @@ import { useControllableState } from './hooks/use-controllable-state';
 import { useCanvasMetrics } from './hooks/use-canvas-metrics';
 import { ZoomProvider } from './hooks/use-zoom';
 import { useZoomedPage } from './hooks/use-zoomed-page';
-import { normalizeZoomLevel, resolveZoomScale } from './utils/zoom';
+import {
+  COMMENT_COLUMN_WIDTH,
+  FIT_GUTTER,
+  normalizeZoomLevel,
+  resolveZoomScale,
+} from './utils/zoom';
 import {
   EditorWidthContext,
   useEditorMediaQuery,
@@ -796,14 +801,13 @@ const DdocEditor = forwardRef(
         {},
       );
     }, [initialComments]);
+    const [isCommentColumnVisible, setIsCommentColumnVisible] = useState(false);
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
     const zoomLevel = normalizeZoomLevel(rawZoomLevel);
-    const fitScale = 1;
-    const zoom =
-      isMobile || isSplitViewActive ? 1 : resolveZoomScale(zoomLevel, fitScale);
-    const scaledWidth = baseWidth * zoom;
+    const isZoomEnabled = !isMobile && !isSplitViewActive;
+    const isFit = isZoomEnabled && zoomLevel === 'fit';
     const shouldRenderDocumentOutline =
       // Hidden in Split View — the right pane has its own tabs panel (the
       // List button in the split header), so the editor's native left rail
@@ -814,13 +818,24 @@ const DdocEditor = forwardRef(
       (!isFocusMode || showTOC);
 
     const leftWidth = shouldRenderDocumentOutline ? 148 : 0;
-    const { shouldHideRight, shouldScroll } = useCanvasMetrics({
+    // The rail cannot shrink below its outline's min-content (148 + px-4).
+    const fitReservedWidth =
+      (shouldRenderDocumentOutline ? 181 : 0) +
+      (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0) +
+      2 * FIT_GUTTER;
+    const { shouldHideRight, shouldScroll, fitScale } = useCanvasMetrics({
       canvasRef,
       rootRef,
-      scaledWidth,
+      scaledWidth:
+        baseWidth * (isZoomEnabled ? resolveZoomScale(zoomLevel, 1) : 1),
       leftWidth,
       widthStore: isContainerQueryRoot ? editorWidthStore : undefined,
+      baseWidth,
+      fitReservedWidth,
+      isFit,
     });
+    const zoom = isZoomEnabled ? resolveZoomScale(zoomLevel, fitScale) : 1;
+    const scaledWidth = baseWidth * zoom;
 
     // The scroller is the canvas, except in Split View where it stays on the
     // inner wrapper. The ref object
@@ -1145,14 +1160,18 @@ const DdocEditor = forwardRef(
                       )}
                       // Visual-only lift for the mobile focused-thread case.
                       // The actual scroll position still lives on the container.
-                      style={
-                        isBelow1280px
-                          ? {
-                              transform:
-                                'translateY(var(--mobile-comment-drawer-canvas-offset, 0px))',
-                            }
-                          : undefined
-                      }
+                      style={{
+                        ...(isBelow1280px && {
+                          transform:
+                            'translateY(var(--mobile-comment-drawer-canvas-offset, 0px))',
+                        }),
+                        // The rail absorbs the left gutter; this keeps the right one.
+                        ...(isFit && {
+                          marginRight:
+                            FIT_GUTTER +
+                            (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0),
+                        }),
+                      }}
                     >
                       {isMobile && isPreviewMode && (
                         <p className="text-center color-text-secondary text-helper-text-sm flex gap-2 items-center justify-center py-1.5">
@@ -1477,6 +1496,7 @@ const DdocEditor = forwardRef(
                               Boolean(commentDrawerOpen) ||
                               Boolean(disableInlineComment)
                             }
+                            onVisibleChange={setIsCommentColumnVisible}
                           />
                         </div>
                       )}
