@@ -4,6 +4,7 @@ import { Editor } from '@tiptap/react';
 import { makeEditor } from '../../utils/make-editor';
 import {
   DBlockDragHandle,
+  getClusterTransform,
   rescueLeafBlockDragStart,
   resolveTopLevelBlock,
 } from './dblock-drag-handle';
@@ -299,5 +300,21 @@ describe('DBlockDragHandle', () => {
     } catch {
       // expected
     }
+  });
+});
+
+describe('getClusterTransform', () => {
+  it('leaves a short line untouched at 100%', () => {
+    expect(getClusterTransform(24, 1)).toBe('');
+    expect(getClusterTransform(Number.NaN, 1)).toBe('');
+  });
+  it('centres the cluster on a tall first line', () => {
+    expect(getClusterTransform(40, 1)).toBe('translateY(8px)');
+  });
+  it('counter-scales and centres in layer units when zoomed in', () => {
+    expect(getClusterTransform(40, 2)).toBe('translateY(14px) scale(0.5)');
+  });
+  it('counter-scales without an offset when the cluster outgrows the line', () => {
+    expect(getClusterTransform(24, 0.5)).toBe('scale(2)');
   });
 });

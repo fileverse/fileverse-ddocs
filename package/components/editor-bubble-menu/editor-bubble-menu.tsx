@@ -323,10 +323,13 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
           : '!visible',
         isNativeMobile ? '!-translate-y-[120%]' : '',
       )}
-      style={{
-        transform: `scale(${1 / scale})`,
-        transformOrigin: 'center',
-      }}
+      // Counter-scaled only inside the scaled page; at 1280px and wider it is
+      // appended to the unscaled canvas.
+      style={
+        isBelow1280px
+          ? { transform: `scale(${1 / scale})`, transformOrigin: 'center' }
+          : undefined
+      }
     >
       {isNativeMobile ? (
         <div

@@ -16,6 +16,8 @@ import {
 import { wrapBlockNode } from '../../utils/block-schema';
 import type { DBlockRuntimeState } from './dblock-runtime';
 import { DBlockMenu } from './components/menu';
+import { zoomAwarePlatform } from './zoom-platform';
+import { useZoom } from '../../hooks/use-zoom';
 import {
   CollapseButton,
   CopyLinkButton,
@@ -36,7 +38,7 @@ interface HoveredBlock {
 
 const CLUSTER_HEIGHT = 24;
 
-const getFirstLineOffset = (editor: Editor, pos: number): number => {
+const getFirstLineHeight = (editor: Editor, pos: number): number => {
   try {
     // v1: nodeDOM(pos) → div[data-type=d-block] → div[data-node-view-content]
     // → the actual block element (p/hN/ul/...). In the flat schema there is no
@@ -47,15 +49,26 @@ const getFirstLineOffset = (editor: Editor, pos: number): number => {
       domNode?.querySelector<HTMLElement>('[data-node-view-content] > *') ??
       domNode ??
       null;
-    const lineHeight = blockEl
-      ? parseFloat(getComputedStyle(blockEl).lineHeight)
-      : NaN;
-    return Number.isFinite(lineHeight) && lineHeight > CLUSTER_HEIGHT
-      ? Math.round((lineHeight - CLUSTER_HEIGHT) / 2)
-      : 0;
+    return blockEl ? parseFloat(getComputedStyle(blockEl).lineHeight) : NaN;
   } catch {
-    return 0;
+    return NaN;
   }
+};
+
+// Centres the cluster on the first line and counter-scales it so it keeps its
+// 100% size inside the zoomed page (docs/ZOOM.md §5). Units are the layer's.
+export const getClusterTransform = (lineHeight: number, scale: number) => {
+  const clusterHeight = CLUSTER_HEIGHT / scale;
+  const offset =
+    Number.isFinite(lineHeight) && lineHeight > clusterHeight
+      ? Math.round((lineHeight - clusterHeight) / 2)
+      : 0;
+  return [
+    offset ? `translateY(${offset}px)` : '',
+    scale !== 1 ? `scale(${1 / scale})` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 };
 
 // The DragHandle plugin always targets the depth-1 (top-level) node, so
@@ -142,7 +155,10 @@ export const rescueLeafBlockDragStart = (
 // plugin on every render, which resets the handle to `visibility: hidden`
 // each time (see `hideHandle()` in the plugin's `view()` factory) — the
 // handle would never stay visible.
-const COMPUTE_POSITION_CONFIG = { placement: 'left-start' as const };
+const COMPUTE_POSITION_CONFIG = {
+  placement: 'left-start' as const,
+  platform: zoomAwarePlatform,
+};
 
 export const DBlockDragHandle = ({
   editor,
@@ -156,6 +172,9 @@ export const DBlockDragHandle = ({
   const [hovered, setHovered] = useState<HoveredBlock | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const clusterRef = useRef<HTMLDivElement | null>(null);
+  const { scale } = useZoom();
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
   // 767, not 768: the container padding widens at min-width 768px, so a
   // max-width gate of 768 would leave exactly-768px viewports with the wide
   // gutter and no controls in it.
@@ -193,11 +212,11 @@ export const DBlockDragHandle = ({
         // the cluster at the block top before the offset corrects it.
         // Writing the transform here keeps both style writes inside one
         // task, so they always paint together.
-        const offset = getFirstLineOffset(dragHandleEditor, pos);
         if (clusterRef.current) {
-          clusterRef.current.style.transform = offset
-            ? `translateY(${offset}px)`
-            : '';
+          clusterRef.current.style.transform = getClusterTransform(
+            getFirstLineHeight(dragHandleEditor, pos),
+            scaleRef.current,
+          );
         }
       }
       setHovered((prev) => {
@@ -212,6 +231,15 @@ export const DBlockDragHandle = ({
   useEffect(() => {
     setMenuOpen(false);
   }, [hovered?.pos]);
+
+  // A zoom change while a block is hovered re-scales the cluster in place.
+  useEffect(() => {
+    if (!hovered || !clusterRef.current) return;
+    clusterRef.current.style.transform = getClusterTransform(
+      getFirstLineHeight(editor, hovered.pos),
+      scale,
+    );
+  }, [editor, hovered, scale]);
 
   // Native (not React-synthetic) listener: the DragHandle plugin physically
   // relocates our rendered element outside the React root, so synthetic
@@ -330,11 +358,14 @@ export const DBlockDragHandle = ({
         ref={clusterRef}
         aria-label="block-controls"
         className={cn('flex h-6 items-center justify-end gap-0.5 pr-2')}
-        style={
-          isPageBreakHovered
-            ? { visibility: 'hidden', pointerEvents: 'none' }
-            : undefined
-        }
+        style={{
+          ...(isPageBreakHovered && {
+            visibility: 'hidden',
+            pointerEvents: 'none',
+          }),
+          // The transform itself is written in handleNodeChange.
+          transformOrigin: 'top right',
+        }}
       >
         {shouldShowEditingControls ? (
           <>
