@@ -78,3 +78,13 @@ export const anchorScroll = (
   scroll > layerStart
     ? layerStart + ((scroll - layerStart) * nextScale) / prevScale
     : scroll;
+
+// For chrome mounted inside the scaled layer: keeps its 100% size.
+export const counterScaleStyle = (scale: number) =>
+  scale === 1
+    ? undefined
+    : { transform: `scale(${1 / scale})`, transformOrigin: 'center' };
+
+// Pointer deltas are screen pixels; widths inside the layer are layer units.
+export const toLayoutDelta = (screenDelta: number, node: Element | null) =>
+  screenDelta / getZoomScale(node);

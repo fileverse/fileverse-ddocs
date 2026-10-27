@@ -39,6 +39,7 @@ import { useMobileToolbarStore } from '../../stores/mobile-toolbar-store';
 import { Editor } from '@tiptap/react';
 import { useEditorContext } from '../../context/editor-context';
 import { useZoom } from '../../hooks/use-zoom';
+import { counterScaleStyle } from '../../utils/zoom';
 
 const MemoizedFontSizePicker = React.memo(FontSizePicker);
 const MemoizedLineHeightPicker = React.memo(LineHeightPicker);
@@ -325,11 +326,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
       )}
       // Counter-scaled only inside the scaled page; at 1280px and wider it is
       // appended to the unscaled canvas.
-      style={
-        isBelow1280px
-          ? { transform: `scale(${1 / scale})`, transformOrigin: 'center' }
-          : undefined
-      }
+      style={isBelow1280px ? counterScaleStyle(scale) : undefined}
     >
       {isNativeMobile ? (
         <div

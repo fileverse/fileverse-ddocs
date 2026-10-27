@@ -3,10 +3,12 @@ import {
   anchorScroll,
   COMMENT_COLUMN_WIDTH,
   computeFitScale,
+  counterScaleStyle,
   getZoomScale,
   normalizeZoomLevel,
   resolveZoomScale,
   stepZoomLevel,
+  toLayoutDelta,
 } from './zoom';
 import { zoomLevels } from '../constants/zoom';
 
@@ -99,4 +101,23 @@ describe('anchorScroll', () => {
   it('leaves a scroll above the layer alone', () => {
     expect(anchorScroll(50, 100, 1, 2)).toBe(50);
   });
+});
+
+describe('counterScaleStyle', () => {
+  it('is empty at 100%', () => {
+    expect(counterScaleStyle(1)).toBeUndefined();
+  });
+  it('undoes the page scale around the centre', () => {
+    expect(counterScaleStyle(2)).toEqual({
+      transform: 'scale(0.5)',
+      transformOrigin: 'center',
+    });
+  });
+});
+
+it('toLayoutDelta converts a pointer delta into layer units', () => {
+  document.body.innerHTML =
+    '<div data-ddoc-zoom-layer data-ddoc-zoom="2"><img id="m" /></div><img id="o" />';
+  expect(toLayoutDelta(100, document.getElementById('m'))).toBe(50);
+  expect(toLayoutDelta(100, document.getElementById('o'))).toBe(100);
 });

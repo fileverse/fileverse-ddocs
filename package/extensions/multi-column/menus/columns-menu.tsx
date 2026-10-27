@@ -7,9 +7,13 @@ import { Toolbar } from '../../../common/toolbar';
 import { MenuProps } from '../../../common/types';
 import ToolbarButton from '../../../common/toolbar-button';
 import { useEditingContext } from '../../../hooks/use-editing-context';
+import { useZoom } from '../../../hooks/use-zoom';
+import { counterScaleStyle } from '../../../utils/zoom';
 
 export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
   const { isSuggestionMode } = useEditingContext();
+  // Mounted inside the scaled page (appendTo is the zoom layer).
+  const { scale } = useZoom();
 
   const getReferenceClientRect = useCallback(() => {
     const renderContainer = getRenderContainer(editor, 'columns');
@@ -52,6 +56,7 @@ export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
         flip: true,
       }}
       appendTo={() => appendTo?.current}
+      style={counterScaleStyle(scale)}
       getReferencedVirtualElement={() => getReferenceClientRect()}
     >
       <Toolbar.Wrapper className="border color-border-default shadow-elevation-3">

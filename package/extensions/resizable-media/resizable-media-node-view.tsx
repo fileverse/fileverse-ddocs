@@ -10,6 +10,7 @@ import ToolbarButton from '../../common/toolbar-button';
 import { SecureImage } from '../../components/secure-image.tsx';
 import { SecureImageV2 } from '../../components/secure-image-v2.tsx';
 import { IpfsImageFetchPayload } from '../../types.ts';
+import { toLayoutDelta } from '../../utils/zoom';
 interface WidthAndHeight {
   width: number;
   height: number;
@@ -282,7 +283,10 @@ export const getResizableMediaNodeView =
         diff > 0 ? 'left' : 'right';
 
       setTimeout(() => {
-        onHorizontalResize(directionOfMouseMove, Math.abs(diff));
+        onHorizontalResize(
+          directionOfMouseMove,
+          toLayoutDelta(Math.abs(diff), resizableImgRef.current),
+        );
         lastClientXRef.current = clientX;
       });
     };
