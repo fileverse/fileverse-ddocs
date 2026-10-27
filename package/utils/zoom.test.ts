@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  anchorScroll,
   COMMENT_COLUMN_WIDTH,
   computeFitScale,
   getZoomScale,
@@ -88,4 +89,14 @@ it('lists the seven presets in order', () => {
     '200%',
   ]);
   expect(zoomLevels[0].value).toBe('fit');
+});
+
+describe('anchorScroll', () => {
+  it('scales the distance past the layer start', () => {
+    expect(anchorScroll(1600, 100, 1, 2)).toBe(3100);
+    expect(anchorScroll(3100, 100, 2, 1)).toBe(1600);
+  });
+  it('leaves a scroll above the layer alone', () => {
+    expect(anchorScroll(50, 100, 1, 2)).toBe(50);
+  });
 });

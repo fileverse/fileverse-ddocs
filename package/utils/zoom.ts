@@ -66,3 +66,15 @@ export const getZoomScale = (node: Element | null) => {
   );
   return Number.isFinite(value) && value > 0 ? value : 1;
 };
+
+// Keeps the document point at the scroller's edge in place across a scale
+// change. `layerStart` is the layer's offset in scroll-content coordinates.
+export const anchorScroll = (
+  scroll: number,
+  layerStart: number,
+  prevScale: number,
+  nextScale: number,
+) =>
+  scroll > layerStart
+    ? layerStart + ((scroll - layerStart) * nextScale) / prevScale
+    : scroll;
