@@ -180,36 +180,52 @@ describe('useCanvasMetrics', () => {
     installObserver();
     size = { width: 1400, height: 600 };
     render(
-      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+      <Harness
+        scaledWidth={850}
+        leftWidth={148}
+        fitReservedWidth={196}
+        isFit
+      />,
     );
-    expect(latest.fitScale).toBe(1.42);
+    expect(latest.fitScale).toBe(1.41);
   });
 
   it('re-renders when only fitScale changes', () => {
     const resize = installObserver();
     size = { width: 1400, height: 600 };
     render(
-      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+      <Harness
+        scaledWidth={850}
+        leftWidth={148}
+        fitReservedWidth={196}
+        isFit
+      />,
     );
     const settled = renders;
     const { shouldHideRight, shouldScroll } = latest;
     size = { width: 1300, height: 600 };
     resize();
     expect(renders).toBe(settled + 1);
-    expect(latest).toEqual({ shouldHideRight, shouldScroll, fitScale: 1.3 });
+    expect(latest).toEqual({ shouldHideRight, shouldScroll, fitScale: 1.29 });
   });
 
   it('fitScale follows the reserve', () => {
     installObserver();
     size = { width: 1400, height: 600 };
     const { rerender } = render(
-      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+      <Harness
+        scaledWidth={850}
+        leftWidth={148}
+        fitReservedWidth={196}
+        isFit
+      />,
     );
     rerender(
       <Harness
         scaledWidth={850}
         leftWidth={148}
         fitReservedWidth={196 + 360}
+        isFit
       />,
     );
     expect(latest.fitScale).toBe(0.99);
@@ -232,5 +248,17 @@ describe('useCanvasMetrics', () => {
     );
     expect(latest.shouldHideRight).toBe(true);
     expect(latest.shouldScroll).toBe(false);
+  });
+
+  it('does not re-render on resize for fitScale when not at Fit', () => {
+    const resize = installObserver();
+    size = { width: 1400, height: 600 };
+    render(
+      <Harness scaledWidth={850} leftWidth={148} fitReservedWidth={196} />,
+    );
+    const settled = renders;
+    size = { width: 1300, height: 600 };
+    resize();
+    expect(renders).toBe(settled);
   });
 });

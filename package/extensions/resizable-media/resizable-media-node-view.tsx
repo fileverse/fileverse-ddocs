@@ -11,6 +11,7 @@ import { SecureImage } from '../../components/secure-image.tsx';
 import { SecureImageV2 } from '../../components/secure-image-v2.tsx';
 import { IpfsImageFetchPayload } from '../../types.ts';
 import { toLayoutDelta } from '../../utils/zoom';
+import { getCornerResizeStep } from './corner-resize';
 interface WidthAndHeight {
   width: number;
   height: number;
@@ -358,24 +359,16 @@ export const getResizableMediaNodeView =
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       lastClientXRef.current = clientX;
 
-      const direction: 'left' | 'right' =
-        corner === 'tl' || corner === 'bl' ? 'left' : 'right';
-
       const handleMove = (ev: MouseEvent | TouchEvent) => {
         const currentX = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
-        const diff = lastClientXRef.current - currentX;
-        if (diff === 0) return;
-
-        const actualDirection: 'left' | 'right' =
-          direction === 'left'
-            ? diff > 0
-              ? 'right'
-              : 'left'
-            : diff > 0
-              ? 'left'
-              : 'right';
-
-        onHorizontalResize(actualDirection, Math.abs(diff));
+        const step = getCornerResizeStep(
+          corner,
+          lastClientXRef.current,
+          currentX,
+          resizableImgRef.current,
+        );
+        if (!step) return;
+        onHorizontalResize(step.direction, step.delta);
         lastClientXRef.current = currentX;
       };
 

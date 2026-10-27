@@ -7,9 +7,9 @@ Status: implemented on branch TEC-3271 (sub-issues TEC-3267, TEC-3270, TEC-3301,
 - Zoom is `transform: scale(z)` on the page layer. Layout, wrapping, page count, print and export stay at 100%. Not CSS `zoom`: it changes what `getBoundingClientRect` returns, and that differs between browsers. ProseMirror's `coordsAtPos` / `posAtCoords` depend on those values.
 - Presets only: Fit, 50%, 75%, 100%, 125%, 150%, 200%. The value stays a string on the public API: `'fit'`, `'0.5'`, `'0.75'`, `'1'`, `'1.25'`, `'1.5'`, `'2'`.
 - Legacy and bad values: `'1.4'` (the old hard-coded Fit) reads as `'fit'`. Empty or unknown strings read as `'1'`. Normalisation happens at read time; the consumer's stored value is never rewritten.
-- Fit is the largest scale at which the page fits the canvas next to the floating comments, as in Google Docs: `(canvasWidth - leftRail - commentColumn - 2 * gutter) / baseWidth`, clamped to `[0.5, 2]`, rounded to 2 decimals and not snapped to a preset. `gutter` is 24px. `leftRail` is 181px while the outline renders: the rail's min-content (148px outline + `px-4`), since the flexible rail cannot shrink below it. *(The clamp, the gutter and the no-snap rule are design calls.)*
+- Fit is the largest scale at which the page fits the canvas next to the floating comments, as in Google Docs: `(canvasWidth - leftRail - commentColumn - 2 * gutter) / baseWidth`, clamped to `[0.5, 2]`, rounded down to 2 decimals (so a rounding pixel never overflows) and not snapped to a preset. `gutter` is 24px. `leftRail` is 181px while the outline renders in the rail (1280px and wider): the rail's min-content (148px outline + `px-4`), since the flexible rail cannot shrink below it. Below 1280px the tabs move to the bottom panel and `leftRail` is 0. *(The clamp, the gutter and the no-snap rule are design calls.)*
 - `commentColumn` is the floating-comment slot beside the page: the `12px` slot gap + `FLOATING_CARD_WIDTH` (300px) + `FLOATING_COMMENT_RIGHT_SPACE` (48px) = 360px. The cards live outside the scaled layer, so the column does not scale. It counts only while floating comments are showing: the container renders (`shouldRender`) and is not hidden (drawer open or inline comments disabled). It is not mounted in focus mode. Otherwise it is `0`.
-- At Fit, `.editor-comment-layout` gets `margin-right: gutter + commentColumn` (the column only while it shows). The flexible left rail absorbs all slack, so this margin is what keeps the right gutter and keeps the cards in view. Other presets keep today's layout: at 150% and 200% the column can sit past the canvas edge. *(Design call.)*
+- At Fit, `.editor-comment-layout` gets `margin-right: gutter + commentColumn` (the column only while it shows). The flexible left rail absorbs all slack, so this margin is what keeps the right gutter and keeps the cards in view. With no rail it also gets `margin-left: gutter`, so the page stays centred. Other presets keep today's layout: at 150% and 200% the column can sit past the canvas edge. *(Design call.)*
 - Fit recomputes when the canvas resizes (`use-canvas-metrics.ts` already observes it), on orientation change, and when the comment column appears or disappears. That last case means adding the first comment re-zooms, as in Google Docs. The scroll anchor (§4) keeps the reading position.
 - No zoom on mobile and none in Split View (both already render unscaled). Shortcuts do nothing there.
 
@@ -18,7 +18,7 @@ Status: implemented on branch TEC-3271 (sub-issues TEC-3267, TEC-3270, TEC-3301,
 - `Mod+=` goes to the next preset and `Mod+-` to the previous one. They step through the percentage presets only and never land on Fit. From Fit, the step goes to the nearest preset above or below the computed Fit scale. At either end of the list the shortcut does nothing (no wrap-around). *(Design call.)*
 - `Mod+=` and `Mod+-` always zoom the editor, wherever focus is, while a zoomable `DdocEditor` is mounted. They are bound on `window` (keydown) and `preventDefault` stops browser zoom.
 - Matched on `event.key` exactly `'='` or `'-'` with Shift up. `Mod++` (Shift+`=`) and `Mod+_` (Shift+`-`) are left to the browser, as is `Mod+0`.
-- When the editor cannot zoom (mobile, Split View) or is presenting, nothing is bound and the browser handles every key.
+- When the editor cannot zoom (mobile, Split View), is presenting, or the consumer fixed the zoom (`zoomLevel` with no `onZoomLevelChange` / `setZoomLevel`), nothing is bound and the browser handles every key.
 - The listener uses the capture phase, so editor keymaps cannot swallow the shortcut.
 - Not a ProseMirror keymap: zoom must also work when focus is in the toolbar, the rail or outside the editor.
 
@@ -46,7 +46,7 @@ Rule: UI chrome (block controls, bubble menu, floating toolbars) renders at its 
 - **Drag handle fix:** `COMPUTE_POSITION_CONFIG` carries `platform: zoomAwarePlatform` (`extensions/d-block/zoom-platform.ts`), a module constant, so the config keeps its identity. Overriding `getScale` alone is not enough: floating-ui measures the offset parent's scale with an internal helper in `getElementRects` and uses `platform.getScale` only for overflow clipping. So `zoomAwarePlatform` overrides both. Inside the layer, `getElementRects` divides the reference rect by `zoom / measuredScale`, which is a no-op if floating-ui ever measures the zoom itself.
 - **Cluster size:** `handleNodeChange` already writes the cluster's `transform` (the first-line offset), so the counter-scale goes into the same write: `getClusterTransform(lineHeight, z)` gives `translateY(offset) scale(1/z)` with `transform-origin: top right`, where the offset centres a `24/z` (layer units) cluster on the first line. A zoom change while hovering re-applies it.
 - **Bubble menu:** counter-scaled (`counterScaleStyle`) only below 1280px, where it mounts inside the layer. At 1280px and wider it is appended to the unscaled `#editor-canvas` and has no transform (seen in the browser: 46×625 at 100% and 200%).
-- **Audit:** slash, emoji and table-cell menus mount on `body`, and the comment bubble card on `#editor-canvas`, so they are unscaled. Caret scroll band, sync cursors and the page-break node view work in content or screen space. Floating comment cards line up with their anchors. The columns menu mounts inside the layer and is counter-scaled. Media resize divides the pointer delta by the zoom (`toLayoutDelta`).
+- **Audit:** slash, emoji and table-cell menus mount on `body`, and the comment bubble card on `#editor-canvas`, so they are unscaled. Caret scroll band, sync cursors and the page-break node view work in content or screen space. Floating comment cards line up with their anchors. The columns menu mounts inside the layer and is counter-scaled. Media resize, both the side handle and the image corner handles, divides the pointer delta by the zoom (`toLayoutDelta`, `getCornerResizeStep`).
 
 ## 6. Left rail (fixes TEC-3302)
 
@@ -79,7 +79,7 @@ Pages mode (Linear tech spec "Pages mode: tech spec") builds on this zoom and mu
 - Continuous zoom, Ctrl+wheel, pinch, a slider.
 - Zoom on mobile or in Split View.
 - Any change to print or export.
-- Changes in ddocs.new (it persists the string as-is, so `'fit'` and `'1.25'` need nothing there).
+- Changes in ddocs.new's storage: it persists the string as-is. Its View ▸ Zoom menu (`components/navbar/second-level-nav/menu-tree.tsx`) is a separate follow-up: its radios are hard-coded to `'1.4'` for Fit and lack `'1.25'`, so after a toolbar or shortcut change no radio is checked.
 
 ## 10. Tests
 

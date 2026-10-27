@@ -90,8 +90,10 @@ import { ZoomProvider } from './hooks/use-zoom';
 import { useZoomedPage } from './hooks/use-zoomed-page';
 import { useZoomShortcuts } from './hooks/use-zoom-shortcuts';
 import {
+  canChangeZoom,
   COMMENT_COLUMN_WIDTH,
   FIT_GUTTER,
+  getFitReservedWidth,
   normalizeZoomLevel,
   resolveZoomScale,
   stepZoomLevel,
@@ -820,11 +822,12 @@ const DdocEditor = forwardRef(
       (!isFocusMode || showTOC);
 
     const leftWidth = shouldRenderDocumentOutline ? 148 : 0;
-    // The rail cannot shrink below its outline's min-content (148 + px-4).
-    const fitReservedWidth =
-      (shouldRenderDocumentOutline ? 181 : 0) +
-      (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0) +
-      2 * FIT_GUTTER;
+    // Below 1280px the tabs move to the bottom panel and the rail is empty.
+    const hasLeftRail = shouldRenderDocumentOutline && !isBelow1280px;
+    const fitReservedWidth = getFitReservedWidth({
+      hasLeftRail,
+      isCommentColumnVisible,
+    });
     const { shouldHideRight, shouldScroll, fitScale } = useCanvasMetrics({
       canvasRef,
       rootRef,
@@ -838,7 +841,10 @@ const DdocEditor = forwardRef(
     });
     const zoom = isZoomEnabled ? resolveZoomScale(zoomLevel, fitScale) : 1;
     useZoomShortcuts({
-      enabled: isZoomEnabled && !isPresentationMode,
+      enabled:
+        isZoomEnabled &&
+        !isPresentationMode &&
+        canChangeZoom(zoomLevelProp, onZoomLevelChange, setZoomLevelProp),
       onStep: (direction) => {
         const next = stepZoomLevel(zoomLevel, direction, fitScale);
         if (next !== zoomLevel) setZoomLevel(next);
@@ -1186,11 +1192,13 @@ const DdocEditor = forwardRef(
                           transform:
                             'translateY(var(--mobile-comment-drawer-canvas-offset, 0px))',
                         }),
-                        // The rail absorbs the left gutter; this keeps the right one.
+                        // The rail absorbs the left gutter; this keeps the right
+                        // one. With no rail, the left gutter is a margin too.
                         ...(isFit && {
                           marginRight:
                             FIT_GUTTER +
                             (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0),
+                          marginLeft: hasLeftRail ? undefined : FIT_GUTTER,
                         }),
                       }}
                     >
@@ -1207,7 +1215,7 @@ const DdocEditor = forwardRef(
                         id="editor-wrapper"
                         ref={editorWrapperRef}
                         className={cn(
-                          'w-full flex-grow min-w-0 no-scrollbar rounded transition-all mx-auto duration-300 ease-in-out',
+                          'w-full flex-grow min-w-0 no-scrollbar rounded transition-[width,max-width] mx-auto duration-300 ease-in-out',
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
                             'color-bg-default',

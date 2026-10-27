@@ -66,11 +66,15 @@ export const useCanvasMetrics = ({
     root?.style.setProperty('--ddoc-canvas-h', `${canvas.clientHeight}px`);
     if (root) widthStore?.set(root.clientWidth);
     const inputs = inputsRef.current;
-    const fitScale = computeFitScale(
-      canvas.clientWidth,
-      inputs.baseWidth,
-      inputs.fitReservedWidth,
-    );
+    const prev = decisionsRef.current;
+    // Off Fit nothing reads fitScale; skipping it keeps resizes render-free.
+    const fitScale = inputs.isFit
+      ? computeFitScale(
+          canvas.clientWidth,
+          inputs.baseWidth,
+          inputs.fitReservedWidth,
+        )
+      : prev.fitScale;
     const next = {
       ...computeWidthDecisions(
         canvas.clientWidth,
@@ -79,7 +83,6 @@ export const useCanvasMetrics = ({
       ),
       fitScale,
     };
-    const prev = decisionsRef.current;
     if (
       prev.shouldHideRight === next.shouldHideRight &&
       prev.shouldScroll === next.shouldScroll &&

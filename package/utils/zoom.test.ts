@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   anchorScroll,
+  canChangeZoom,
   COMMENT_COLUMN_WIDTH,
   computeFitScale,
   counterScaleStyle,
+  getFitReservedWidth,
   getZoomScale,
   normalizeZoomLevel,
   resolveZoomScale,
@@ -45,7 +47,8 @@ describe('stepZoomLevel', () => {
 
 describe('computeFitScale', () => {
   it('fits the page into the width left after the reserve', () => {
-    expect(computeFitScale(1400, 850, 148 + 48)).toBeCloseTo(1.42, 2);
+    // Rounded down, so the page never overflows by a rounding pixel.
+    expect(computeFitScale(1400, 850, 148 + 48)).toBe(1.41);
   });
   it('accounts for the comment column', () => {
     expect(COMMENT_COLUMN_WIDTH).toBe(360);
@@ -120,4 +123,31 @@ it('toLayoutDelta converts a pointer delta into layer units', () => {
     '<div data-ddoc-zoom-layer data-ddoc-zoom="2"><img id="m" /></div><img id="o" />';
   expect(toLayoutDelta(100, document.getElementById('m'))).toBe(50);
   expect(toLayoutDelta(100, document.getElementById('o'))).toBe(100);
+});
+
+describe('canChangeZoom', () => {
+  it('is true when uncontrolled or when a callback can take the change', () => {
+    expect(canChangeZoom(undefined, undefined, undefined)).toBe(true);
+    expect(canChangeZoom('1', () => {}, undefined)).toBe(true);
+    expect(canChangeZoom('1', undefined, () => {})).toBe(true);
+  });
+  it('is false for a fixed value with no callback', () => {
+    expect(canChangeZoom('1', undefined, undefined)).toBe(false);
+  });
+});
+
+describe('getFitReservedWidth', () => {
+  it('reserves the rail, the column and both gutters', () => {
+    expect(
+      getFitReservedWidth({ hasLeftRail: true, isCommentColumnVisible: true }),
+    ).toBe(181 + COMMENT_COLUMN_WIDTH + 48);
+  });
+  it('drops the rail when it is empty (below 1280px the tabs move to the panel)', () => {
+    expect(
+      getFitReservedWidth({
+        hasLeftRail: false,
+        isCommentColumnVisible: false,
+      }),
+    ).toBe(48);
+  });
 });

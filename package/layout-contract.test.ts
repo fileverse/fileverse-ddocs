@@ -41,6 +41,15 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain('`${100 / zoom}%`');
   });
 
+  // The wrapper's px height is rewritten as content grows; animating it
+  // would leave new lines below the page for 300ms.
+  it('animates only the wrapper width', () => {
+    expect(source).not.toContain(
+      'rounded transition-all mx-auto duration-300 ease-in-out',
+    );
+    expect(source).toContain('transition-[width,max-width]');
+  });
+
   it('marks the scaled layer', () => {
     expect(source).toContain('data-ddoc-zoom-layer');
     expect(source).toContain('data-ddoc-zoom=');

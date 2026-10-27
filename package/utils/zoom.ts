@@ -57,7 +57,8 @@ export const computeFitScale = (
   if (canvasWidth <= 0 || baseWidth <= 0) return 1;
   const scale = (canvasWidth - reservedWidth) / baseWidth;
   const clamped = Math.min(FIT_MAX_SCALE, Math.max(FIT_MIN_SCALE, scale));
-  return Math.round(clamped * 100) / 100;
+  // Down, so a rounding pixel never makes the page overflow.
+  return Math.floor(clamped * 100 + 1e-9) / 100;
 };
 
 export const getZoomScale = (node: Element | null) => {
@@ -88,3 +89,25 @@ export const counterScaleStyle = (scale: number) =>
 // Pointer deltas are screen pixels; widths inside the layer are layer units.
 export const toLayoutDelta = (screenDelta: number, node: Element | null) =>
   screenDelta / getZoomScale(node);
+
+// A fixed `zoomLevel` with no callback is inert (AGENTS.md); the shortcuts
+// must then leave Mod+= / Mod+- to the browser.
+export const canChangeZoom = (
+  value: string | undefined,
+  onChange: unknown,
+  legacySetter: unknown,
+) => value === undefined || !!onChange || !!legacySetter;
+
+// The rail's min-content: the 148px outline plus its px-4.
+export const FIT_RAIL_WIDTH = 181;
+
+export const getFitReservedWidth = ({
+  hasLeftRail,
+  isCommentColumnVisible,
+}: {
+  hasLeftRail: boolean;
+  isCommentColumnVisible: boolean;
+}) =>
+  (hasLeftRail ? FIT_RAIL_WIDTH : 0) +
+  (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0) +
+  2 * FIT_GUTTER;
