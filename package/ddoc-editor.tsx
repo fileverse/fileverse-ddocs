@@ -87,6 +87,7 @@ import { useTabPositionMemory } from './hooks/use-tab-position-memory';
 import { useControllableState } from './hooks/use-controllable-state';
 import { useCanvasMetrics } from './hooks/use-canvas-metrics';
 import { ZoomProvider } from './hooks/use-zoom';
+import { useZoomedPage } from './hooks/use-zoomed-page';
 import { normalizeZoomLevel, resolveZoomScale } from './utils/zoom';
 import {
   EditorWidthContext,
@@ -827,6 +828,13 @@ const DdocEditor = forwardRef(
     const editorScrollContainerRef = isSplitViewActive
       ? contentWrapperRef
       : canvasRef;
+    useZoomedPage({
+      wrapperRef: editorWrapperRef,
+      layerRef: editorRef,
+      scrollerRef: editorScrollContainerRef,
+      scale: zoom,
+      enabled: !isMobile && !isSplitViewActive,
+    });
     const setCanvasNode = useCallback((node: HTMLDivElement | null) => {
       canvasRef.current = node;
     }, []);
@@ -1184,16 +1192,9 @@ const DdocEditor = forwardRef(
                       >
                         <div
                           ref={editorRef}
-                          className={cn(
-                            'w-full',
-                            {
-                              'color-bg-default':
-                                !documentStyling?.canvasBackground &&
-                                (zoomLevel === 'fit' || zoomLevel === '1.5') &&
-                                !isFocusMode,
-                            },
-                            isPreviewMode && 'pt-3',
-                          )}
+                          className={cn('w-full', isPreviewMode && 'pt-3')}
+                          data-ddoc-zoom-layer=""
+                          data-ddoc-zoom={String(zoom)}
                           style={
                             isMobile
                               ? {}
@@ -1204,7 +1205,6 @@ const DdocEditor = forwardRef(
                                     width: `${baseWidth}px`,
                                     transform: `scale(${zoom})`,
                                     transformOrigin: 'top left',
-                                    height: `${100 / zoom}%`,
                                   }
                           }
                         >

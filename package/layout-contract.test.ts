@@ -36,6 +36,16 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain("'flex-1 min-h-0 w-full flex flex-col");
   });
 
+  // The wrapper reserves the scaled height (use-zoomed-page.ts), not the layer.
+  it('does not give the scaled layer a percentage height', () => {
+    expect(source).not.toContain('`${100 / zoom}%`');
+  });
+
+  it('marks the scaled layer', () => {
+    expect(source).toContain('data-ddoc-zoom-layer');
+    expect(source).toContain('data-ddoc-zoom=');
+  });
+
   it('marks the root and keeps the preserved ids', () => {
     expect(source).toContain('ddoc-editor-root');
     expect(source).toContain('id="editor-canvas"');
