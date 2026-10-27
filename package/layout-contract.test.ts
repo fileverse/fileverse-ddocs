@@ -46,6 +46,13 @@ describe('DdocEditor layout contract', () => {
     expect(source).toContain('data-ddoc-zoom=');
   });
 
+  // Sticky on both axes so a page wider than the canvas slides under it.
+  it('pins the left rail on both axes', () => {
+    expect(source).toContain(
+      "'max-w-[263px] w-full sticky top-0 left-0 self-start z-[2]'",
+    );
+  });
+
   it('marks the root and keeps the preserved ids', () => {
     expect(source).toContain('ddoc-editor-root');
     expect(source).toContain('id="editor-canvas"');

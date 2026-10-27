@@ -1065,8 +1065,14 @@ const DdocEditor = forwardRef(
                 className={cn(
                   'editor-left-rail',
                   shouldRenderDocumentOutline && 'editor-left-rail-has-outline',
+                  // Pinned on both axes and opaque (the canvas's colour), so
+                  // a page wider than the canvas slides under it (TEC-3302).
                   !isMobile &&
-                    'max-w-[263px] w-full sticky top-0 self-start z-[2]',
+                    'max-w-[263px] w-full sticky top-0 left-0 self-start z-[2]',
+                  !isMobile &&
+                    (!isPresentationMode
+                      ? 'color-bg-secondary'
+                      : 'color-bg-default'),
                   // The top gap is padding, not margin: a sticky rail with a
                   // margin rests below top-0 and jumps up when the page scrolls.
                   !isPreviewMode &&
@@ -1082,6 +1088,12 @@ const DdocEditor = forwardRef(
                   isFocusMode && 'pt-[48px]',
                   isFocusMode && !showTOC && shouldHideRight && 'hidden',
                 )}
+                style={{
+                  ...(!isMobile && !isFocusMode && getBackgroundStyle()),
+                  // Covers the visible column while the page scrolls sideways.
+                  ...(!isMobile &&
+                    shouldScroll && { minHeight: 'var(--ddoc-canvas-h)' }),
+                }}
               >
                 {editor && shouldRenderDocumentOutline && (
                   <DocumentOutline
