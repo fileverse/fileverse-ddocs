@@ -88,11 +88,13 @@ import { useControllableState } from './hooks/use-controllable-state';
 import { useCanvasMetrics } from './hooks/use-canvas-metrics';
 import { ZoomProvider } from './hooks/use-zoom';
 import { useZoomedPage } from './hooks/use-zoomed-page';
+import { useZoomShortcuts } from './hooks/use-zoom-shortcuts';
 import {
   COMMENT_COLUMN_WIDTH,
   FIT_GUTTER,
   normalizeZoomLevel,
   resolveZoomScale,
+  stepZoomLevel,
 } from './utils/zoom';
 import {
   EditorWidthContext,
@@ -835,6 +837,13 @@ const DdocEditor = forwardRef(
       isFit,
     });
     const zoom = isZoomEnabled ? resolveZoomScale(zoomLevel, fitScale) : 1;
+    useZoomShortcuts({
+      enabled: isZoomEnabled && !isPresentationMode,
+      onStep: (direction) => {
+        const next = stepZoomLevel(zoomLevel, direction, fitScale);
+        if (next !== zoomLevel) setZoomLevel(next);
+      },
+    });
     const scaledWidth = baseWidth * zoom;
 
     // The scroller is the canvas, except in Split View where it stays on the
