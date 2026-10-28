@@ -1215,7 +1215,9 @@ const DdocEditor = forwardRef(
                         id="editor-wrapper"
                         ref={editorWrapperRef}
                         className={cn(
-                          'w-full flex-grow min-w-0 no-scrollbar rounded transition-[width,max-width] mx-auto duration-300 ease-in-out',
+                          'w-full flex-grow min-w-0 no-scrollbar rounded mx-auto',
+                          !isFit &&
+                            'transition-[width,max-width] duration-300 ease-in-out',
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
                             'color-bg-default',

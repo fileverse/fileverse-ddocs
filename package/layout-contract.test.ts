@@ -42,12 +42,15 @@ describe('DdocEditor layout contract', () => {
   });
 
   // The wrapper's px height is rewritten as content grows; animating it
-  // would leave new lines below the page for 300ms.
-  it('animates only the wrapper width', () => {
+  // would leave new lines below the page for 300ms. Fit follows the window
+  // directly, so it does not animate at all.
+  it('animates only the wrapper width, and not at Fit', () => {
     expect(source).not.toContain(
       'rounded transition-all mx-auto duration-300 ease-in-out',
     );
-    expect(source).toContain('transition-[width,max-width]');
+    expect(source).toMatch(
+      /!isFit &&\s+'transition-\[width,max-width\] duration-300 ease-in-out'/,
+    );
   });
 
   it('marks the scaled layer', () => {
