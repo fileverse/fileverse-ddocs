@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { cn } from '@fileverse/ui';
 import { useCommentStore } from '../../../stores/comment-store';
 import { useCommentListContainer } from '../use-comment-list-container';
@@ -16,7 +15,6 @@ export const CommentFloatingContainer = ({
   scrollContainerRef,
   tabName,
   isHidden,
-  onVisibleChange,
 }: CommentFloatingContainerProps) => {
   const comments = useCommentStore((s) => s.tabComments);
   const {
@@ -30,15 +28,6 @@ export const CommentFloatingContainer = ({
     scrollContainerRef,
     isHidden,
   });
-
-  // Fit reserves the comment column only while it shows (docs/ZOOM.md §1).
-  const isVisible = shouldRender && !isHidden;
-  const onVisibleChangeRef = useRef(onVisibleChange);
-  onVisibleChangeRef.current = onVisibleChange;
-  useEffect(() => {
-    onVisibleChangeRef.current?.(isVisible);
-  }, [isVisible]);
-  useEffect(() => () => onVisibleChangeRef.current?.(false), []);
 
   if (!shouldRender) {
     return null;

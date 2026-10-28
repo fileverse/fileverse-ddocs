@@ -805,7 +805,13 @@ const DdocEditor = forwardRef(
         {},
       );
     }, [initialComments]);
-    const [isCommentColumnVisible, setIsCommentColumnVisible] = useState(false);
+    // The floating cards show from 1280px unless hidden by the drawer or by
+    // the host's "Hide comments" (disableInlineComment).
+    const isCommentColumnVisible =
+      !isFocusMode &&
+      !isBelow1280px &&
+      !commentDrawerOpen &&
+      !disableInlineComment;
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
@@ -1515,7 +1521,6 @@ const DdocEditor = forwardRef(
                               Boolean(commentDrawerOpen) ||
                               Boolean(disableInlineComment)
                             }
-                            onVisibleChange={setIsCommentColumnVisible}
                           />
                         </div>
                       )}
