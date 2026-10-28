@@ -52,6 +52,7 @@ import { PresentationMode } from './components/presentation-mode/presentation-mo
 import { CommentDrawer } from './components/inline-comment/comment-drawer';
 import { useResponsive } from './utils/responsive';
 import { CommentStoreProvider } from './stores/comment-store-provider';
+import { useHasFloatingComments } from './hooks/use-has-floating-comments';
 import { CommentBubbleCard } from './components/inline-comment/comment-bubble-card';
 import { CommentFloatingContainer } from './components/inline-comment/comment-floating-container';
 import { DocumentOutline } from './components/toc/document-outline';
@@ -805,13 +806,11 @@ const DdocEditor = forwardRef(
         {},
       );
     }, [initialComments]);
-    // The floating cards show from 1280px unless hidden by the drawer or by
-    // the host's "Hide comments" (disableInlineComment).
+    // The column shows while the tab has floating cards, unless the drawer or
+    // the host's "Hide comments" (disableInlineComment) hides it.
+    const hasFloatingComments = useHasFloatingComments(storeApiRef);
     const isCommentColumnVisible =
-      !isFocusMode &&
-      !isBelow1280px &&
-      !commentDrawerOpen &&
-      !disableInlineComment;
+      hasFloatingComments && !commentDrawerOpen && !disableInlineComment;
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
