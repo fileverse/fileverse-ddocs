@@ -48,10 +48,10 @@ Rule: UI chrome (block controls, bubble menu, floating toolbars) renders at its 
 - **Bubble menu:** counter-scaled (`counterScaleStyle`) only below 1280px, where it mounts inside the layer. At 1280px and wider it is appended to the unscaled `#editor-canvas` and has no transform (seen in the browser: 46×625 at 100% and 200%).
 - **Audit:** slash, emoji and table-cell menus mount on `body`, and the comment bubble card on `#editor-canvas`, so they are unscaled. Caret scroll band, sync cursors and the page-break node view work in content or screen space. Floating comment cards line up with their anchors. The columns menu mounts inside the layer and is counter-scaled. Media resize, both the side handle and the image corner handles, divides the pointer delta by the zoom (`toLayoutDelta`, `getCornerResizeStep`).
 
-## 6. Left rail (fixes TEC-3302)
+## 6. Left rail (TEC-3302)
 
-- When `scaledWidth > canvasWidth - leftWidth`, the canvas scrolls sideways. The rail is `sticky top-0` only, so it scrolls away with the page.
-- Make the rail `sticky left-0` as well, with its existing `z-[2]`, so the page slides under it. Its background is the canvas's (`color-bg-secondary`, or `color-bg-default` when presenting, plus `documentStyling.background` outside focus mode). While the canvas scrolls sideways it also takes `min-height: var(--ddoc-canvas-h)`, so it covers the whole visible column and not only its content. The rail stays inside the scroller, so the scrollbar stays at the container edge (layout contract in `AGENTS.md`).
+- When `scaledWidth > canvasWidth - leftWidth`, the canvas scrolls sideways. The rail stays `sticky top-0` only, so it scrolls away with the page, as in Google Docs. *(Design call.)*
+- Not pinned with `sticky left-0`: the page would slide under the rail, so the rail needs an opaque background, and a flat colour breaks the gradient canvas backgrounds (`documentStyling.background`).
 - The right rail already hides through `shouldHideRight`.
 
 ## 7. State plumbing (TEC-2465, revised)
@@ -85,4 +85,4 @@ Pages mode (Linear tech spec "Pages mode: tech spec") builds on this zoom and mu
 
 - Unit: preset stepping (never onto Fit; from Fit; at the ends), legacy and empty normalisation, the Fit computation with and without the comment column, `getZoomScale` inside and outside the layer, and the shortcut handler (`=` / `-` zoom from any focus; Shift variants and `Mod+0` pass through).
 - `layout-contract.test.ts`: the scaled layer has no percentage height, and the wrapper gets a scaled height.
-- Manual QA in the demo, on both schemas, at every preset and at 1280px and wider: canvas colour to the end of the document, block controls aligned and normal size, bubble menu size, rail fixed during horizontal scroll, scroll position kept across zoom changes, shortcuts in and out of focus, and Fit with and without floating comments (adding the first comment re-fits, and the cards are not clipped).
+- Manual QA in the demo, on both schemas, at every preset and at 1280px and wider: canvas colour to the end of the document, block controls aligned and normal size, bubble menu size, scroll position kept across zoom changes, shortcuts in and out of focus, and Fit with and without floating comments (adding the first comment re-fits, and the cards are not clipped).

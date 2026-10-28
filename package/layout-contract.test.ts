@@ -58,11 +58,12 @@ describe('DdocEditor layout contract', () => {
     expect(source).toContain('data-ddoc-zoom=');
   });
 
-  // Sticky on both axes so a page wider than the canvas slides under it.
-  it('pins the left rail on both axes', () => {
+  // As in Google Docs, the rail scrolls sideways with a wide page (TEC-3302).
+  it('pins the left rail vertically only', () => {
     expect(source).toContain(
-      "'max-w-[263px] w-full sticky top-0 left-0 self-start z-[2]'",
+      "'max-w-[263px] w-full sticky top-0 self-start z-[2]'",
     );
+    expect(source).not.toContain('sticky top-0 left-0');
   });
 
   it('marks the root and keeps the preserved ids', () => {
