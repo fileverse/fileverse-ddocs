@@ -1514,10 +1514,12 @@ const DdocEditor = forwardRef(
                       {editor && !isFocusMode && (
                         <div
                           className={cn(
-                            'comment-floating-slot absolute left-full top-0 ml-[12px] overflow-visible',
+                            'comment-floating-slot absolute left-full top-0 ml-[12px]',
                             // Hidden cards keep their box, so clip the column
                             // or it widens the canvas's scroll area.
-                            isFloatingCommentHidden && 'w-0 overflow-hidden',
+                            isFloatingCommentHidden
+                              ? 'w-0 overflow-hidden'
+                              : 'overflow-visible',
                           )}
                         >
                           <CommentFloatingContainer
