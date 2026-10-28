@@ -53,6 +53,12 @@ describe('DdocEditor layout contract', () => {
     );
   });
 
+  // Hidden cards keep their box (visibility: hidden); without the clip the
+  // empty column scrolls the canvas sideways once Fit drops its margin.
+  it('clips the floating comment column while it is hidden', () => {
+    expect(source).toMatch(/isFloatingCommentHidden && 'w-0 overflow-hidden'/);
+  });
+
   it('marks the scaled layer', () => {
     expect(source).toContain('data-ddoc-zoom-layer');
     expect(source).toContain('data-ddoc-zoom=');

@@ -809,8 +809,10 @@ const DdocEditor = forwardRef(
     // The column shows while the tab has floating cards, unless the drawer or
     // the host's "Hide comments" (disableInlineComment) hides it.
     const hasFloatingComments = useHasFloatingComments(storeApiRef);
+    const isFloatingCommentHidden =
+      Boolean(commentDrawerOpen) || Boolean(disableInlineComment);
     const isCommentColumnVisible =
-      hasFloatingComments && !commentDrawerOpen && !disableInlineComment;
+      hasFloatingComments && !isFloatingCommentHidden;
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
@@ -1510,16 +1512,20 @@ const DdocEditor = forwardRef(
                         </div>
                       </div>
                       {editor && !isFocusMode && (
-                        <div className="comment-floating-slot absolute left-full top-0 ml-[12px] overflow-visible">
+                        <div
+                          className={cn(
+                            'comment-floating-slot absolute left-full top-0 ml-[12px] overflow-visible',
+                            // Hidden cards keep their box, so clip the column
+                            // or it widens the canvas's scroll area.
+                            isFloatingCommentHidden && 'w-0 overflow-hidden',
+                          )}
+                        >
                           <CommentFloatingContainer
                             editor={editor}
                             editorWrapperRef={editorWrapperRef}
                             scrollContainerRef={editorScrollContainerRef}
                             tabName={currentTabName}
-                            isHidden={
-                              Boolean(commentDrawerOpen) ||
-                              Boolean(disableInlineComment)
-                            }
+                            isHidden={isFloatingCommentHidden}
                           />
                         </div>
                       )}
