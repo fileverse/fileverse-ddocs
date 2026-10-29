@@ -817,7 +817,9 @@ const DdocEditor = forwardRef(
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
     const zoomLevel = normalizeZoomLevel(rawZoomLevel);
-    const isZoomEnabled = !isMobile && !isSplitViewActive;
+    // Zoom stops at the 960px `mobile` breakpoint, where the toolbar holding
+    // its control hides.
+    const isZoomEnabled = canUseSplitView && !isSplitViewActive;
     const isFit = isZoomEnabled && zoomLevel === 'fit';
     const shouldRenderDocumentOutline =
       // Hidden in Split View — the right pane has its own tabs panel (the
@@ -870,7 +872,7 @@ const DdocEditor = forwardRef(
       layerRef: editorRef,
       scrollerRef: editorScrollContainerRef,
       scale: zoom,
-      enabled: !isMobile && !isSplitViewActive,
+      enabled: isZoomEnabled,
     });
     const setCanvasNode = useCallback((node: HTMLDivElement | null) => {
       canvasRef.current = node;

@@ -71,7 +71,7 @@ Pages mode (Linear tech spec "Pages mode: tech spec") builds on this zoom and mu
 - **Scale readable outside React.** The layer carries `data-ddoc-zoom-layer` and `data-ddoc-zoom="<scale>"`; `getZoomScale(node)` in `utils/zoom.ts` reads the closest layer (1 when none). The pagination plugin and the drag-handle platform both use it. React consumers (`PageSheets` windowing) use `useZoom()`. A pass on zoom change is Pages' own effect in `ddoc-editor.tsx`, keyed on `scale`.
 - **Page box height comes from the layer's `offsetHeight`**, which includes spacers and the sheet stack's `min-height`, so the desk colour covers every sheet. The observer watches the layer and writes to the wrapper outside it, so it cannot loop with Pages' observer on the content children.
 - **Background stays one style value on the wrapper** (`getCanvasStyle()`), so Pages can paint the desk there and the sheet fill on the sheets. No colour classes on the layer.
-- **Breakpoints and Split View agree.** Zoom is off at 850px and below and in Split View; Pages is off below 1024px and in Split View.
+- **Breakpoints and Split View agree.** Zoom is off below 960px (the `mobile` breakpoint, where the toolbar and its control hide) and in Split View; Pages is off below 1024px and in Split View.
 - Fit produces non-preset scales (rounded to 2 decimals). Pages rounds spacer heights to whole pixels for fractional zoom, so this needs nothing extra; its QA matrix covers zoom 0.5 to 2, Fit included.
 
 ## 9. Non-goals
