@@ -294,6 +294,8 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
 
   return (
     <BubbleMenu
+      // Unique: unregisterPlugin('bubbleMenu') drops every bubbleMenu$* plugin.
+      pluginKey="ddocBubbleMenu"
       ref={handleBubbleMenuRef}
       editor={editor}
       data-editor-bubble-menu=""
