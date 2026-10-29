@@ -512,7 +512,7 @@ const DdocEditor = forwardRef(
     // Disabled during a LIVE collaboration session: the markdown→doc sync is a
     // one-way full-doc replace, so editing the left pane would clobber a
     // collaborator's changes. A durable-only connection (no live peers) is fine.
-    const canUseSplitView = useEditorMediaQuery(
+    const isDesktopWidth = useEditorMediaQuery(
       '(min-width: 960px)',
       editorWidthStore,
     );
@@ -520,15 +520,15 @@ const DdocEditor = forwardRef(
     const isSplitViewActive =
       Boolean(isSplitView) &&
       !isPreviewMode &&
-      canUseSplitView &&
+      isDesktopWidth &&
       !isCollabEnabled;
     // Exit Split View if it becomes unavailable while open — the window shrank
     // below the breakpoint, or a collaboration session started.
     useEffect(() => {
-      if ((!canUseSplitView || isCollabEnabled) && isSplitView) {
+      if ((!isDesktopWidth || isCollabEnabled) && isSplitView) {
         setIsSplitView?.(false);
       }
-    }, [canUseSplitView, isCollabEnabled, isSplitView, setIsSplitView]);
+    }, [isDesktopWidth, isCollabEnabled, isSplitView, setIsSplitView]);
     // The right pane is read-only in Split View — let the dBlock toolbar know so
     // it hides editing affordances there (e.g. the empty-doc template picker).
     const splitAwareDBlockRuntimeState = useMemo(
@@ -817,9 +817,9 @@ const DdocEditor = forwardRef(
     const baseWidth = isLandscapeMode ? 1190 : 850;
 
     const zoomLevel = normalizeZoomLevel(rawZoomLevel);
-    // Zoom stops at the 960px `mobile` breakpoint, where the toolbar holding
-    // its control hides.
-    const isZoomEnabled = canUseSplitView && !isSplitViewActive;
+    // Zoom shares Split View's 960px gate: below it the toolbar holding its
+    // control hides.
+    const isZoomEnabled = isDesktopWidth && !isSplitViewActive;
     const isFit = isZoomEnabled && zoomLevel === 'fit';
     const shouldRenderDocumentOutline =
       // Hidden in Split View — the right pane has its own tabs panel (the
