@@ -80,10 +80,12 @@ export const createDemoAppActions = (d: DemoAppActionDeps): ActionRegistry => ({
   'view.zoom': {
     run: (v) => {
       if (!v) return;
-      d.setZoomLevel(v === 'fit' ? '1.4' : String(Number(v) / 100));
+      d.setZoomLevel(v === 'fit' ? 'fit' : String(Number(v) / 100));
     },
     current:
-      d.zoomLevel === '1.4' ? 'fit' : String(Math.round(Number(d.zoomLevel) * 100)),
+      d.zoomLevel === 'fit' || d.zoomLevel === '1.4'
+        ? 'fit'
+        : String(Math.round(Number(d.zoomLevel) * 100)),
   },
   'format.pageOrientation': {
     run: (v) =>

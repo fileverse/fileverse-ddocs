@@ -6,16 +6,10 @@ import {
   LucideIcon,
 } from '@fileverse/ui';
 import { zoomLevels } from '../../constants/zoom';
+import { useZoom } from '../../hooks/use-zoom';
 
-interface ZoomLevelDropdownProps {
-  zoomLevel: string;
-  setZoomLevel: (zoom: string) => void;
-}
-
-export const ZoomLevelDropdown = ({
-  zoomLevel,
-  setZoomLevel,
-}: ZoomLevelDropdownProps) => {
+export const ZoomLevelDropdown = () => {
+  const { zoomLevel, setZoomLevel } = useZoom();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

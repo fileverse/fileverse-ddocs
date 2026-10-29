@@ -7,12 +7,11 @@ import {
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import type { DdocProps } from '../types';
 import { zoomLevels } from '../constants/zoom';
+import { useZoom } from '../hooks/use-zoom';
 
 type FullScreenToolbarProps = {
   dropdownOpen: boolean;
   setDropdownOpen: Dispatch<SetStateAction<boolean>>;
-  zoomLevel: string;
-  setZoomLevel: Dispatch<SetStateAction<string>>;
   showTOC: DdocProps['showTOC'];
   setShowTOC: DdocProps['setShowTOC'];
   toggleFocusMode: () => Promise<void>;
@@ -21,12 +20,11 @@ type FullScreenToolbarProps = {
 export const FullScreenToolbar = ({
   dropdownOpen,
   setDropdownOpen,
-  zoomLevel,
-  setZoomLevel,
   showTOC,
   setShowTOC,
   toggleFocusMode,
 }: FullScreenToolbarProps) => {
+  const { zoomLevel, setZoomLevel } = useZoom();
   useEffect(() => {
     setShowTOC?.(false);
   }, []);

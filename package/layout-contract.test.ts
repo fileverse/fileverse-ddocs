@@ -36,6 +36,45 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain("'flex-1 min-h-0 w-full flex flex-col");
   });
 
+  // The wrapper reserves the scaled height (use-zoomed-page.ts), not the layer.
+  it('does not give the scaled layer a percentage height', () => {
+    expect(source).not.toContain('`${100 / zoom}%`');
+  });
+
+  // The wrapper's px height is rewritten as content grows; animating it
+  // would leave new lines below the page for 300ms. Fit follows the window
+  // directly, so it does not animate at all.
+  it('animates only the wrapper width, and not at Fit', () => {
+    expect(source).not.toContain(
+      'rounded transition-all mx-auto duration-300 ease-in-out',
+    );
+    expect(source).toMatch(
+      /!isFit &&\s+'transition-\[width,max-width\] duration-300 ease-in-out'/,
+    );
+  });
+
+  // Hidden cards keep their box (visibility: hidden); without the clip the
+  // empty column scrolls the canvas sideways once Fit drops its margin.
+  it('clips the floating comment column while it is hidden', () => {
+    // classnames does not merge, so overflow-visible must not sit beside it.
+    expect(source).toMatch(
+      /isFloatingCommentHidden\s*\?\s*'w-0 overflow-hidden'\s*:\s*'overflow-visible'/,
+    );
+  });
+
+  it('marks the scaled layer', () => {
+    expect(source).toContain('data-ddoc-zoom-layer');
+    expect(source).toContain('data-ddoc-zoom=');
+  });
+
+  // As in Google Docs, the rail scrolls sideways with a wide page (TEC-3302).
+  it('pins the left rail vertically only', () => {
+    expect(source).toContain(
+      "'max-w-[263px] w-full sticky top-0 self-start z-[2]'",
+    );
+    expect(source).not.toContain('sticky top-0 left-0');
+  });
+
   it('marks the root and keeps the preserved ids', () => {
     expect(source).toContain('ddoc-editor-root');
     expect(source).toContain('id="editor-canvas"');

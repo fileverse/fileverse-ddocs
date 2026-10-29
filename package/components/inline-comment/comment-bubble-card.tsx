@@ -106,6 +106,7 @@ export const CommentBubbleCard = ({
   return (
     <BubbleMenu
       {...bubbleMenuProps}
+      pluginKey="commentBubbleCard"
       options={{
         offset: {
           mainAxis: 0,

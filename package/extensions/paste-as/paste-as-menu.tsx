@@ -117,6 +117,7 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
   const option = EMBED_OPTION[kind ?? 'image'];
   return (
     <BubbleMenu
+      pluginKey="pasteAsMenu"
       editor={editor}
       options={{
         placement: 'bottom',
