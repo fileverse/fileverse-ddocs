@@ -836,6 +836,7 @@ const DdocEditor = forwardRef(
     const fitReservedWidth = getFitReservedWidth({
       hasLeftRail,
       isCommentColumnVisible,
+      isLandscape: isLandscapeMode,
     });
     const { shouldHideRight, shouldScroll, fitScale } = useCanvasMetrics({
       canvasRef,

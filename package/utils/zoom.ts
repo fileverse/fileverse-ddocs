@@ -98,16 +98,26 @@ export const canChangeZoom = (
   legacySetter: unknown,
 ) => value === undefined || !!onChange || !!legacySetter;
 
-// The rail's min-content: the 148px outline plus its px-4.
+// The rail's min-content: the 148px outline plus its px-4. In landscape the
+// sidebar's min-w-[182px] applies and the scroll row adds mx-[24px].
 export const FIT_RAIL_WIDTH = 181;
+export const FIT_LANDSCAPE_RAIL_WIDTH = 182;
+export const LANDSCAPE_ROW_MARGIN = 24;
 
 export const getFitReservedWidth = ({
   hasLeftRail,
   isCommentColumnVisible,
+  isLandscape = false,
 }: {
   hasLeftRail: boolean;
   isCommentColumnVisible: boolean;
+  isLandscape?: boolean;
 }) =>
-  (hasLeftRail ? FIT_RAIL_WIDTH : 0) +
+  (hasLeftRail
+    ? isLandscape
+      ? FIT_LANDSCAPE_RAIL_WIDTH
+      : FIT_RAIL_WIDTH
+    : 0) +
   (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0) +
+  (isLandscape ? 2 * LANDSCAPE_ROW_MARGIN : 0) +
   2 * FIT_GUTTER;

@@ -150,4 +150,20 @@ describe('getFitReservedWidth', () => {
       }),
     ).toBe(48);
   });
+  it('adds the landscape row margins and the 182px landscape rail', () => {
+    expect(
+      getFitReservedWidth({
+        hasLeftRail: true,
+        isCommentColumnVisible: true,
+        isLandscape: true,
+      }),
+    ).toBe(182 + COMMENT_COLUMN_WIDTH + 48 + 48);
+    expect(
+      getFitReservedWidth({
+        hasLeftRail: false,
+        isCommentColumnVisible: false,
+        isLandscape: true,
+      }),
+    ).toBe(96);
+  });
 });
