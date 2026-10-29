@@ -86,6 +86,20 @@ export const counterScaleStyle = (scale: number) =>
     ? undefined
     : { transform: `scale(${1 / scale})`, transformOrigin: 'center' };
 
+// floating-ui offset (layer units) that leaves a `gap`px screen gap for a
+// counter-scaled float: the centre-origin shrink pulls its edge in by
+// (scale - 1) * height / 2.
+export const counterScaledOffset = (
+  gap: number,
+  scale: number,
+  floatingHeight: number,
+) => (gap - ((scale - 1) * floatingHeight) / 2) / scale;
+
+// flip/shift padding (screen px) for a counter-scaled float: floating-ui
+// measures its layout box, `scale` times the size it is drawn at.
+export const counterScaledPadding = (scale: number, size: number) =>
+  -((scale - 1) * size) / 2;
+
 // Pointer deltas are screen pixels; widths inside the layer are layer units.
 export const toLayoutDelta = (screenDelta: number, node: Element | null) =>
   screenDelta / getZoomScale(node);

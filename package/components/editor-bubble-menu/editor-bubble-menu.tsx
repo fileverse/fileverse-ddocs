@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { BubbleMenu } from '@tiptap/react/menus';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { NodeSelector } from './node-selector';
 import {
   LinkPopup,
@@ -39,7 +39,11 @@ import { useMobileToolbarStore } from '../../stores/mobile-toolbar-store';
 import { Editor } from '@tiptap/react';
 import { useEditorContext } from '../../context/editor-context';
 import { useZoom } from '../../hooks/use-zoom';
-import { counterScaleStyle } from '../../utils/zoom';
+import {
+  counterScaleStyle,
+  counterScaledOffset,
+  counterScaledPadding,
+} from '../../utils/zoom';
 
 const MemoizedFontSizePicker = React.memo(FontSizePicker);
 const MemoizedLineHeightPicker = React.memo(LineHeightPicker);
@@ -68,6 +72,13 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   const { isBelow1280px, isNativeMobile } = useResponsive();
   const { isFocusMode } = useEditorContext();
   const { scale } = useZoom();
+  // Tiptap keeps the appendTo and options it mounted with, so they read the
+  // live breakpoint and scale through a ref. Below 1280px the menu sits in
+  // the scaled page and is counter-scaled; wider, it is on the canvas.
+  const counterScaleRef = useRef({ isBelow1280px, scale });
+  counterScaleRef.current = { isBelow1280px, scale };
+  const getCounterScale = () =>
+    counterScaleRef.current.isBelow1280px ? counterScaleRef.current.scale : 1;
   const shouldUseFloatingComments = !isBelow1280px && !isNativeMobile;
   const { toolRef, setToolVisibility, toolVisibility } = useEditorToolbar({
     editor: editor ?? null,
@@ -299,18 +310,29 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
       ref={handleBubbleMenuRef}
       editor={editor}
       data-editor-bubble-menu=""
-      appendTo={
-        isBelow1280px
-          ? undefined
-          : () =>
-              document.getElementById('editor-canvas') ??
-              editor.view.dom.parentElement ??
-              document.body
+      appendTo={() =>
+        (counterScaleRef.current.isBelow1280px
+          ? editor.view.dom.parentElement
+          : document.getElementById('editor-canvas')) ??
+        editor.view.dom.parentElement ??
+        document.body
       }
       options={{
         placement: 'top',
-        flip: true,
-        shift: true,
+        flip: ({ rects }) => ({
+          padding: counterScaledPadding(
+            getCounterScale(),
+            rects.floating.height,
+          ),
+        }),
+        shift: ({ rects }) => ({
+          padding: counterScaledPadding(
+            getCounterScale(),
+            rects.floating.width,
+          ),
+        }),
+        offset: ({ rects }) =>
+          counterScaledOffset(8, getCounterScale(), rects.floating.height),
       }}
       shouldShow={handleBubbleMenuShouldShow}
       className={cn(

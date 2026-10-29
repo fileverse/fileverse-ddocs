@@ -5,6 +5,8 @@ import {
   COMMENT_COLUMN_WIDTH,
   computeFitScale,
   counterScaleStyle,
+  counterScaledOffset,
+  counterScaledPadding,
   getFitReservedWidth,
   getZoomScale,
   normalizeZoomLevel,
@@ -103,6 +105,30 @@ describe('anchorScroll', () => {
   });
   it('leaves a scroll above the layer alone', () => {
     expect(anchorScroll(50, 100, 1, 2)).toBe(50);
+  });
+});
+
+describe('counterScaledOffset', () => {
+  it('is the gap itself at 100%', () => {
+    expect(counterScaledOffset(8, 1, 46)).toBe(8);
+  });
+  it('leaves the same screen gap once the float shrinks around its centre', () => {
+    for (const scale of [0.5, 0.75, 1.5, 2]) {
+      const offset = counterScaledOffset(8, scale, 46);
+      const screenGap = offset * scale + ((scale - 1) * 46) / 2;
+      expect(screenGap).toBeCloseTo(8);
+    }
+  });
+});
+
+describe('counterScaledPadding', () => {
+  it('widens the boundary by the excess on each side when zoomed in', () => {
+    // 625px drawn, 1250px measured at 200%: 312.5px too much per side.
+    expect(counterScaledPadding(2, 625)).toBe(-312.5);
+  });
+  it('narrows it when zoomed out, and is 0 at 100%', () => {
+    expect(counterScaledPadding(0.5, 625)).toBe(156.25);
+    expect(counterScaledPadding(1, 625)).toBe(-0);
   });
 });
 
