@@ -7,8 +7,11 @@ let layerHeight = 1000;
 let wrapper: HTMLDivElement | null = null;
 
 let scrollTop = 0;
+let scrollLeft = 0;
+let overflowsX = false;
 const scrollWrites: Array<{ value: number; wrapperHeight: string }> = [];
 const LAYER_START = 100;
+const LAYER_LEFT = 50;
 
 const Harness = ({ scale, enabled }: { scale: number; enabled: boolean }) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -31,6 +34,21 @@ const Harness = ({ scale, enabled }: { scale: number; enabled: boolean }) => {
               scrollTop = value;
             },
           });
+          Object.defineProperty(node, 'scrollLeft', {
+            configurable: true,
+            get: () => scrollLeft,
+            set: (value: number) => {
+              scrollLeft = value;
+            },
+          });
+          Object.defineProperty(node, 'scrollWidth', {
+            configurable: true,
+            get: () => (overflowsX ? 2000 : 1000),
+          });
+          Object.defineProperty(node, 'clientWidth', {
+            configurable: true,
+            get: () => 1000,
+          });
           node.getBoundingClientRect = () => ({ top: 0, left: 0 }) as DOMRect;
         }
       }}
@@ -50,7 +68,10 @@ const Harness = ({ scale, enabled }: { scale: number; enabled: boolean }) => {
                 get: () => layerHeight,
               });
               node.getBoundingClientRect = () =>
-                ({ top: LAYER_START - scrollTop, left: 0 }) as DOMRect;
+                ({
+                  top: LAYER_START - scrollTop,
+                  left: LAYER_LEFT - scrollLeft,
+                }) as DOMRect;
             }
           }}
         />
@@ -79,6 +100,8 @@ afterEach(() => {
   layerHeight = 1000;
   wrapper = null;
   scrollTop = 0;
+  scrollLeft = 0;
+  overflowsX = false;
   scrollWrites.length = 0;
 });
 
@@ -118,6 +141,32 @@ describe('useZoomedPage', () => {
     rerender(<Harness scale={1} enabled />);
     expect(scrollTop).toBe(1600);
     expect(scrollWrites).toEqual([{ value: 1600, wrapperHeight: '1000px' }]);
+  });
+
+  it('keeps the horizontal anchor while the page overflows sideways', () => {
+    installObserver();
+    overflowsX = true;
+    const { rerender } = render(<Harness scale={2} enabled />);
+    scrollLeft = 850;
+    rerender(<Harness scale={1} enabled />);
+    expect(scrollLeft).toBe(450);
+  });
+
+  it('leaves scrollLeft alone when the page fits', () => {
+    installObserver();
+    const { rerender } = render(<Harness scale={2} enabled />);
+    scrollLeft = 850;
+    rerender(<Harness scale={1} enabled />);
+    expect(scrollLeft).toBe(850);
+  });
+
+  it('does not anchor on the first scale after being re-enabled', () => {
+    installObserver();
+    const { rerender } = render(<Harness scale={2} enabled />);
+    rerender(<Harness scale={2} enabled={false} />);
+    scrollTop = 3100;
+    rerender(<Harness scale={1} enabled />);
+    expect(scrollWrites).toEqual([]);
   });
 
   it('does not touch the scroll on mount', () => {
