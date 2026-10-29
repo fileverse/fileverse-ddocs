@@ -1,13 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, ReactNode, useContext, useMemo } from 'react';
-import { stepZoomLevel, ZoomLevel } from '../utils/zoom';
+import { ZoomLevel } from '../utils/zoom';
 
 export interface ZoomContextValue {
   zoomLevel: ZoomLevel;
   scale: number;
   fitScale: number;
   setZoomLevel: (level: ZoomLevel) => void;
-  stepZoom: (direction: 1 | -1) => void;
 }
 
 const noop = () => {};
@@ -17,7 +16,6 @@ const ZoomContext = createContext<ZoomContextValue>({
   scale: 1,
   fitScale: 1,
   setZoomLevel: noop,
-  stepZoom: noop,
 });
 
 export const ZoomProvider = ({
@@ -26,17 +24,13 @@ export const ZoomProvider = ({
   fitScale,
   setZoomLevel,
   children,
-}: Omit<ZoomContextValue, 'stepZoom'> & { children: ReactNode }) => {
+}: ZoomContextValue & { children: ReactNode }) => {
   const value = useMemo<ZoomContextValue>(
     () => ({
       zoomLevel,
       scale,
       fitScale,
       setZoomLevel,
-      stepZoom: (direction) => {
-        const next = stepZoomLevel(zoomLevel, direction, fitScale);
-        if (next !== zoomLevel) setZoomLevel(next);
-      },
     }),
     [zoomLevel, scale, fitScale, setZoomLevel],
   );
