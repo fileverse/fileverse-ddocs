@@ -5,6 +5,8 @@
 import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Mapping, StepMap } from '@tiptap/pm/transform';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { IMG_UPLOAD_SETTINGS } from '../components/editor-utils';
 import { arrayBufferToBase64, decryptImage, fetchImage } from './security';
 import { toByteArray } from 'base64-js';
@@ -13,6 +15,26 @@ import { normalizeSvgFile } from './svg-normalize';
 
 const uploadKey = new PluginKey('upload-image');
 
+// Placeholders a Yjs sync removed, as opposed to ones the user deleted.
+const lostToSync = new WeakSet<object>();
+
+// y-tiptap applies every remote update and undo/redo as one replace of the
+// whole doc, which maps every placeholder away. Map through only the region
+// that actually changed instead.
+const syncChangeMapping = (before: ProseMirrorNode, after: ProseMirrorNode) => {
+  const start = before.content.findDiffStart(after.content);
+  if (start == null) return new Mapping();
+  const end = before.content.findDiffEnd(after.content);
+  if (!end) return new Mapping();
+  let { a: endA, b: endB } = end;
+  const overlap = start - Math.min(endA, endB);
+  if (overlap > 0) {
+    endA += overlap;
+    endB += overlap;
+  }
+  return new Mapping([new StepMap([start, endA - start, endB - start])]);
+};
+
 const UploadImagesPlugin = () =>
   new Plugin({
     key: uploadKey,
@@ -20,8 +42,23 @@ const UploadImagesPlugin = () =>
       init() {
         return DecorationSet.empty;
       },
-      apply(tr, set) {
-        set = set.map(tr.mapping, tr.doc);
+      apply(tr, set, oldState) {
+        const isSyncRebuild =
+          tr.docChanged && tr.getMeta(ySyncPluginKey)?.isChangeOrigin;
+        if (isSyncRebuild && set.find().length > 0) {
+          const before = set;
+          set = set.map(syncChangeMapping(oldState.doc, tr.doc), tr.doc);
+          before.find().forEach((deco) => {
+            const kept = set.find(
+              undefined,
+              undefined,
+              (spec: any) => spec.id == deco.spec.id,
+            );
+            if (!kept.length) lostToSync.add(deco.spec.id);
+          });
+        } else {
+          set = set.map(tr.mapping, tr.doc);
+        }
         // See if the transaction adds or removes any placeholders
         // @ts-ignore
         const action = tr.getMeta(this);
@@ -69,8 +106,7 @@ function findPlaceholder(state: EditorState, id: any) {
  * maps the placeholder through every edit made while the upload was in
  * flight, so this stays correct under concurrent typing — unlike the
  * pre-upload `pos`, which goes stale the moment the doc changes above it.
- * Returns false if the placeholder no longer exists (host content deleted
- * during upload) — the upload result is dropped in that case.
+ * Returns false if the placeholder no longer exists.
  */
 function replacePlaceholderWithMedia(
   view: EditorView,
@@ -98,6 +134,23 @@ function replacePlaceholderWithMedia(
   tr.setMeta(uploadKey, { remove: { id } });
   view.dispatch(tr);
   return true;
+}
+
+/**
+ * A placeholder the user deleted drops the upload. One a remote change
+ * removed (it covered the placeholder's spot) puts the media after the
+ * cursor's top-level block, so no paragraph or other node is split.
+ */
+function insertMedia(view: EditorView, id: object, node: ProseMirrorNode) {
+  if (view.isDestroyed) {
+    console.warn('Image upload finished after its editor closed; not inserted');
+    return;
+  }
+  if (replacePlaceholderWithMedia(view, id, node)) return;
+  if (!lostToSync.has(id)) return;
+  const { $to } = view.state.selection;
+  const at = $to.depth > 0 ? $to.after(1) : $to.pos;
+  view.dispatch(view.state.tr.replaceRangeWith(at, at, node));
 }
 
 export async function startImageUpload(
@@ -158,7 +211,7 @@ export async function startImageUpload(
         height: 'auto',
       });
 
-      replacePlaceholderWithMedia(view, id, node);
+      insertMedia(view, id, node);
     } else {
       const fileReader = new FileReader();
       fileReader.readAsDataURL(file);
@@ -169,7 +222,7 @@ export async function startImageUpload(
           src: src,
           'media-type': 'img',
         });
-        replacePlaceholderWithMedia(view, id, node);
+        insertMedia(view, id, node);
       };
     }
   } catch (error) {
