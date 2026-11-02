@@ -172,24 +172,38 @@ export function collectLeaves(
     };
   });
   // Spacers are in document order: those before an element, then those
-  // inside it, then the rest. Binary searches find the boundaries.
+  // inside it, then the rest. The boundary is searched from the last one
+  // found: visits mostly move forward, so one or two comparisons each.
   const sums = [0];
   spacers.forEach((s, i) => sums.push(sums[i] + s.amount));
+  const hints = [0, 0];
   const endOf = (el: HTMLElement, includeInside: boolean) => {
+    const passes = (i: number) => {
+      const rel = el.compareDocumentPosition(spacers[i].el);
+      return (
+        !!(rel & Node.DOCUMENT_POSITION_PRECEDING) ||
+        (includeInside && !!(rel & Node.DOCUMENT_POSITION_CONTAINED_BY))
+      );
+    };
+    const hint = hints[Number(includeInside)];
     let lo = 0;
-    let hi = spacers.length;
+    let hi = hint - 1;
+    if (hint === 0 || passes(hint - 1)) {
+      lo = hint;
+      hi = hint;
+      for (let step = 1; hi < spacers.length && passes(hi); step *= 2) {
+        lo = hi + 1;
+        hi = Math.min(spacers.length, hi + step);
+      }
+    }
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      const rel = el.compareDocumentPosition(spacers[mid].el);
-      const preceding = !!(rel & Node.DOCUMENT_POSITION_PRECEDING);
-      const inside = !!(rel & Node.DOCUMENT_POSITION_CONTAINED_BY);
-      if (preceding || (includeInside && inside)) lo = mid + 1;
+      if (passes(mid)) lo = mid + 1;
       else hi = mid;
     }
+    hints[Number(includeInside)] = lo;
     return lo;
   };
-  const before = (el: HTMLElement, includeInside: boolean) =>
-    sums[endOf(el, includeInside)];
 
   // The leaf and every box it is the first child of, below view.dom.
   const startingChain = (el: HTMLElement): BoxEdge[] => {
@@ -213,10 +227,15 @@ export function collectLeaves(
     const el = view.nodeDOM(pos);
     if (!(el instanceof HTMLElement)) return null;
     const rect = el.getBoundingClientRect();
+    // spacers[first, end) are inside el.
+    const first = endOf(el, false);
+    const end = endOf(el, true);
     return {
       el,
-      top: (rect.top - originTop) / scale - before(el, false),
-      bottom: (rect.bottom - originTop) / scale - before(el, true),
+      first,
+      end,
+      top: (rect.top - originTop) / scale - sums[first],
+      bottom: (rect.bottom - originTop) / scale - sums[end],
       marginTop: leadingOffset(startingChain(el)),
     };
   };
@@ -313,9 +332,7 @@ export function collectLeaves(
 
     const b = box(pos);
     if (!b) return;
-    const inner = spacers
-      .slice(endOf(b.el, false), endOf(b.el, true))
-      .filter((s) => s.inText);
+    const inner = spacers.slice(b.first, b.end).filter((s) => s.inText);
     const lines = measureLines(view, contentOf(b.el), {
       from: pos + 1,
       to: pos + 1 + node.content.size,
@@ -326,7 +343,7 @@ export function collectLeaves(
       shiftAt: (top) =>
         inner.reduce(
           (sum, s) => (s.top <= top + 0.5 ? sum + s.amount : sum),
-          before(b.el, false),
+          sums[b.first],
         ),
     });
     // An empty textblock has no line boxes; it moves as a unit.
