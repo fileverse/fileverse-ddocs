@@ -140,6 +140,7 @@ export const serializeWithBreaks = (
   printSchema: Schema,
   breaks: PrintBreak[],
   pageStarts: PageStart[],
+  blockAttrs: { pos: number; attrs: Record<string, string> }[] = [],
 ): string => {
   const pageAt = new Map<string, number>();
   pageStarts.forEach((start, i) =>
@@ -170,6 +171,7 @@ export const serializeWithBreaks = (
   breaks
     .filter((b) => b.kind === 'before')
     .forEach((b) => mark(b.pos, { 'data-print-break-before': '' }));
+  blockAttrs.forEach(({ pos, attrs }) => mark(pos, attrs));
   pageStarts.forEach((start, i) => {
     if (start.kind === 'before') {
       mark(start.pos, { 'data-print-page-start': String(i + 1) });

@@ -79,13 +79,16 @@ export const MERMAID_SVG_ATTRS = [
   'preserveAspectRatio',
 ];
 
-export async function renderMermaidBlocks(html: string): Promise<string> {
+export async function renderMermaidBlocks(
+  html: string,
+  options: { skip?: (pre: HTMLElement) => boolean } = {},
+): Promise<string> {
   if (!html.includes('data-language="mermaid"')) return html;
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const blocks = Array.from(
     doc.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]'),
-  );
+  ).filter((pre) => !options.skip?.(pre));
   if (blocks.length === 0) return html;
   const mermaid = await getMermaid();
   for (let i = 0; i < blocks.length; i++) {

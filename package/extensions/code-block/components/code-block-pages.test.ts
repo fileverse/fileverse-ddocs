@@ -22,4 +22,9 @@ describe('code block in pages mode', () => {
       /\[data-page-mode='pages'\] \.ProseMirror \[data-code-body\]\s*\{[^}]*max-height: none[^}]*overflow: visible/,
     );
   });
+
+  // Pages prints a diagram in the state it shows (docs/PAGES_MODE.md §4.4).
+  it('exposes whether a Mermaid block shows its diagram or its source', () => {
+    expect(view).toMatch(/data-mermaid-view=\{/);
+  });
 });

@@ -149,4 +149,26 @@ describe('buildPrintHtml', () => {
     );
     expect(marker?.closest('td')?.textContent).toContain('b');
   });
+
+  // Pages prints a Mermaid block in the state it shows: source stays code.
+  it('keeps a Mermaid block that shows its source as code', async () => {
+    editor.commands.setContent(
+      '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>',
+    );
+    // The React node view renders this attribute; headless toDOM does not,
+    // and ProseMirror would undo a hand-set one.
+    const shown = document.createElement('pre');
+    shown.setAttribute('data-mermaid-view', 'source');
+    vi.spyOn(editor.view, 'nodeDOM').mockReturnValue(shown);
+    const { html } = await buildPrintHtml({
+      editor,
+      pageSetup: pages,
+      isPagesActive: false,
+    });
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const pre = div.querySelector('pre[data-language="mermaid"]');
+    expect(pre?.hasAttribute('data-print-mermaid-source')).toBe(true);
+    expect(pre?.textContent).toContain('graph TD');
+  });
 });

@@ -326,6 +326,9 @@ export default function CodeBlockNodeView({
   return (
     <NodeViewWrapper className="w-full">
       <pre
+        data-mermaid-view={
+          isMermaid ? (showMermaidPreview ? 'preview' : 'source') : undefined
+        }
         className={cn(
           'rounded-lg overflow-clip border color-border-default w-full relative',
           showMermaidPreview && '!bg-white !bg-clip-padding',

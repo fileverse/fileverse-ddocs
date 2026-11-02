@@ -65,6 +65,28 @@ const addDebugMarkers = (html: string) => {
   return root.innerHTML;
 };
 
+// Mermaid blocks the live editor shows as source: Pages prints a diagram in
+// the state it shows, so these stay code.
+const MERMAID_SOURCE = 'data-print-mermaid-source';
+const mermaidSourceBlocks = (editor: Editor) => {
+  const out: { pos: number; attrs: Record<string, string> }[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'codeBlock' || node.attrs.language !== 'mermaid') {
+      return true;
+    }
+    const el = editor.view.nodeDOM(pos);
+    const pre =
+      el instanceof HTMLElement
+        ? (el.closest('pre') ?? el.querySelector('pre') ?? el)
+        : null;
+    if (pre?.getAttribute('data-mermaid-view') === 'source') {
+      out.push({ pos, attrs: { [MERMAID_SOURCE]: '' } });
+    }
+    return false;
+  });
+  return out;
+};
+
 export async function buildPrintHtml(args: {
   editor: Editor;
   pageSetup?: PageSetup;
@@ -102,11 +124,13 @@ export async function buildPrintHtml(args: {
 
   let html: string;
   if (isPages) {
+    const sameStructure = embedded.content.size === liveDoc.content.size;
     html = serializeWithBreaks(
       embedded,
       buildPrintSchema(editor.schema),
       placement?.breaks ?? [],
       placement?.pageStarts ?? [],
+      sameStructure ? mermaidSourceBlocks(editor) : [],
     );
   } else {
     const temporaryEditor = getTemporaryEditor(
@@ -116,7 +140,10 @@ export async function buildPrintHtml(args: {
     html = temporaryEditor.getHTML();
     temporaryEditor.destroy();
   }
-  html = await renderMermaidBlocks(html);
+  html = await renderMermaidBlocks(
+    html,
+    isPages ? { skip: (pre) => pre.hasAttribute(MERMAID_SOURCE) } : {},
+  );
   if (args.debugMarkers) html = addDebugMarkers(html);
 
   return {
