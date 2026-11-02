@@ -188,4 +188,25 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
       ),
     );
   });
+
+  // A header row prints in a repeated thead, where Chrome ignores
+  // break-before; the break and page start belong on the table's wrapper.
+  it('moves a break on a header row to the table wrapper', () => {
+    const doc = editor.state.doc;
+    const headerRow = nodePos(doc, 'tableRow', 0);
+    const out = dom(
+      html(
+        [{ kind: 'before', pos: headerRow }],
+        [
+          { kind: 'before', pos: nodePos(doc, 'heading') },
+          { kind: 'before', pos: headerRow },
+        ],
+      ),
+    );
+    const wrapper = out.querySelector('.tableWrapper')!;
+    expect(wrapper.hasAttribute('data-print-break-before')).toBe(true);
+    expect(wrapper.getAttribute('data-print-page-start')).toBe('2');
+    expect(out.querySelector('thead [data-print-break-before]')).toBeNull();
+    expect(out.querySelector('thead [data-print-page-start]')).toBeNull();
+  });
 });

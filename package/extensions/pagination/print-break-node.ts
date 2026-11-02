@@ -116,6 +116,17 @@ const moveHeaderRowsToThead = (root: HTMLElement) => {
     const thead = document.createElement('thead');
     thead.appendChild(first);
     table.insertBefore(thead, tbody);
+    // Chrome ignores break-before in a repeated thead, and a page-start mark
+    // there would repeat on every page: both move to the table's wrapper.
+    const outer = table.parentElement?.classList.contains('tableWrapper')
+      ? table.parentElement
+      : table;
+    ['data-print-break-before', 'data-print-page-start'].forEach((name) => {
+      const value = first.getAttribute(name);
+      if (value === null) return;
+      first.removeAttribute(name);
+      outer.setAttribute(name, value);
+    });
   });
 };
 
