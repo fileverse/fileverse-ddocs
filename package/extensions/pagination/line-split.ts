@@ -131,7 +131,12 @@ function lineStartPos(
     else lo = mid + 1;
   }
   // Chromium reports the letters after an automatic hyphen on the line above;
-  // a hit test at the line's edges finds its true start.
+  // a hit test at the line's edges finds its true start. After whitespace no
+  // hit can move the start (the check below fails), so skip the hit test.
+  const { doc } = view.state;
+  if (lo <= a.from || /\s/.test(doc.textBetween(lo - 1, lo, ' ', ' '))) {
+    return lo;
+  }
   const hit = Math.min(
     view.posAtCoords({ left: a.left + 1, top: a.screenMid })?.pos ?? Infinity,
     view.posAtCoords({ left: a.right - 1, top: a.screenMid })?.pos ?? Infinity,
@@ -139,7 +144,7 @@ function lineStartPos(
   if (
     hit > a.from &&
     hit < lo &&
-    !/\s/.test(view.state.doc.textBetween(hit, lo, ' ', ' '))
+    !/\s/.test(doc.textBetween(hit, lo, ' ', ' '))
   ) {
     lo = hit;
   }
