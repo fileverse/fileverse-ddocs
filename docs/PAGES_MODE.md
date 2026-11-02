@@ -70,7 +70,8 @@ Ported from Edentext `src/lib/editor/extensions/pageBreaks.ts`, cut to the tech 
 2. **Fix 1 — code blocks.** `codeBlock` content is `text*`, so an inline break inside it is invalid. The print schema updates `codeBlock`'s content to `(text | printPageBreak)*`. Probed: valid, and it serialises as a span inside `<pre><code>`.
 3. **Fix 2 — breaks before blocks.** An inline node cannot sit between blocks (before an image, a list item, a table row). `kind: 'before'` breaks are applied at serialisation: a `DOMSerializer` built from the print schema's `nodes` map, each `toDOM` wrapped to add `data-print-break-before` when the node is in a `Set` of target nodes (matched by identity in the copied doc). Probed: marks `UL` and `PRE` correctly in both schemas, public API only.
 4. `inText` breaks are inserted as `printPageBreak` nodes, last position first.
-5. Header rows move into a `<thead>` after serialisation so print repeats them.
+5. Header rows move into a `<thead>` after serialisation so print repeats them. Chrome ignores `break-before` on a row in a repeated `thead` (and a page-start mark there would repeat on every page), so a break or page start on a header row moves to the table's wrapper.
+6. **Print mirrors node-view DOM** where `editor.css` rules depend on it (found by the parity check): v1 `dBlock` content goes in `div[data-node-view-content]`, and a `dBlock` holding a table gets `.is-table`; tables go in `div.tableWrapper`; an empty textblock gets the trailing `<br>` ProseMirror draws (else it prints 0px tall).
 
 Pipeline for `printCurrentTab()` (tech spec order): compute breaks → `searchForSecureImageNodeAndEmbedImageContent` on a copy (assert the copy has the same `content.size`, else fail loudly in dev and print without breaks) → print copy with breaks → `getHTML`-equivalent serialisation → `renderMermaidBlocks` → `handleContentPrint(html, { pageSetup, orientation })`. In Pageless the same handle method prints as today (no breaks, today's styles). When `pageSetup.mode === 'pages'` but Pages is not active (editor under 1024px, Split View, version history), it prints with the Pages CSS (paper size, margins, editor styling) and **no computed breaks**, so the browser breaks pages itself (tech spec "Below 1024 px").
 
@@ -88,10 +89,13 @@ Decision: **in Pages mode the printout is styled by the editor's own CSS** and l
 - Colours stay as print forces them today: light scheme, default text `#0D0D0D` on white, whatever the screen theme or `canvasBackground`; explicit text-colour marks print as authored. (Printing the page colour is a later decision.) `CONTENT_STYLES` and `MAIN_DOCUMENT_PRINT_BASELINE` are not emitted. Print-only rules that stay: hide everything but the host, reset `html/body` height, `print-color-adjust: exact`, `[data-print-break]` → `display: block; break-before: page`, `[data-print-break-before]` → `break-before: page`, `thead` → `display: table-header-group`.
 - `@bottom-right { content: counter(page) }` for page numbers; M0 records which browsers render it.
 
-Known hazards the M0 work must close, found by the parity check in §6.2:
+- **Flat, no sections.** Pageless print splits content into `.print-page` sections at page breaks; in Pages that breaks every `.ProseMirror > block` spacing rule (24px gaps became 8px), so Pages prints flat. A page break serialises as a `<br>`, which Chrome will not make a block, so the block *after* it gets `break-before: page` (sibling rule; `:has()` for the v1 `dBlock` wrapper).
 
-- **Breakpoint rules.** `editor.css` gates content rules on `@container ddoc-editor (min-width: …)` with an `@media` fallback for elements outside a `.ddoc-editor-cq` root. The print host is outside the root, so in print the `@media` fallback applies against the *paper* width, while on screen the container query applied against the *editor* width (≥ 1024). Any content-affecting rule at 768/1025/1280 can therefore differ (one known: `.node-dBlock:first-child > div > .is-table` padding at 1025). Each one found is made to agree in Pages mode.
-- **Node views vs serialised DOM.** On screen, node views render `dBlock`, tables, media, code blocks (line-number gutter), callouts, iframes and action buttons; print gets `toDOM` output. Each fixture block type is compared.
+Hazards found and closed by the parity check (§6.2):
+
+- **Breakpoint rules.** `editor.css` gates content rules on `@container ddoc-editor (min-width: …)` with an `@media` fallback for elements outside a `.ddoc-editor-cq` root. The print host is outside the root, so in print the fallback tests the *paper* width while the screen tested the *editor* width (≥ 1024 whenever Pages is active). Found: the v1 table block's 90% width cap at 1024px; Pages print CSS restates it. Any new content rule at 1024/1280 needs the same.
+- **React node views.** Their content sits in a `pre-wrap` div, while ProseMirror's own `break-spaces` wraps a word earlier (a line-end space counts). Table cells print `pre-wrap`; `.tableWrapper` prints `overflow: visible` (a scroll container cannot break across pages).
+- **Code blocks.** On screen a block over 20 lines is a 500px scroll box; paper cannot scroll, so Pages mode lifts the cap on screen (`[data-code-body]` hook, like collapsed headings showing expanded). Pages print CSS mirrors the node view's box: 1px border, body 32px under the overlaid header, 20px lines at the inherited size, `white-space: pre` unless word wrap is on. Not mirrored: the line-number gutter's width, which only matters for word-wrapped code with line numbers.
 - **Display-only decorations.** List-marker font (`applyMarkerFonts` already mirrors it in print), comment highlights, search, carets: none may change layout on screen in Pages mode, or print will differ.
 
 ## 5. Fixtures
@@ -123,11 +127,11 @@ A "Pages" section in the demo's styling panel: mode, paper, fixture picker, a pr
 
 ### 6.2 Height parity (screen vs print DOM, no PDF)
 
-Before printing, the harness renders the print HTML off-screen at text width under the print stylesheet's non-`@media print` rules and compares every leaf's height and top with the live editor. Any difference is a stylesheet or node-view mismatch (§4.4), found in seconds, per block. A fixture is not sent to PDF until it passes here.
+Before printing, the harness mounts the real print host (`mountContentPrintHost`, forced visible off-screen, so the Pages print CSS outside `@media print` applies) and compares every top-level block's height and the gap above it with the live editor. Any difference is a stylesheet or node-view mismatch (§4.4), found in seconds, per block. A fixture is not sent to PDF until it passes here.
 
 ### 6.3 Chrome checker
 
-`scripts/pages-print-check.cjs`, built like `scripts/chrome-parity-probe.cjs` (a real Chrome over CDP against the demo on 5173). For each fixture × schema × paper (× landscape where listed): load, read `window.__ddocPages`, run the height parity check, `Page.printToPDF` with `preferCSSPageSize`, extract text with `pdfjs-dist` (dev dependency), and report per page: marker present, marker sequence intact, page count equal, first line of any mismatched page. Also runs fixture 01 at zoom 1.5 and asserts the breaks equal those at zoom 1.
+`scripts/pages-print-check.cjs`, built like `scripts/chrome-parity-probe.cjs` (a headless Chrome over CDP against the demo, default `--base http://localhost:5174/` so it never collides with main's server on 5173). One profile and one doc per schema (the schema is stamped when a doc is created; the demo waits for the v2 stamp before loading a fixture). For each fixture × schema × paper (× landscape where listed): load, read `window.__ddocPages`, run the height parity check, `Page.printToPDF` with `preferCSSPageSize`, extract text with `pdfjs-dist`, and report per page: marker present, marker sequence intact, page count equal, first line of any mismatched page. Also compares fixture 01's breaks at zoom 1.5, Fit and 0.75 with zoom 1. `pdfjs-dist` is installed with `npm i --no-save pdfjs-dist@4.10.38`, not saved: npm 11 rewrites hundreds of unrelated lockfile flags (CI runs npm 10).
 
 `Page.printToPDF` is the engine behind Playwright's `page.pdf()`; the CDP pattern avoids a Playwright dependency (my call; swap to Playwright if preferred). The live-Chrome manual check is printing from the demo's Print button.
 
@@ -142,6 +146,26 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 3. Record per browser: `@page` margin-box page numbers, `thead` repeat, breaks inside `pre`.
 4. **Fail:** (b) or (c) left in Chrome or Safari after fixes → report to the team with the per-fixture table; the switch to the raster path is a team decision, not made in M0.
 
+### 7.5 Results
+
+**Chrome** (headless, `Page.printToPDF`, 48 cases: 10 fixtures × v1/v2 × A4/Letter, plus landscape for 01 and 04). Baseline 10/48; after the fixes in §4.3–4.4, 36/48.
+
+| Fixture | Page breaks (markers) | Parity | Notes |
+| -- | -- | -- | -- |
+| 01 prose, 02 headings, 03 lists, 07 fonts, 08 breaks/containers, 09 columns | Match, every case | Match | |
+| 04 tables | Match, every case | Match | Header row repeats on each page |
+| 05 images | Match, every case | Image ~45–55px taller on screen | Media node view's in-flow editing chrome; break-neutral (print is shorter, so only whitespace at a page bottom) |
+| 10 proposal | Match, every case | Image, as 05 | |
+| 06 code | Match up to the Mermaid block, then off by one | Mermaid 78 vs 278px | Open product question, §10 |
+
+- No glyph-metric drift (class b) seen: no break moved for any reason other than the structural mismatches above. The 20px slack was never needed as more than headroom.
+- Zoom 1.5, Fit and 0.75 give the same breaks as 100%.
+- Per-browser facts, Chrome: `@page @bottom-right` page numbers render; `thead` repeats; `break-before` inside `pre` honoured; `break-before` on a repeated `thead` row ignored (worked around, §4.3).
+
+**Safari, Firefox, iPad Safari:** pending the manual round (§6.4).
+
+**Verdict so far:** Chrome passes for every block type except Mermaid, which waits on the §10 decision. The gate is not called until Safari is in.
+
 ## 8. Tests
 
 - Unit (vitest): `PageGrid`; `place` on synthetic leaves (fits, push, split, 2-line rule both sides, first on page, keep-with-next chain stops after one heading, forced break, header reserve); print schema (both schemas: byte-identical without breaks, inline breaks in paragraph/heading/list item/code block, `before` marking by identity, last-first insertion, `thead` move); `handleContentPrint` emits the Pages CSS only with `pageSetup` and today's CSS without it; `data-page-mode` and `baseWidth` follow the gating rules.
@@ -155,6 +179,9 @@ M0 lives on branch `pages-mode` and does **not** merge to `main`: every push to 
 ## 10. Open for M1
 
 - **Layout-changing widgets.** Pending suggestions render the proposed text as `Decoration.widget`s (`comment-decoration-plugin.ts`), and AI autocomplete renders ghost text; the print copy has neither, so while one is on screen the screen's pages and the printout differ. Options: hide them in Pages mode, measure around them, or accept and document the gap. Product decision before M1's spacers. M0 fixtures contain none.
+- **Mermaid.** While editing, the screen shows a diagram's source (78px in fixture 06); print renders the diagram (278px). An atomic block of the wrong height moves every later break. Options: preview by default in Pages mode, or print the source. Product decision.
+- **Image editing chrome.** The media node view keeps ~45px of toolbar row, padding and margins in flow on screen. Break-neutral, but the sheet's fill differs from paper. Belongs with M2's image work (`max-height` to the text height).
+- **`:has()` cost.** `.editor-main-lane:has(...)` (`styles/index.css`) sits above the editor: Edentext measured this pattern at ~150ms of Chromium restyle per inserted spacer. Measure in M1.
 
 ## 11. Left to the builder
 
