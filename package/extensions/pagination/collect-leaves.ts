@@ -112,6 +112,15 @@ function spacerExtra(
   });
 }
 
+// Defines `key` as a getter that computes once, on first read.
+function lazy(obj: object, key: string, get: () => number) {
+  let value: number | undefined;
+  Object.defineProperty(obj, key, {
+    enumerable: true,
+    get: () => (value ??= get()),
+  });
+}
+
 // A node's own content element: a node view's chrome (a code block's
 // line-number gutter) is not text of the leaf and does not move with a spacer.
 const contentOf = (el: HTMLElement): HTMLElement =>
@@ -236,43 +245,50 @@ export function collectLeaves(
       end,
       top: (rect.top - originTop) / scale - sums[first],
       bottom: (rect.bottom - originTop) / scale - sums[end],
-      marginTop: leadingOffset(startingChain(el)),
     };
   };
 
   // Outermost node that starts with the leaf: a spacer goes before it.
-  const spacerAnchor = (pos: number) => {
+  const spacerPosOf = (pos: number) => {
     const $pos = view.state.doc.resolve(pos);
     let spacerPos = pos;
     for (let d = $pos.depth; d > 0 && $pos.index(d) === 0; d -= 1) {
       spacerPos = $pos.before(d);
     }
+    return spacerPos;
+  };
+  const spacerCollapseAt = (spacerPos: number) => {
     const outer = view.nodeDOM(spacerPos);
-    const spacerCollapse =
-      outer instanceof HTMLElement
-        ? spacerExtra(
-            outer.parentElement,
-            realSibling(outer, 'previousElementSibling'),
-            outer,
-          )
-        : 0;
-    return { spacerPos, spacerCollapse };
+    return outer instanceof HTMLElement
+      ? spacerExtra(
+          outer.parentElement,
+          realSibling(outer, 'previousElementSibling'),
+          outer,
+        )
+      : 0;
+  };
+
+  // marginTop and spacerCollapse matter only where place starts a page, so
+  // they are measured on first read, which must come before the next DOM
+  // write (place runs right after collect).
+  const flowLeaf = <T extends object>(
+    kind: 'text' | 'atomic',
+    pos: number,
+    b: NonNullable<ReturnType<typeof box>>,
+    rest: T,
+  ) => {
+    const leaf = { kind, pos, top: b.top, bottom: b.bottom };
+    const spacerPos = spacerPosOf(pos);
+    lazy(leaf, 'marginTop', () => leadingOffset(startingChain(b.el)));
+    Object.assign(leaf, { spacerPos });
+    lazy(leaf, 'spacerCollapse', () => spacerCollapseAt(spacerPos));
+    return Object.assign(leaf, rest) as unknown as Leaf;
   };
 
   type Atomic = Extract<Leaf, { kind: 'atomic' }>;
   const atomic = (pos: number, extra: Pick<Atomic, 'row' | 'table'> = {}) => {
     const b = box(pos);
-    if (b) {
-      leaves.push({
-        kind: 'atomic',
-        pos,
-        top: b.top,
-        bottom: b.bottom,
-        marginTop: b.marginTop,
-        ...spacerAnchor(pos),
-        ...extra,
-      });
-    }
+    if (b) leaves.push(flowLeaf('atomic', pos, b, extra));
   };
 
   const walk = (parent: PMNode, contentStart: number) =>
@@ -348,16 +364,9 @@ export function collectLeaves(
     });
     // An empty textblock has no line boxes; it moves as a unit.
     if (lines.length === 0) return atomic(pos);
-    leaves.push({
-      kind: 'text',
-      pos,
-      top: b.top,
-      bottom: b.bottom,
-      marginTop: b.marginTop,
-      ...spacerAnchor(pos),
-      isHeading: name === 'heading',
-      lines,
-    });
+    leaves.push(
+      flowLeaf('text', pos, b, { isHeading: name === 'heading', lines }),
+    );
   };
 
   walk(view.state.doc, 0);
