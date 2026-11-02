@@ -985,8 +985,8 @@ function buildDecorations(
             suggestion: true,
             side: -1,
             key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, insertPoint)}-${visualCaret ? 'caret' : 'no-caret'}-${
-              isActive ? 'active' : 'inactive'
-            }`,
+              anchor.isDraft ? 'draft' : 'sent'
+            }-${isActive ? 'active' : 'inactive'}`,
           },
         ),
       );
@@ -1078,8 +1078,8 @@ function buildDecorations(
               suggestion: true,
               side: -1,
               key: `suggestion-insert-${anchor.id}-${suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, range.from)}-${
-                isActive ? 'active' : 'inactive'
-              }`,
+                anchor.isDraft ? 'draft' : 'sent'
+              }-${isActive ? 'active' : 'inactive'}`,
             },
           ),
         );

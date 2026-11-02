@@ -1781,5 +1781,40 @@ describe.each([1, 2])(
       expect(widget?.hasAttribute('data-suggestion-preview')).toBe(true);
       expect(widget?.hasAttribute('data-suggestion-draft')).toBe(isDraft);
     });
+
+    it('re-renders the widget when a draft is submitted', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Hello world</p>');
+      const anchor: CommentAnchor = {
+        id: 'preview',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'Hello').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        isDraft: true,
+        suggestionType: 'add',
+        suggestedContent: ' there',
+      };
+      harness.anchors.push(anchor);
+      triggerDecorationRebuild(editor);
+      const selector = '[data-suggestion-id="preview"]';
+      expect(
+        editor.view.dom
+          .querySelector(selector)
+          ?.hasAttribute('data-suggestion-draft'),
+      ).toBe(true);
+
+      anchor.isDraft = false;
+      triggerDecorationRebuild(editor);
+      expect(
+        editor.view.dom
+          .querySelector(selector)
+          ?.hasAttribute('data-suggestion-draft'),
+      ).toBe(false);
+    });
   },
 );
