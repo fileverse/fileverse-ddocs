@@ -171,13 +171,25 @@ export function collectLeaves(
           ),
     };
   });
-  const before = (el: HTMLElement, includeInside: boolean) =>
-    spacers.reduce((sum, s) => {
-      const rel = el.compareDocumentPosition(s.el);
+  // Spacers are in document order: those before an element, then those
+  // inside it, then the rest. Binary searches find the boundaries.
+  const sums = [0];
+  spacers.forEach((s, i) => sums.push(sums[i] + s.amount));
+  const endOf = (el: HTMLElement, includeInside: boolean) => {
+    let lo = 0;
+    let hi = spacers.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const rel = el.compareDocumentPosition(spacers[mid].el);
       const preceding = !!(rel & Node.DOCUMENT_POSITION_PRECEDING);
       const inside = !!(rel & Node.DOCUMENT_POSITION_CONTAINED_BY);
-      return sum + (preceding || (includeInside && inside) ? s.amount : 0);
-    }, 0);
+      if (preceding || (includeInside && inside)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const before = (el: HTMLElement, includeInside: boolean) =>
+    sums[endOf(el, includeInside)];
 
   // The leaf and every box it is the first child of, below view.dom.
   const startingChain = (el: HTMLElement): BoxEdge[] => {
@@ -301,6 +313,9 @@ export function collectLeaves(
 
     const b = box(pos);
     if (!b) return;
+    const inner = spacers
+      .slice(endOf(b.el, false), endOf(b.el, true))
+      .filter((s) => s.inText);
     const lines = measureLines(view, contentOf(b.el), {
       from: pos + 1,
       to: pos + 1 + node.content.size,
@@ -309,11 +324,8 @@ export function collectLeaves(
       scale,
       range,
       shiftAt: (top) =>
-        spacers.reduce(
-          (sum, s) =>
-            b.el.contains(s.el) && s.inText && s.top <= top + 0.5
-              ? sum + s.amount
-              : sum,
+        inner.reduce(
+          (sum, s) => (s.top <= top + 0.5 ? sum + s.amount : sum),
           before(b.el, false),
         ),
     });
