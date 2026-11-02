@@ -164,6 +164,14 @@ export interface DocumentStyling {
   orientation?: 'portrait' | 'landscape';
 
   /**
+   * Page setup
+   * @description Pages shows the document as paper sheets that print page for
+   * page; Pageless is one continuous canvas. Absent means Pageless.
+   * @example { mode: "pages", paper: "a4" }
+   */
+  pageSetup?: PageSetup;
+
+  /**
    * Custom CSS
    * @description The author's escape hatch for styling the document beyond the
    * structured options above. Write BARE selectors (`h1 { … }`, `p { … }`,
@@ -175,6 +183,11 @@ export interface DocumentStyling {
    */
   customCSS?: string;
 }
+export type PageSetup = {
+  mode: 'pages' | 'pageless';
+  paper: 'a4' | 'letter';
+};
+
 export type DdocStats = {
   words: number;
   characters: number;
