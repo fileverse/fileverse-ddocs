@@ -100,6 +100,10 @@ import {
   stepZoomLevel,
 } from './utils/zoom';
 import {
+  getPagesBaseWidth,
+  isPagesActive,
+} from './extensions/pagination/page-grid';
+import {
   EditorWidthContext,
   useEditorMediaQuery,
 } from './hooks/use-editor-media-query';
@@ -814,7 +818,23 @@ const DdocEditor = forwardRef(
     const isCommentColumnVisible =
       hasFloatingComments && !isFloatingCommentHidden;
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
-    const baseWidth = isLandscapeMode ? 1190 : 850;
+    const isWideEnoughForPages = useEditorMediaQuery(
+      '(min-width: 1024px)',
+      editorWidthStore,
+    );
+    const pageSetup = documentStyling?.pageSetup;
+    const isPagesMode = isPagesActive({
+      pageSetup,
+      isWideEnough: isWideEnoughForPages,
+      isSplitViewActive,
+      isVersionHistory: Boolean(rest.versionHistoryState?.enabled),
+    });
+    const baseWidth =
+      isPagesMode && pageSetup
+        ? getPagesBaseWidth(pageSetup, documentStyling?.orientation)
+        : isLandscapeMode
+          ? 1190
+          : 850;
 
     const zoomLevel = normalizeZoomLevel(rawZoomLevel);
     // Zoom shares Split View's 960px gate: below it the toolbar holding its
@@ -1625,6 +1645,7 @@ const DdocEditor = forwardRef(
             !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
             isContainerQueryRoot && 'ddoc-editor-cq',
           )}
+          data-page-mode={isPagesMode ? 'pages' : undefined}
         >
           <EditorWidthContext.Provider value={editorWidthStore}>
             <ZoomProvider

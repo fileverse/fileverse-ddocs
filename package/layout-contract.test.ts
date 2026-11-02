@@ -36,6 +36,17 @@ describe('DdocEditor layout contract', () => {
     expect(source).not.toContain("'flex-1 min-h-0 w-full flex flex-col");
   });
 
+  // Pages mode follows the editor's width, not the window (docs/PAGES_MODE.md §3).
+  it('marks pages mode on the root from the editor width', () => {
+    const flat = source.replace(/\s+/g, ' ');
+    expect(flat).toContain(
+      "useEditorMediaQuery( '(min-width: 1024px)', editorWidthStore, )",
+    );
+    expect(flat).toContain(
+      "data-page-mode={isPagesMode ? 'pages' : undefined}",
+    );
+  });
+
   // The wrapper reserves the scaled height (use-zoomed-page.ts), not the layer.
   it('does not give the scaled layer a percentage height', () => {
     expect(source).not.toContain('`${100 / zoom}%`');

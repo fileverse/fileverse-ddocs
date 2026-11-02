@@ -1,5 +1,10 @@
 import type { PageSetup } from '../../types';
-import { PageGrid, getPaperPx, isPagesActive } from './page-grid';
+import {
+  PageGrid,
+  getPagesBaseWidth,
+  getPaperPx,
+  isPagesActive,
+} from './page-grid';
 
 describe('PageGrid', () => {
   it('A4 portrait', () => {
@@ -50,4 +55,15 @@ describe('isPagesActive', () => {
       ).toBe(want);
     },
   );
+});
+
+describe('getPagesBaseWidth', () => {
+  it('is the paper width, swapped in landscape', () => {
+    expect(getPagesBaseWidth({ mode: 'pages', paper: 'a4' }, 'portrait')).toBe(
+      794,
+    );
+    expect(
+      getPagesBaseWidth({ mode: 'pages', paper: 'letter' }, 'landscape'),
+    ).toBe(1056);
+  });
 });

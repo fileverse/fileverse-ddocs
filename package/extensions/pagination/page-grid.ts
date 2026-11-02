@@ -23,6 +23,11 @@ export const getPaperPx = (
     : { width, height };
 };
 
+export const getPagesBaseWidth = (
+  pageSetup: PageSetup,
+  orientation?: Orientation,
+) => getPaperPx(pageSetup.paper, orientation).width;
+
 // Pages are 0-based; page p occupies [p * (height + gap), ... + height).
 export class PageGrid {
   readonly width: number;
