@@ -16,6 +16,30 @@ const WALKED = new Set([
   'blockquote',
 ]);
 
+export const SPACER_CLASS = 'ddoc-page-spacer';
+
+// CSS margin collapsing for two adjoining margins, negatives included.
+export function collapsedMargin(a: number, b: number): number {
+  if (a >= 0 && b >= 0) return Math.max(a, b);
+  if (a < 0 && b < 0) return Math.min(a, b);
+  return a + b;
+}
+
+// How far a block spacer moves what follows it: its height plus the margins
+// it separates, minus the one margin that used to be between them.
+export function spacerDisplacement(s: {
+  height: number;
+  marginAbove: number;
+  marginBelow: number;
+}): number {
+  return (
+    s.height +
+    s.marginAbove +
+    s.marginBelow -
+    collapsedMargin(s.marginAbove, s.marginBelow)
+  );
+}
+
 export type BoxEdge = {
   top: number;
   marginTop: number;
@@ -43,12 +67,69 @@ const blocksMarginCollapse = (style: CSSStyleDeclaration) =>
   style.overflow !== 'visible';
 
 // Leaves in document order, measured in the view.dom frame, unscaled.
-export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
+export function collectLeaves(
+  view: EditorView,
+  textHeight: number,
+  options: { tableRows?: boolean } = {},
+): Leaf[] {
+  const { tableRows = false } = options;
   const scale = getZoomScale(view.dom);
   const originTop = view.dom.getBoundingClientRect().top;
   const range = document.createRange();
   const leaves: Leaf[] = [];
   let tableId = 0;
+
+  const marginOf = (el: Element | null, side: 'Top' | 'Bottom') =>
+    el ? parseFloat(getComputedStyle(el)[`margin${side}`]) || 0 : 0;
+  const realSibling = (
+    el: Element,
+    dir: 'previousElementSibling' | 'nextElementSibling',
+  ) => {
+    let sib = el[dir];
+    while (sib?.classList.contains(SPACER_CLASS)) sib = sib[dir];
+    return sib;
+  };
+
+  // Spacers already in the DOM shift everything below them; every position
+  // below is read back to where it would be without them.
+  const spacers = Array.from(
+    view.dom.querySelectorAll<HTMLElement>(`.${SPACER_CLASS}`),
+  ).map((el) => {
+    const rect = el.getBoundingClientRect();
+    const parent = el.parentElement;
+    let inText = false;
+    try {
+      inText =
+        !!parent &&
+        parent !== view.dom &&
+        view.state.doc.resolve(view.posAtDOM(parent, 0)).parent.isTextblock;
+    } catch {
+      inText = false;
+    }
+    const height = rect.height / scale;
+    return {
+      el,
+      inText,
+      top: (rect.top - originTop) / scale,
+      amount: inText
+        ? height
+        : spacerDisplacement({
+            height,
+            marginAbove: marginOf(
+              realSibling(el, 'previousElementSibling'),
+              'Bottom',
+            ),
+            marginBelow: marginOf(realSibling(el, 'nextElementSibling'), 'Top'),
+          }),
+    };
+  });
+  const before = (el: HTMLElement, includeInside: boolean) =>
+    spacers.reduce((sum, s) => {
+      const rel = el.compareDocumentPosition(s.el);
+      const preceding = !!(rel & Node.DOCUMENT_POSITION_PRECEDING);
+      const inside = !!(rel & Node.DOCUMENT_POSITION_CONTAINED_BY);
+      return sum + (preceding || (includeInside && inside) ? s.amount : 0);
+    }, 0);
 
   // The leaf and every box it is the first child of, below view.dom.
   const startingChain = (el: HTMLElement): BoxEdge[] => {
@@ -74,10 +155,34 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
     const rect = el.getBoundingClientRect();
     return {
       el,
-      top: (rect.top - originTop) / scale,
-      bottom: (rect.bottom - originTop) / scale,
+      top: (rect.top - originTop) / scale - before(el, false),
+      bottom: (rect.bottom - originTop) / scale - before(el, true),
       marginTop: leadingOffset(startingChain(el)),
     };
+  };
+
+  // Outermost node that starts with the leaf: a spacer goes before it.
+  const spacerAnchor = (pos: number) => {
+    const $pos = view.state.doc.resolve(pos);
+    let spacerPos = pos;
+    for (let d = $pos.depth; d > 0 && $pos.index(d) === 0; d -= 1) {
+      spacerPos = $pos.before(d);
+    }
+    const outer = view.nodeDOM(spacerPos);
+    const prev =
+      outer instanceof HTMLElement
+        ? realSibling(outer, 'previousElementSibling')
+        : null;
+    const spacerCollapse = prev
+      ? Math.max(
+          0,
+          Math.min(
+            marginOf(prev, 'Bottom'),
+            marginOf(outer as HTMLElement, 'Top'),
+          ),
+        )
+      : 0;
+    return { spacerPos, spacerCollapse };
   };
 
   const atomic = (
@@ -92,8 +197,7 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
         top: b.top,
         bottom: b.bottom,
         marginTop: b.marginTop,
-        spacerPos: pos,
-        spacerCollapse: 0,
+        ...spacerAnchor(pos),
         row,
       });
     }
@@ -127,7 +231,9 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       leaves.push({ kind: 'forced', pos });
       return;
     }
-    if (name === 'table') return visitTable(node, pos);
+    if (name === 'table') {
+      return tableRows ? visitTable(node, pos) : atomic(pos);
+    }
     if (name === 'callout') {
       const b = box(pos);
       if (b && b.bottom - b.top > textHeight) return walk(node, pos + 1);
@@ -145,6 +251,14 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       bottom: b.bottom,
       scale,
       range,
+      shiftAt: (top) =>
+        spacers.reduce(
+          (sum, s) =>
+            b.el.contains(s.el) && s.inText && s.top <= top + 0.5
+              ? sum + s.amount
+              : sum,
+          before(b.el, false),
+        ),
     });
     // An empty textblock has no line boxes; it moves as a unit.
     if (lines.length === 0) return atomic(pos);
@@ -154,8 +268,7 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       top: b.top,
       bottom: b.bottom,
       marginTop: b.marginTop,
-      spacerPos: pos,
-      spacerCollapse: 0,
+      ...spacerAnchor(pos),
       isHeading: name === 'heading',
       lines,
     });

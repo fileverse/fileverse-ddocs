@@ -65,9 +65,11 @@ export function measureLines(
     bottom: number;
     scale: number;
     range: Range;
+    // Distance spacers above a line (given its measured top) add to it.
+    shiftAt?: (top: number) => number;
   },
 ): Line[] {
-  const { from, to, originTop, bottom, scale, range } = args;
+  const { from, to, originTop, bottom, scale, range, shiftAt } = args;
   const rects: Rect[] = [];
   for (const node of textNodesOf(el)) {
     range.selectNodeContents(node);
@@ -84,9 +86,10 @@ export function measureLines(
   }
   const lines = groupLineRects(rects, scale);
   const elRect = el.getBoundingClientRect();
+  const shifts = lines.map((line) => (shiftAt ? shiftAt(line.top) : 0));
   return lines.map((line, i) => ({
-    top: line.top,
-    bottom: i + 1 < lines.length ? lines[i + 1].top : bottom,
+    top: line.top - shifts[i],
+    bottom: i + 1 < lines.length ? lines[i + 1].top - shifts[i + 1] : bottom,
     startPos:
       i === 0
         ? from
