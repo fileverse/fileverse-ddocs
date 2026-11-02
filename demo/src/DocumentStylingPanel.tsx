@@ -8,6 +8,7 @@ interface DocumentStylingPanelProps {
   onClose: () => void;
   documentStyling: DocumentStyling | undefined;
   onStylingChange: (styling: DocumentStyling | undefined) => void;
+  children?: React.ReactNode;
 }
 
 const GRADIENT_PRESETS = [
@@ -87,6 +88,7 @@ export const DocumentStylingPanel: React.FC<DocumentStylingPanelProps> = ({
   onClose,
   documentStyling,
   onStylingChange,
+  children,
 }) => {
   if (!isOpen) return null;
 
@@ -131,7 +133,7 @@ export const DocumentStylingPanel: React.FC<DocumentStylingPanelProps> = ({
           </svg>
         </button>
       </div>
-      
+      {children}
       <div className="space-y-4">
         {/* Page Background */}
         <div className="space-y-3">

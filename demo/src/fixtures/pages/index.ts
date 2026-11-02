@@ -1,0 +1,181 @@
+import { paragraphs, rng, sentence, sentences, svgImage } from './gen';
+
+export type PagesFixture = {
+  id: string;
+  title: string;
+  html: string;
+  landscape?: boolean;
+};
+
+const prose = () => {
+  const r = rng(1);
+  return `<h1>Long prose</h1>${paragraphs(r, 70)}`;
+};
+
+const headings = () => {
+  const r = rng(2);
+  let html = '<h1>Headings</h1>';
+  for (let i = 0; i < 45; i += 1) {
+    const level = i % 3 === 0 ? 2 : 3;
+    html += `<h${level}>${sentence(r, 2, 6)}</h${level}>`;
+    html += paragraphs(r, 1 + (i % 3), 1, 4);
+  }
+  return html;
+};
+
+const lists = () => {
+  const r = rng(3);
+  const item = () => `<li><p>${sentences(r, 1, 4)}</p></li>`;
+  const nested = (depth: number): string =>
+    `<ul>${Array.from({ length: 4 }, () =>
+      depth < 2
+        ? `<li><p>${sentences(r, 1, 3)}</p>${nested(depth + 1)}</li>`
+        : item(),
+    ).join('')}</ul>`;
+  const ordered = `<ol>${Array.from({ length: 30 }, item).join('')}</ol>`;
+  const tasks = `<ul data-type="taskList">${Array.from(
+    { length: 20 },
+    (_, i) =>
+      `<li data-type="taskItem" data-checked="${i % 2 === 0}"><label><input type="checkbox"></label><div><p>${sentences(r, 1, 3)}</p></div></li>`,
+  ).join('')}</ul>`;
+  return `<h1>Lists</h1>${nested(0)}${nested(0)}${ordered}${tasks}${nested(0)}`;
+};
+
+const table = (r: () => number, rows: number, header: boolean) => {
+  const cell = (tag: 'td' | 'th', text: string) =>
+    `<${tag}><p>${text}</p></${tag}>`;
+  const head = header
+    ? `<tr>${['Item', 'Owner', 'Notes'].map((t) => cell('th', t)).join('')}</tr>`
+    : '';
+  const body = Array.from(
+    { length: rows },
+    (_, i) =>
+      `<tr>${cell('td', `Row ${i + 1}`)}${cell('td', sentence(r, 2, 4))}${cell(
+        'td',
+        i % 4 === 0 ? sentences(r, 2, 4) : sentence(r, 3, 8),
+      )}</tr>`,
+  ).join('');
+  return `<table><tbody>${head}${body}</tbody></table>`;
+};
+
+const tables = () => {
+  const r = rng(4);
+  return `<h1>Tables</h1>${paragraphs(r, 3)}${table(r, 60, true)}${paragraphs(
+    r,
+    2,
+  )}${table(r, 40, false)}${paragraphs(r, 2)}${table(r, 25, true)}`;
+};
+
+const images = () => {
+  const r = rng(5);
+  const sizes: [number, number][] = [
+    [600, 200],
+    [400, 500],
+    [602, 700],
+    [300, 300],
+    [500, 600],
+    [602, 400],
+  ];
+  return `<h1>Images</h1>${sizes
+    .map(([w, h], i) => `${paragraphs(r, 2 + (i % 3))}${svgImage(w, h)}`)
+    .join('')}${paragraphs(r, 4)}`;
+};
+
+const code = () => {
+  const r = rng(6);
+  const block = (lines: number) =>
+    `<pre><code>${Array.from(
+      { length: lines },
+      (_, i) => `const line${i} = compute(${i}, '${sentence(r, 2, 5)}');`,
+    ).join('\n')}</code></pre>`;
+  return `<h1>Code</h1>${paragraphs(r, 4)}${block(10)}${paragraphs(
+    r,
+    3,
+  )}${block(30)}${paragraphs(r, 2)}${block(80)}${paragraphs(
+    r,
+    2,
+  )}<pre><code class="language-mermaid">graph TD; A[Start] --> B[Review]; B --> C[Approve]; B --> D[Revise]; D --> B</code></pre>${paragraphs(
+    r,
+    4,
+  )}`;
+};
+
+const mixedFonts = () => {
+  const r = rng(7);
+  const fonts = ['Georgia', 'Arial', 'Courier New', 'Times New Roman'];
+  const sizes = ['12px', '14px', '18px', '22px'];
+  let html = '<h1>Mixed fonts and spacing</h1>';
+  for (let i = 0; i < 40; i += 1) {
+    const font = fonts[i % fonts.length];
+    const size = sizes[(i * 3) % sizes.length];
+    const spacing =
+      i % 5 === 0 ? ' style="margin-top: 24px; margin-bottom: 18px"' : '';
+    html += `<p${spacing}><span style="font-family: ${font}; font-size: ${size}">${sentences(
+      r,
+      2,
+      6,
+    )}</span> ${sentences(r, 1, 3)}</p>`;
+    if (i % 8 === 7) html += `<h2>${sentence(r, 2, 5)}</h2>`;
+  }
+  return html;
+};
+
+const breaksAndContainers = () => {
+  const r = rng(8);
+  const callout = `<aside data-type="callout"><p>${sentences(r, 2, 5)}</p><p>${sentences(r, 1, 3)}</p></aside>`;
+  const quote = `<blockquote><p>${sentences(r, 3, 6)}</p><p>${sentences(r, 2, 4)}</p></blockquote>`;
+  return `<h1>Breaks and containers</h1>${paragraphs(r, 3)}<div data-type="page-break"></div>${paragraphs(
+    r,
+    2,
+  )}${callout}${paragraphs(r, 6)}${quote}<hr>${paragraphs(r, 5)}<div data-type="page-break"></div><h2>${sentence(
+    r,
+    2,
+    5,
+  )}</h2>${paragraphs(r, 8)}${callout}${quote}${paragraphs(r, 6)}`;
+};
+
+const columns = () => {
+  const r = rng(9);
+  const cols = () =>
+    `<div data-type="columns"><div data-type="column">${paragraphs(
+      r,
+      2,
+      1,
+      4,
+    )}</div><div data-type="column">${paragraphs(r, 2, 1, 4)}</div></div>`;
+  return `<h1>Columns</h1>${paragraphs(r, 4)}${cols()}${paragraphs(
+    r,
+    5,
+  )}${cols()}${paragraphs(r, 6)}${cols()}${paragraphs(r, 4)}`;
+};
+
+const proposal = () => {
+  const r = rng(10);
+  return [
+    '<h1>Project proposal</h1>',
+    paragraphs(r, 3),
+    `<h2>Scope</h2>${paragraphs(r, 4)}`,
+    `<ul>${Array.from({ length: 8 }, () => `<li><p>${sentences(r, 1, 3)}</p></li>`).join('')}</ul>`,
+    `<h2>Timeline</h2>${table(r, 18, true)}`,
+    `<h2>Architecture</h2>${paragraphs(r, 3)}${svgImage(602, 360)}`,
+    `<aside data-type="callout"><p>${sentences(r, 2, 4)}</p></aside>`,
+    `<h2>Budget</h2>${paragraphs(r, 4)}${table(r, 12, true)}`,
+    '<div data-type="page-break"></div>',
+    `<h2>Terms</h2><ol>${Array.from({ length: 14 }, () => `<li><p>${sentences(r, 2, 5)}</p></li>`).join('')}</ol>`,
+    `<pre><code>${Array.from({ length: 12 }, (_, i) => `step ${i}: ${sentence(r, 2, 5)}`).join('\n')}</code></pre>`,
+    paragraphs(r, 6),
+  ].join('');
+};
+
+export const PAGES_FIXTURES: PagesFixture[] = [
+  { id: '01', title: 'Long prose', html: prose(), landscape: true },
+  { id: '02', title: 'Headings', html: headings() },
+  { id: '03', title: 'Lists', html: lists() },
+  { id: '04', title: 'Tables', html: tables(), landscape: true },
+  { id: '05', title: 'Images', html: images() },
+  { id: '06', title: 'Code blocks', html: code() },
+  { id: '07', title: 'Mixed fonts and spacing', html: mixedFonts() },
+  { id: '08', title: 'Breaks and containers', html: breaksAndContainers() },
+  { id: '09', title: 'Columns', html: columns() },
+  { id: '10', title: 'Proposal', html: proposal() },
+];

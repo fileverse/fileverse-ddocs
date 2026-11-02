@@ -51,6 +51,9 @@ import {
   repairDdocContent,
 } from '../../package/persistence';
 import { DocumentStylingPanel } from './DocumentStylingPanel';
+import { PAGES_FIXTURES } from './fixtures/pages';
+import { PagesPanel } from './pages/PagesPanel';
+import { installPagesDebug, waitForLayout } from './pages/pages-debug';
 import {
   DocumentStyling,
   CollaborationProps,
@@ -264,10 +267,23 @@ function App() {
     [docId],
   );
 
-  // Document styling state - starts undefined to allow dark mode to work
+  // Document styling state - starts undefined to allow dark mode to work.
+  // ?pagesFixture=<id>&paper=a4|letter&orientation=landscape opens a Pages M0
+  // fixture (docs/PAGES_MODE.md §6).
   const [documentStyling, setDocumentStyling] = useState<
     DocumentStyling | undefined
-  >(undefined);
+  >(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('pagesFixture')) return undefined;
+    return {
+      pageSetup: {
+        mode: 'pages',
+        paper: params.get('paper') === 'letter' ? 'letter' : 'a4',
+      },
+      orientation:
+        params.get('orientation') === 'landscape' ? 'landscape' : 'portrait',
+    };
+  });
   const [showStylingControls, setShowStylingControls] = useState(false);
 
   const [inlineCommentData, setInlineCommentData] = useState({
@@ -353,6 +369,42 @@ function App() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__ddoc = editorRef;
   }, []);
+
+  const documentStylingRef = useRef(documentStyling);
+  documentStylingRef.current = documentStyling;
+  const pagesDeps = useMemo(
+    () => ({
+      getEditor: () => editorRef.current?.getEditor(),
+      getStyling: () => documentStylingRef.current,
+      setZoomLevel: (zoom: string) => setZoomLevel(zoom),
+    }),
+    [],
+  );
+  // Pages M0: window.__ddocPages, and the ?pagesFixture= loader.
+  useEffect(() => {
+    const api = installPagesDebug(pagesDeps);
+    const fixture = PAGES_FIXTURES.find(
+      (f) =>
+        f.id === new URLSearchParams(window.location.search).get('pagesFixture'),
+    );
+    if (!fixture) return;
+    let cancelled = false;
+    const load = async () => {
+      let editor = pagesDeps.getEditor();
+      while (!cancelled && (!editor || editor.isDestroyed)) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        editor = pagesDeps.getEditor();
+      }
+      if (cancelled || !editor) return;
+      editor.commands.setContent(fixture.html);
+      await waitForLayout(editor.view.dom);
+      if (!cancelled) api.ready = true;
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [pagesDeps]);
 
   // Poll tab state from Y.Doc for DevBar
   useEffect(() => {
@@ -896,7 +948,15 @@ function App() {
         onClose={() => setShowStylingControls(false)}
         documentStyling={documentStyling}
         onStylingChange={setDocumentStyling}
-      />
+      >
+        <PagesPanel
+          {...pagesDeps}
+          documentStyling={documentStyling ?? {}}
+          onStylingChange={(updates) =>
+            setDocumentStyling((prev) => ({ ...(prev ?? {}), ...updates }))
+          }
+        />
+      </DocumentStylingPanel>
       <div
         ref={setNavbarHost}
         className={`ddoc-navbar-row ${
