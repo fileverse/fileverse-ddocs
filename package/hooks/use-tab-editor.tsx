@@ -83,15 +83,6 @@ import { transactionOnlyChangesText } from '../utils/transaction-range';
 import { clearActiveComment } from '../extensions/comment/comment';
 import { createStatsPublisher } from '../utils/stats-publisher';
 
-// The single source of truth for the tab editor's construction-time
-// `editorProps.attributes` (the `main-doc-editor`/prose classes,
-// `spellcheck`, `suppressContentEditableWarning`). Extracted to a named,
-// independently-testable constant so a future local `attributes:` key
-// added inline at the `new Editor({ editorProps: { ... } })` call site
-// below can't silently collide with — and replace — the spread of
-// `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
-// key in the same object literal overwrites the earlier one from
-// `...DdocEditorProps`, rather than merging).
 /** The Pages layout's page count, or null when Pages is off or has no pass. */
 export function getExactPageCount(editor: Editor): number | null {
   const state = editor.storage.pagination?.store?.get();
@@ -124,6 +115,15 @@ export function subscribePagesCount(
   return store.subscribe(sync);
 }
 
+// The single source of truth for the tab editor's construction-time
+// `editorProps.attributes` (the `main-doc-editor`/prose classes,
+// `spellcheck`, `suppressContentEditableWarning`). Extracted to a named,
+// independently-testable constant so a future local `attributes:` key
+// added inline at the `new Editor({ editorProps: { ... } })` call site
+// below can't silently collide with — and replace — the spread of
+// `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
+// key in the same object literal overwrites the earlier one from
+// `...DdocEditorProps`, rather than merging).
 export const TAB_EDITOR_ATTRIBUTES: Record<string, string> = {
   ...(DdocEditorProps.attributes as Record<string, string>),
 };
