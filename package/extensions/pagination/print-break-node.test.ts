@@ -70,7 +70,12 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     'without breaks or header rows matches getHTML',
     () => {
       editor.commands.setContent(HTML.replace(/<table>.*?<\/table>/, ''));
-      expect(html([])).toBe(editor.getHTML());
+      // Empty textblocks gain the trailing <br> ProseMirror draws on screen.
+      const printed = html([]).replaceAll(
+        '<br class="ProseMirror-trailingBreak">',
+        '',
+      );
+      expect(printed).toBe(editor.getHTML());
     },
   );
 
@@ -158,5 +163,17 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     ).toEqual(['1', '2', '3']);
     expect(starts[0].tagName).toBe('H2');
     expect(starts[1].hasAttribute('data-print-break')).toBe(true);
+  });
+
+  // ProseMirror draws a trailing <br> in an empty textblock, giving it a line
+  // of height; without one the printed block collapses to 0.
+  it('gives empty textblocks a line break', () => {
+    editor.commands.setContent('<p>a</p><p></p><h2></h2><p>b</p>');
+    const out = dom(html([]));
+    const empty = [...out.querySelectorAll('p, h2')].filter(
+      (el) => !el.textContent,
+    );
+    expect(empty).toHaveLength(2);
+    empty.forEach((el) => expect(el.querySelector('br')).not.toBeNull());
   });
 });

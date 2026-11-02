@@ -7,6 +7,21 @@ import {
 import { Transform } from '@tiptap/pm/transform';
 import type { PageStart, PrintBreak } from './place';
 
+// Replaces the content hole (0) of a toDOM spec, at any depth.
+const replaceHole = (
+  spec: DOMOutputSpec,
+  replacement: DOMOutputSpec,
+): DOMOutputSpec => {
+  if (!Array.isArray(spec)) return spec;
+  return spec.map((part: unknown) =>
+    part === 0
+      ? replacement
+      : Array.isArray(part)
+        ? replaceHole(part as unknown as DOMOutputSpec, replacement)
+        : part,
+  ) as unknown as DOMOutputSpec;
+};
+
 // Print-only schema: the live schema plus one inline node that forces a page
 // break without splitting its paragraph. Never registered in a live editor.
 export const buildPrintSchema = (live: Schema): Schema => {
@@ -41,13 +56,12 @@ export const buildPrintSchema = (live: Schema): Schema => {
   if (dBlock && dBlockToDOM) {
     nodes = nodes.update('dBlock', {
       ...dBlock,
-      toDOM: (node) => {
-        const out = dBlockToDOM(node);
-        if (!Array.isArray(out)) return out;
-        return out.map((part) =>
-          part === 0 ? ['div', { 'data-node-view-content': 'true' }, 0] : part,
-        ) as unknown as DOMOutputSpec;
-      },
+      toDOM: (node) =>
+        replaceHole(dBlockToDOM(node), [
+          'div',
+          { 'data-node-view-content': 'true' },
+          0,
+        ]),
     });
   }
   return new Schema({
@@ -142,8 +156,17 @@ export const serializeWithBreaks = (
     Object.entries(base.nodes).map(([name, toDOM]) => [
       name,
       (node: PMNode) => {
+        let out = toDOM(node);
+        // ProseMirror draws a trailing <br> in an empty textblock; without it
+        // the printed block has no line and collapses to 0.
+        if (node.isTextblock && node.content.size === 0) {
+          out = replaceHole(out, [
+            'br',
+            { class: 'ProseMirror-trailingBreak' },
+          ]);
+        }
         const attrs = marks.get(node);
-        return attrs ? withAttrs(toDOM(node), attrs) : toDOM(node);
+        return attrs ? withAttrs(out, attrs) : out;
       },
     ]),
   );
