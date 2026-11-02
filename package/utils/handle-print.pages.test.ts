@@ -76,7 +76,7 @@ describe('content print, pages', () => {
 
   // Sections would break the editor's `.ProseMirror > p` spacing rules, so
   // Pages prints flat and a page break forces its own break.
-  it('prints blocks flat, with page breaks as zero-height forced breaks', () => {
+  it('prints blocks flat and breaks the page after a page break', () => {
     mountContentPrintHost(
       '<p>a</p><br data-page-break="true" style="page-break-after: always"><p>b</p>',
       { pageSetup: { mode: 'pages', paper: 'a4' } },
@@ -88,8 +88,9 @@ describe('content print, pages', () => {
       'BR',
       'P',
     ]);
+    // A <br> cannot become a block, so the block after it breaks instead.
     expect(readMounted().style).toMatch(
-      /\[data-page-break='true'\]\s*\{[^}]*break-after: page/,
+      /\[data-page-break='true'\] \+ \*,[^{]*:has\(\[data-page-break='true'\]\) \+ \*\s*\{[^}]*break-before: page/,
     );
   });
 

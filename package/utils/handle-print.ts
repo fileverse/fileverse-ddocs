@@ -1007,11 +1007,11 @@ const buildPagesPrintStyles = (
     color: #0D0D0D;
     background: #fff;
   }
-  .${PRINT_HOST_CLASS} [data-page-break='true'] {
-    display: block;
-    height: 0;
-    overflow: hidden;
-    break-after: page;
+  /* A page break is a <br>, which cannot become a block: the block after it
+     breaks instead (v2 is flat; v1 wraps the <br> in its dBlock). */
+  .${PRINT_HOST_CLASS} [data-page-break='true'] + *,
+  .${PRINT_HOST_CLASS} [data-type='d-block']:has([data-page-break='true']) + * {
+    break-before: page;
   }
   .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
