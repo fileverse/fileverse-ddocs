@@ -103,6 +103,8 @@ import {
   getPagesBaseWidth,
   isPagesActive,
 } from './extensions/pagination/page-grid';
+import { buildPrintHtml } from './extensions/pagination/print';
+import { handleContentPrint } from './utils/handle-print';
 import {
   EditorWidthContext,
   useEditorMediaQuery,
@@ -289,6 +291,11 @@ const DdocEditor = forwardRef(
     const exportTriggerRef = useRef<
       ((format?: string, name?: string) => void) | null
     >(null);
+    // Latest print inputs for the imperative handle, which is memoised on
+    // [editor, awareness] and created before isPagesMode is computed.
+    const printInputsRef = useRef<
+      Omit<Parameters<typeof buildPrintHtml>[0], 'editor'>
+    >({ isPagesActive: false });
 
     /**
      * Document styling system with dark mode support
@@ -644,6 +651,14 @@ const DdocEditor = forwardRef(
         exportCurrentTabOrOpenExportModal: (format = 'pdf', name?: string) => {
           exportTriggerRef.current?.(format, name);
         },
+        printCurrentTab: async () => {
+          if (!editor) return;
+          const { html, options } = await buildPrintHtml({
+            editor,
+            ...printInputsRef.current,
+          });
+          handleContentPrint(html, options);
+        },
         terminateSession,
         updateSessionTitle: (args: {
           encryptedTitle: string;
@@ -829,6 +844,13 @@ const DdocEditor = forwardRef(
       isSplitViewActive,
       isVersionHistory: Boolean(rest.versionHistoryState?.enabled),
     });
+    printInputsRef.current = {
+      pageSetup,
+      orientation: documentStyling?.orientation,
+      isPagesActive: isPagesMode,
+      ipfsImageFetchFn,
+      fetchV1ImageFn,
+    };
     const baseWidth =
       isPagesMode && pageSetup
         ? getPagesBaseWidth(pageSetup, documentStyling?.orientation)
