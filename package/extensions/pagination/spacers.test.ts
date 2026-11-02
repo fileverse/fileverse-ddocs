@@ -76,4 +76,14 @@ describe('spacers', () => {
     const mapped = set.map(tr.mapping, tr.doc);
     expect(spacersMatch(mapped, list)).toBe(false);
   });
+
+  it('matches a mix of nested and top-level spacers', () => {
+    const [p1, p2] = positions();
+    const list = [
+      sp({ kind: 'inText', pos: p1 + 2, height: 20 }),
+      sp({ pos: p2 }),
+    ];
+    const set = buildSpacerDecorations(doc(), list);
+    expect(spacersMatch(set, list)).toBe(true);
+  });
 });

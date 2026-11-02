@@ -38,16 +38,18 @@ export function buildSpacerDecorations(
   );
 }
 
+// find() lists a set's own decorations before its children's, so compare
+// as sorted (pos, key) pairs, not by index.
 export function spacersMatch(current: DecorationSet, next: Spacer[]): boolean {
-  const want = visible(next);
-  const have = current.find();
-  return (
-    have.length === want.length &&
-    have.every(
-      (d, i) =>
-        d.from === want[i].pos &&
-        (d as unknown as { spec: { key?: string } }).spec.key ===
-          spacerKey(want[i]),
+  const id = (pos: number, key: string) => `${pos}|${key}`;
+  const have = current
+    .find()
+    .map((d) =>
+      id(d.from, (d as unknown as { spec: { key: string } }).spec.key),
     )
-  );
+    .sort();
+  const want = visible(next)
+    .map((s) => id(s.pos, spacerKey(s)))
+    .sort();
+  return have.length === want.length && have.every((v, i) => v === want[i]);
 }
