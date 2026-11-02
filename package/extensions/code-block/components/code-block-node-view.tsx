@@ -26,7 +26,7 @@ import {
 import { useResponsive } from '../../../utils/responsive';
 import { useEditingContext } from '../../../hooks/use-editing-context';
 import { getMermaid } from '../lazy-mermaid';
-import { gutterSpacers } from '../gutter-spacers';
+import { GUTTER_SPACER_CLASS, gutterSpacers } from '../gutter-spacers';
 
 const LANGUAGE_GROUPS = [
   {
@@ -633,7 +633,10 @@ export default function CodeBlockNodeView({
                 {codeLines.map((_, i) => (
                   <Fragment key={i}>
                     {spacerBefore.has(i) && (
-                      <div style={{ height: spacerBefore.get(i) }} />
+                      <div
+                        className={GUTTER_SPACER_CLASS}
+                        style={{ height: spacerBefore.get(i) }}
+                      />
                     )}
                     <div className="leading-5 h-5 text-helper-text-sm font-mono color-text-secondary opacity-50">
                       {i + 1}
