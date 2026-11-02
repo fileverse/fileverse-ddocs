@@ -42,8 +42,7 @@ export function measurePrintParity(
   let afterBreak = false;
   view.state.doc.forEach((node, pos) => {
     // A page break is a grey strip on screen and a zero-height break in print.
-    const isBreak =
-      node.type.name === 'pageBreak' || node.firstChild?.type.name === 'pageBreak';
+    const isBreak = node.type.name === 'pageBreak';
     const el = view.nodeDOM(pos);
     if (!(el instanceof HTMLElement)) return;
     const rect = el.getBoundingClientRect();

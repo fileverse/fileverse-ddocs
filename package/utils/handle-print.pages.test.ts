@@ -88,10 +88,13 @@ describe('content print, pages', () => {
       'BR',
       'P',
     ]);
-    // A <br> cannot become a block, so the block after it breaks instead.
-    expect(readMounted().style).toMatch(
-      /\[data-page-break='true'\] \+ \*,[^{]*:has\(\[data-page-break='true'\]\) \+ \*\s*\{[^}]*break-before: page/,
+    // A <br> cannot become a block, so the block after it breaks instead;
+    // the <br> itself is hidden, or its line box can spill onto a blank page.
+    const { style } = readMounted();
+    expect(style).toMatch(
+      /\[data-page-break='true'\] \+ \*\s*\{[^}]*break-before: page/,
     );
+    expect(style).toMatch(/\[data-page-break='true'\]\s*\{[^}]*display: none/);
   });
 
   // The code block node view: body 32px under its overlaid header, 20px
