@@ -182,9 +182,7 @@ Reproduced with a WKWebView print harness (`NSPrintOperation`, the engine Safari
 - Per-browser facts. Safari and Firefox: no `@page` margin-box page numbers; `thead` repeats; `break-before` inside `pre` honoured. Safari: `break-before` ignored on table rows and row groups, and inside flex and grid items.
 - The demo's v1 fixture loader sometimes appends to the doc instead of replacing it, so some v1 cases print several fixtures at once (both the prediction and the print come from the same doc, so the check stays valid).
 
-**iPad Safari:** pending (§6.4).
-
-**Verdict so far:** Chrome passes; Safari passes in the WebKit harness across its matrix. The gate is called after a manual Safari reprint and the iPad Safari round.
+**Verdict: M0 is done** (decision, 2026-11-02). Chrome passes; Safari passes in the WebKit harness across its matrix. Print and PDF are due for a rework of their own, so the remaining print checks are not run: a manual Safari reprint after the fixes, iPad Safari (§6.4), and the v1 fixture loader that sometimes appends instead of replacing.
 
 ## 8. Tests
 
