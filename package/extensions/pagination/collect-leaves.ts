@@ -92,6 +92,8 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
         top: b.top,
         bottom: b.bottom,
         marginTop: b.marginTop,
+        spacerPos: pos,
+        spacerCollapse: 0,
         row,
       });
     }
@@ -152,6 +154,8 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       top: b.top,
       bottom: b.bottom,
       marginTop: b.marginTop,
+      spacerPos: pos,
+      spacerCollapse: 0,
       isHeading: name === 'heading',
       lines,
     });

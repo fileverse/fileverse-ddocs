@@ -16,6 +16,8 @@ const para = (
   top,
   bottom: top + lineCount * lineH,
   marginTop,
+  spacerPos: pos,
+  spacerCollapse: 0,
   isHeading,
   lines: Array.from({ length: lineCount }, (_, i) => ({
     top: top + i * lineH,
@@ -35,6 +37,8 @@ const atom = (
   top,
   bottom: top + height,
   marginTop: 0,
+  spacerPos: pos,
+  spacerCollapse: 0,
   ...extra,
 });
 
@@ -44,6 +48,7 @@ describe('place', () => {
       breaks: [],
       pageStarts: [],
       pageCount: 1,
+      spacers: [],
     });
   });
 
@@ -52,6 +57,7 @@ describe('place', () => {
       breaks: [],
       pageStarts: [{ kind: 'before', pos: 0 }],
       pageCount: 1,
+      spacers: [],
     });
   });
 
@@ -231,5 +237,83 @@ describe('place', () => {
       });
     const r = place([para(0, 96, 1), row(10, 920, true), row(20, 950)], grid);
     expect(r.breaks).toEqual([{ kind: 'before', pos: 10 }]);
+  });
+});
+
+describe('place spacers', () => {
+  // A4: page 0 content 96..1027, page 1 content starts at 1235.
+  const a4 = new PageGrid('a4');
+
+  it('a pushed leaf gets a block spacer of the shift less the collapsed margin', () => {
+    const p = place(
+      [
+        para(1, 96, 45),
+        atom(50, 1010, 50, { spacerPos: 49, spacerCollapse: 12 }),
+      ],
+      a4,
+    );
+    expect(p.spacers).toEqual([
+      {
+        kind: 'block',
+        pos: 49,
+        height: 1235 - 1010 - 12,
+        page: 2,
+        print: true,
+      },
+    ]);
+  });
+
+  it('an inText split gets an inText spacer at the carried line start', () => {
+    const p = para(50, 860, 10, { lineH: 40 });
+    const r = place([p], a4);
+    const [b] = r.breaks;
+    const line = p.lines.find((l) => l.startPos === b.pos)!;
+    expect(r.spacers).toEqual([
+      {
+        kind: 'inText',
+        pos: b.pos,
+        height: Math.round(a4.contentTopOf(1) - line.top),
+        page: 2,
+        print: true,
+      },
+    ]);
+  });
+
+  it('after a leaf taller than a page the next leaf follows paper with a non-printing spacer', () => {
+    const next = para(100, 1600, 2, { marginTop: 0 });
+    const r = place([atom(10, 96, 1500), next], a4);
+    expect(r.spacers).toEqual([
+      {
+        kind: 'block',
+        pos: next.spacerPos,
+        height: Math.round(1235 + 549 - 1596 - next.spacerCollapse),
+        page: 2,
+        print: false,
+      },
+    ]);
+    expect(r.breaks.map((b) => b.pos)).not.toContain(next.pos);
+    expect(r.pageCount).toBe(2);
+  });
+
+  it('a follow spacer and a push on the same leaf merge into one printing spacer', () => {
+    const next = para(100, 1600, 2);
+    const r = place([atom(10, 96, 1500), para(60, 1596, 1), next], a4);
+    expect(r.spacers.filter((s) => s.pos === 60)).toHaveLength(1);
+  });
+
+  it('printing spacers correspond one-to-one with breaks', () => {
+    const leaves = [
+      para(0, 96, 1),
+      para(10, 860, 12, { lineH: 40 }),
+      atom(500, 1700, 300),
+      atom(600, 2100, 1100),
+      para(700, 3300, 3),
+    ];
+    const r = place(leaves, a4);
+    const printing = r.spacers.filter((s) => s.print);
+    expect(printing).toHaveLength(r.breaks.length);
+    printing.forEach((s, i) => {
+      if (s.kind === 'inText') expect(s.pos).toBe(r.breaks[i].pos);
+    });
   });
 });

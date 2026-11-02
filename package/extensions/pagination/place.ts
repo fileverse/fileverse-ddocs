@@ -12,6 +12,8 @@ export type Leaf =
       top: number;
       bottom: number;
       marginTop: number;
+      spacerPos: number;
+      spacerCollapse: number;
       isHeading: boolean;
       lines: Line[];
     }
@@ -21,6 +23,8 @@ export type Leaf =
       top: number;
       bottom: number;
       marginTop: number;
+      spacerPos: number;
+      spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
     }
@@ -33,10 +37,22 @@ export type PageStart = {
   kind: 'before' | 'inText' | 'continued';
   pos: number;
 };
+// spacerPos: start of the outermost node that starts with the leaf.
+// spacerCollapse: margin that stops collapsing when a spacer sits there.
+// page: the 1-based page the spacer opens; print is false when paper has no
+// break there (the leaf after a box taller than a page).
+export type Spacer = {
+  kind: 'block' | 'inText';
+  pos: number;
+  height: number;
+  page: number;
+  print: boolean;
+};
 export type Placement = {
   breaks: PrintBreak[];
   pageStarts: PageStart[];
   pageCount: number;
+  spacers: Spacer[];
 };
 
 type FlowLeaf = Exclude<Leaf, { kind: 'forced' }>;
@@ -47,6 +63,11 @@ const MIN_KEPT_LINES = 2;
 export function place(leaves: Leaf[], grid: PageGrid): Placement {
   const breaks: PrintBreak[] = [];
   const pageStarts: PageStart[] = [];
+  const spacers: Spacer[] = [];
+  // Shift a tall box's spill leaves for the next leaf, and the spacer for it.
+  let carry = 0;
+  let followIdx = -1;
+  let followDelta = 0;
   let shift = 0;
   let page = 0;
   let placedOnPage = false;
@@ -59,8 +80,22 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   // truncates the margin before a forced break and keeps the one after it.
   const pushToNextPage = (leaf: FlowLeaf, reserve = 0) => {
     page += 1;
-    shift +=
+    const delta =
       grid.contentTopOf(page) + leaf.marginTop + reserve - (leaf.top + shift);
+    shift += delta;
+    let height = delta;
+    if (followIdx >= 0) {
+      height += followDelta;
+      spacers.splice(followIdx, 1);
+      followIdx = -1;
+    }
+    spacers.push({
+      kind: 'block',
+      pos: leaf.spacerPos,
+      height: Math.round(height - leaf.spacerCollapse),
+      page: page + 1,
+      print: true,
+    });
     pageStarts.push({ kind: 'before', pos: leaf.pos });
   };
 
@@ -69,6 +104,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   const spill = (leaf: Extract<FlowLeaf, { kind: 'atomic' }>) => {
     const reserve = leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
     const capacity = grid.textHeight + PRINT_BOTTOM_SLACK - reserve;
+    const shiftBefore = shift;
     let rest =
       leaf.bottom + shift - (grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK);
     while (rest > 0) {
@@ -80,6 +116,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       }
       rest -= capacity;
     }
+    carry = shift - shiftBefore;
   };
 
   const nextFlowLeaf = (i: number): FlowLeaf | null => {
@@ -110,6 +147,19 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       placedOnPage = false;
     }
     startNextPage = false;
+    followIdx = -1;
+    if (carry > 0) {
+      followIdx = spacers.length;
+      followDelta = carry;
+      carry = 0;
+      spacers.push({
+        kind: 'block',
+        pos: leaf.spacerPos,
+        height: Math.round(followDelta - leaf.spacerCollapse),
+        page: page + 1,
+        print: false,
+      });
+    }
     const firstOnPage = !placedOnPage;
 
     if (leaf.kind === 'atomic') {
@@ -173,12 +223,20 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       breaks.push({ kind: 'inText', pos: line.startPos });
       pageStarts.push({ kind: 'inText', pos: line.startPos });
       page += 1;
-      shift += grid.contentTopOf(page) - (line.top + shift);
+      const delta = grid.contentTopOf(page) - (line.top + shift);
+      shift += delta;
+      spacers.push({
+        kind: 'inText',
+        pos: line.startPos,
+        height: Math.round(delta),
+        page: page + 1,
+        print: true,
+      });
       startIdx = k;
       isFirst = true;
     }
     placedOnPage = true;
   });
 
-  return { breaks, pageStarts, pageCount: page + 1 };
+  return { breaks, pageStarts, pageCount: page + 1, spacers };
 }
