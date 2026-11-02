@@ -342,7 +342,7 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
 - Settle: every case stops within 2–4 passes and does not dispatch again in the next 2 s.
 - Zoom 1.5, Fit and 0.75 (fixture 01, A4, both schemas): the same spacers as at 1, sheets ok, no dispatch.
 - 02c: the 15 collapsed headings lay out and print as expanded.
-- Fixed on the way (Task 11): spacer rounding drift (§12.3), the code-block gutter (§12.3, §12.4), paragraph margin transitions (§12.3), and a tall leaf placed mid-page (§12.3).
+- Fixed on the way (during M1): spacer rounding drift (§12.3), the code-block gutter (§12.3, §12.4), paragraph margin transitions (§12.3), and a tall leaf placed mid-page (§12.3).
 
 **Invariants** (`--invariants`, both schemas): all pass.
 
@@ -352,7 +352,7 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
 | I2, undo | 6 undo steps in Pages and in Pageless, across a pass that dispatched | same |
 | Enter at the end (held, 60×) | 15 → 18 pages, caret always on a sheet, sheets ok | same |
 
-**Performance** (§12.12 item 6; fixture 11, ~50,000 words, A4, 180 pages in v2 and 182 in v1). Numbers from Task 12's run. The gate rerun agrees within noise: collect + place 22.0 / 20.3 ms, emit median 12.6 / 13.4 ms (max 18.7 / 20.4), first pass after typing 16.5 / 17.3 ms (v2 / v1).
+**Performance** (§12.12 item 6; fixture 11, ~50,000 words, A4, 180 pages in v2 and 182 in v1). Numbers from the M1 performance run. The gate rerun agrees within noise: collect + place 22.0 / 20.3 ms, emit median 12.6 / 13.4 ms (max 18.7 / 20.4), emit on the first pass after typing 16.5 / 17.3 ms (v2 / v1).
 
 | Budget | v2 | v1 | Result |
 | -- | -- | -- | -- |
@@ -365,7 +365,7 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
 | Emit, first pass after typing | 15.8 ms | 18.2 ms | v1 misses (v2 too in the rerun) |
 
 - Emit is close to the line. About 9 ms of it is a forced layout inside `dispatch`: the pass's own reads after it dispatches (`contentBottom`, `observeChildren`) and the host's `useEditorState` selector (`hooks/use-editor-commands.ts`, `readEffectiveSpacing`), which reads computed margins on every transaction. That layout would otherwise run in the next frame, so it mostly moves cost.
-- Before Task 12 one pass took ~4,450 ms on this fixture (the hyphen hit test per line, and a spacer scan per leaf). The fixes changed no placement: same-DOM comparison of old and new `collectLeaves`/`place` on 10 fixtures × 2 schemas, identical.
+- Before the M1 performance fixes one pass took ~4,450 ms on this fixture (the hyphen hit test per line, and a spacer scan per leaf). The fixes changed no placement: same-DOM comparison of old and new `collectLeaves`/`place` on 10 fixtures × 2 schemas, identical.
 - **`:has()` (§12.9)**: a pass's style recalc is 0.02 ms median with the 6 `.editor-main-lane:has(...)` rules and without them. Edentext's ~150 ms per inserted spacer does not happen with this selector in current Chrome, so the rules stay (decision).
 
 **Accepted gaps** (decision):
@@ -387,9 +387,10 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
 
 **Known limits, for M2**:
 
-- Leaving Pages may not restore a collapsed heading that got Enter while shown expanded: that keypress still flips `isCollapsed` (`dblock-collapse.ts`), against §12.7.
-- A submitted suggest-mode draft can stay visible in Pages: the suggestion widget's key omits `isDraft`, so the old DOM may be kept.
-- The first exact page count can be dropped if the active-editor ref is not yet this editor when the store publishes; the footer shows the estimate until the next change.
+- The first exact page count can be dropped if the active-editor ref is not yet this editor when the store publishes; the footer would keep the previous count. Practically unreachable: the ref is set before the editor switch, and on first mount the store has no count yet.
+- Typing inside a table or columns block taller than a page triggers a full (non-dispatching) pass per keystroke. M2: skip textblocks inside tall atomic blocks.
+- The 300 ms debounce has no maximum wait, so continuous remote edits keep delaying passes. M2: add a ~1 s max wait.
+- A justified paragraph's line just before an in-text spacer may render ragged on screen though the line breaks are unchanged.
 - `packRows` is checked in Chrome only. The quarter-page header-repeat rule is unverified, and a header can be counted twice when row 0 moves.
 - Settled spacer heights can differ by ±1px between runs (pairs carried, page positions unchanged): a pair on a .5px rounding boundary settles on either fixed point.
 - `Line.startPos`, `Leaf.marginTop` and `Leaf.spacerCollapse` are measured on first read: read them before the next DOM write.
