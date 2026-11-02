@@ -96,6 +96,9 @@ Hazards found and closed by the parity check (§6.2):
 - **Breakpoint rules.** `editor.css` gates content rules on `@container ddoc-editor (min-width: …)` with an `@media` fallback for elements outside a `.ddoc-editor-cq` root. The print host is outside the root, so in print the fallback tests the *paper* width while the screen tested the *editor* width (≥ 1024 whenever Pages is active). Found: the v1 table block's 90% width cap at 1024px; Pages print CSS restates it. Any new content rule at 1024/1280 needs the same.
 - **React node views.** Their content sits in a `pre-wrap` div, while ProseMirror's own `break-spaces` wraps a word earlier (a line-end space counts). Table cells print `pre-wrap`; `.tableWrapper` prints `overflow: visible` (a scroll container cannot break across pages).
 - **Code blocks.** On screen a block over 20 lines is a 500px scroll box; paper cannot scroll, so Pages mode lifts the cap on screen (`[data-code-body]` hook, like collapsed headings showing expanded). Pages print CSS mirrors the node view's box: 1px border, body 32px under the overlaid header, 20px lines at the inherited size, `white-space: pre` unless word wrap is on. Not mirrored: the line-number gutter's width, which only matters for word-wrapped code with line numbers.
+- **Mermaid** prints in the state it shows (decision): the node view exposes `data-mermaid-view="preview|source"`, and Pages print renders only the blocks showing the diagram; blocks showing source print as code. Pageless print still renders every diagram.
+- **Page-break `<br>`** is hidden in print (`display: none`); left visible, its line box could spill onto a blank page.
+- **Theme.** The print root matches `.ProseMirror` theme-coloured rules, so the print host carries the light `:root` `--color-*` tokens whatever theme class sits above it.
 - **Display-only decorations.** List-marker font (`applyMarkerFonts` already mirrors it in print), comment highlights, search, carets: none may change layout on screen in Pages mode, or print will differ.
 
 ## 5. Fixtures
@@ -156,7 +159,7 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 | 04 tables | Match, every case | Match | Header row repeats on each page |
 | 05 images | Match, every case | Image ~45–55px taller on screen | Media node view's in-flow editing chrome; break-neutral (print is shorter, so only whitespace at a page bottom) |
 | 10 proposal | Match, every case | Image, as 05 | |
-| 06 code | Match up to the Mermaid block, then off by one | Mermaid 78 vs 278px | Open product question, §10 |
+| 06 code | Match up to the Mermaid block, then off by one | Mermaid 78 vs 278px | Before the Mermaid decision; rerun below |
 
 - No glyph-metric drift (class b) seen: no break moved for any reason other than the structural mismatches above. The 20px slack was never needed as more than headroom.
 - Zoom 1.5, Fit and 0.75 give the same breaks as 100%.
@@ -179,7 +182,7 @@ M0 lives on branch `pages-mode` and does **not** merge to `main`: every push to 
 ## 10. Open for M1
 
 - **Layout-changing widgets.** Pending suggestions render the proposed text as `Decoration.widget`s (`comment-decoration-plugin.ts`), and AI autocomplete renders ghost text; the print copy has neither, so while one is on screen the screen's pages and the printout differ. Options: hide them in Pages mode, measure around them, or accept and document the gap. Product decision before M1's spacers. M0 fixtures contain none.
-- **Mermaid.** While editing, the screen shows a diagram's source (78px in fixture 06); print renders the diagram (278px). An atomic block of the wrong height moves every later break. Options: preview by default in Pages mode, or print the source. Product decision.
+
 - **Image editing chrome.** The media node view keeps ~45px of toolbar row, padding and margins in flow on screen. Break-neutral, but the sheet's fill differs from paper. Belongs with M2's image work (`max-height` to the text height).
 - **`:has()` cost.** `.editor-main-lane:has(...)` (`styles/index.css`) sits above the editor: Edentext measured this pattern at ~150ms of Chromium restyle per inserted spacer. Measure in M1.
 
