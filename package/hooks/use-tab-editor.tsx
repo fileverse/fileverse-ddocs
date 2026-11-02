@@ -92,6 +92,38 @@ import { createStatsPublisher } from '../utils/stats-publisher';
 // `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
 // key in the same object literal overwrites the earlier one from
 // `...DdocEditorProps`, rather than merging).
+/** The Pages layout's page count, or null when Pages is off or has no pass. */
+export function getExactPageCount(editor: Editor): number | null {
+  const state = editor.storage.pagination?.store?.get();
+  return state?.enabled && typeof state.pageCount === 'number'
+    ? state.pageCount
+    : null;
+}
+
+/**
+ * Reports the layout's page count whenever it changes; calls onInexact when
+ * the exact count goes away (Pages off, or a failed pass).
+ */
+export function subscribePagesCount(
+  editor: Editor,
+  onCount: (pages: number) => void,
+  onInexact: () => void,
+): () => void {
+  const store = editor.storage.pagination?.store;
+  if (!store) return () => {};
+  let last: number | null = null;
+  const sync = () => {
+    const pages = getExactPageCount(editor);
+    if (pages === last) return;
+    const lost = pages === null;
+    last = pages;
+    if (lost) onInexact();
+    else onCount(pages);
+  };
+  sync();
+  return store.subscribe(sync);
+}
+
 export const TAB_EDITOR_ATTRIBUTES: Record<string, string> = {
   ...(DdocEditorProps.attributes as Record<string, string>),
 };
@@ -1104,7 +1136,10 @@ export const useTabEditor = ({
           setWordCount?.(words);
           statsPublisher.publish({ characters, words }, { tick: true });
 
-          if (setPageCount || hasStatsListener) {
+          if (
+            (setPageCount || hasStatsListener) &&
+            getExactPageCount(editor) === null
+          ) {
             const pageCounter = pageCounterRef.current;
 
             if (!pageCounter) {
@@ -1206,10 +1241,26 @@ export const useTabEditor = ({
     // Initial count
     updateCounts();
     updateSelectedWordCount();
+    const unsubscribePages =
+      setPageCount || hasStatsListener
+        ? subscribePagesCount(
+            editor,
+            (pages) => {
+              if (activeEditorRef.current !== editor) return;
+              setPageCount?.(pages);
+              statsPublisher.publish({ pages });
+            },
+            () => {
+              pageStructureVersionRef.current += 1;
+              updateCounts({});
+            },
+          )
+        : undefined;
     editor.on('update', updateCounts);
     editor.on('selectionUpdate', updateSelectedWordCount);
 
     return () => {
+      unsubscribePages?.();
       editor.off('update', updateCounts);
       editor.off('selectionUpdate', updateSelectedWordCount);
       if (statsDebounceRef.current) {
