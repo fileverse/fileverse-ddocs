@@ -1,4 +1,5 @@
 import { paragraphs, rng, sentence, sentences, svgImage } from './gen';
+import { PAGES_FIXTURES_META } from './meta';
 
 export type PagesFixture = {
   id: string;
@@ -167,15 +168,19 @@ const proposal = () => {
   ].join('');
 };
 
-export const PAGES_FIXTURES: PagesFixture[] = [
-  { id: '01', title: 'Long prose', html: prose(), landscape: true },
-  { id: '02', title: 'Headings', html: headings() },
-  { id: '03', title: 'Lists', html: lists() },
-  { id: '04', title: 'Tables', html: tables(), landscape: true },
-  { id: '05', title: 'Images', html: images() },
-  { id: '06', title: 'Code blocks', html: code() },
-  { id: '07', title: 'Mixed fonts and spacing', html: mixedFonts() },
-  { id: '08', title: 'Breaks and containers', html: breaksAndContainers() },
-  { id: '09', title: 'Columns', html: columns() },
-  { id: '10', title: 'Proposal', html: proposal() },
-];
+const BUILDERS: Record<string, () => string> = {
+  '01': prose,
+  '02': headings,
+  '03': lists,
+  '04': tables,
+  '05': images,
+  '06': code,
+  '07': mixedFonts,
+  '08': breaksAndContainers,
+  '09': columns,
+  '10': proposal,
+};
+
+export const PAGES_FIXTURES: PagesFixture[] = PAGES_FIXTURES_META.map(
+  (meta) => ({ ...meta, html: BUILDERS[meta.id]() }),
+);

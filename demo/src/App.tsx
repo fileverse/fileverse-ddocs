@@ -395,6 +395,21 @@ function App() {
         await new Promise((resolve) => setTimeout(resolve, 100));
         editor = pagesDeps.getEditor();
       }
+      // A v2 doc is stamped once content resolves; content set before that
+      // blocks the stamp and leaves the doc v1.
+      const wantsV2 =
+        new URLSearchParams(window.location.search).get('v1') !== '1';
+      const deadline = Date.now() + 10000;
+      while (
+        wantsV2 &&
+        !cancelled &&
+        Date.now() < deadline &&
+        editorRef.current?.getYdoc()?.getMap('ddocMeta').get('schemaVersion') ==
+          null
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      editor = pagesDeps.getEditor();
       if (cancelled || !editor) return;
       editor.commands.setContent(fixture.html);
       await waitForLayout(editor.view.dom);
