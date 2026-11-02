@@ -70,6 +70,11 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     ]);
     expect(kinds).toContainEqual(['atomic', 'table']);
     expect(kinds).not.toContainEqual(['atomic', 'tableRow']);
+    // With its rows' boxes, for print's row breaks (place's packRows).
+    const table = collectLeaves(editor.view, 931).find(
+      (l) => l.kind === 'atomic' && doc.nodeAt(l.pos)?.type.name === 'table',
+    );
+    expect(table?.kind === 'atomic' && table.table?.rows).toHaveLength(2);
   });
 
   it('anchors a spacer at the outermost node that starts with the leaf', () => {

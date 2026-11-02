@@ -228,10 +228,8 @@ export function collectLeaves(
     return { spacerPos, spacerCollapse };
   };
 
-  const atomic = (
-    pos: number,
-    row?: Extract<Leaf, { kind: 'atomic' }>['row'],
-  ) => {
+  type Atomic = Extract<Leaf, { kind: 'atomic' }>;
+  const atomic = (pos: number, extra: Pick<Atomic, 'row' | 'table'> = {}) => {
     const b = box(pos);
     if (b) {
       leaves.push({
@@ -241,7 +239,7 @@ export function collectLeaves(
         bottom: b.bottom,
         marginTop: b.marginTop,
         ...spacerAnchor(pos),
-        row,
+        ...extra,
       });
     }
   };
@@ -249,22 +247,38 @@ export function collectLeaves(
   const walk = (parent: PMNode, contentStart: number) =>
     parent.forEach((child, offset) => visit(child, contentStart + offset));
 
-  const visitTable = (table: PMNode, pos: number) => {
-    tableId += 1;
+  const tableHeader = (table: PMNode, pos: number) => {
     const first = table.firstChild;
     const hasHeader =
       !!first &&
       first.childCount > 0 &&
       first.content.content.every((cell) => cell.type.name === 'tableHeader');
     const firstBox = hasHeader ? box(pos + 1) : null;
-    const headerHeight = firstBox ? firstBox.bottom - firstBox.top : 0;
+    return {
+      hasHeader,
+      headerHeight: firstBox ? firstBox.bottom - firstBox.top : 0,
+    };
+  };
+
+  const visitTable = (table: PMNode, pos: number) => {
+    tableId += 1;
+    const { hasHeader, headerHeight } = tableHeader(table, pos);
     table.forEach((_, offset) =>
       atomic(pos + 1 + offset, {
-        tableId,
-        isHeader: hasHeader && offset === 0,
-        headerHeight,
+        row: { tableId, isHeader: hasHeader && offset === 0, headerHeight },
       }),
     );
+  };
+
+  // One leaf, with its rows: print breaks a tall table between rows.
+  const wholeTable = (table: PMNode, pos: number) => {
+    const rows: { top: number; bottom: number }[] = [];
+    table.forEach((_, offset) => {
+      const b = box(pos + 1 + offset);
+      if (b) rows.push({ top: b.top, bottom: b.bottom });
+    });
+    const { headerHeight } = tableHeader(table, pos);
+    atomic(pos, { table: { rows, headerHeight } });
   };
 
   const visit = (node: PMNode, pos: number) => {
@@ -275,7 +289,7 @@ export function collectLeaves(
       return;
     }
     if (name === 'table') {
-      return tableRows ? visitTable(node, pos) : atomic(pos);
+      return tableRows ? visitTable(node, pos) : wholeTable(node, pos);
     }
     if (name === 'callout') {
       const b = box(pos);
