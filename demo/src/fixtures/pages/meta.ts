@@ -1,5 +1,6 @@
 // Fixture list without content: scripts/pages-print-check.cjs imports it with
-// Node's type stripping, so it must stay dependency-free.
+// Node's type stripping, so it must stay dependency-free. `perfOnly` fixtures
+// are left out of the print check unless named with --only.
 export const PAGES_FIXTURES_META = [
   { id: '01', title: 'Long prose', landscape: true },
   { id: '02', title: 'Headings' },
@@ -12,5 +13,5 @@ export const PAGES_FIXTURES_META = [
   { id: '08', title: 'Breaks and containers' },
   { id: '09', title: 'Columns' },
   { id: '10', title: 'Proposal' },
-  { id: '11', title: 'Large, ~50,000 words' },
+  { id: '11', title: 'Large, ~50,000 words', perfOnly: true },
 ];

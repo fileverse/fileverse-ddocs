@@ -629,8 +629,8 @@ async function main() {
   const { PAGES_FIXTURES_META } = await import(
     path.join(REPO, 'demo/src/fixtures/pages/meta.ts')
   );
-  const fixtures = PAGES_FIXTURES_META.filter(
-    (f) => !only || only.includes(f.id),
+  const fixtures = PAGES_FIXTURES_META.filter((f) =>
+    only ? only.includes(f.id) : !f.perfOnly,
   );
   const pdfDir = path.join(profile, 'pdfs');
   fs.mkdirSync(pdfDir, { recursive: true });
