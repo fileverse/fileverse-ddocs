@@ -87,21 +87,26 @@ export function measureLines(
   const lines = groupLineRects(rects, scale);
   const elRect = el.getBoundingClientRect();
   const shifts = lines.map((line) => (shiftAt ? shiftAt(line.top) : 0));
-  return lines.map((line, i) => ({
-    top: line.top - shifts[i],
-    bottom: i + 1 < lines.length ? lines[i + 1].top - shifts[i + 1] : bottom,
-    startPos:
-      i === 0
-        ? from
-        : lineStartPos(view, {
-            from,
-            to,
-            screenTop: line.top * scale + originTop,
-            screenMid: ((line.top + line.bottom) / 2) * scale + originTop,
-            left: elRect.left,
-            right: elRect.right,
-          }),
-  }));
+  return lines.map((line, i) => {
+    let startPos = i === 0 ? from : null;
+    return {
+      top: line.top - shifts[i],
+      bottom: i + 1 < lines.length ? lines[i + 1].top - shifts[i + 1] : bottom,
+      // Read only where a page breaks, so found on first read. Read it
+      // before the next DOM write (place runs right after collect).
+      get startPos() {
+        startPos ??= lineStartPos(view, {
+          from,
+          to,
+          screenTop: line.top * scale + originTop,
+          screenMid: ((line.top + line.bottom) / 2) * scale + originTop,
+          left: elRect.left,
+          right: elRect.right,
+        });
+        return startPos;
+      },
+    };
+  });
 }
 
 // First document position on the line starting at screenTop.
