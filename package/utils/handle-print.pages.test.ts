@@ -107,6 +107,15 @@ describe('content print, pages', () => {
     );
   });
 
+  // Pages is only active at 1024px+ editor width, where editor.css caps a v1
+  // table block at 90%; print's @media fallback would test the paper width.
+  it('keeps the v1 table width cap the editor applies at 1024px+', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    expect(readMounted().style).toMatch(
+      /\.is-table > \[data-node-view-content\]\s*\{[^}]*max-width: 90%/,
+    );
+  });
+
   it('Letter landscape', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },

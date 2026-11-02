@@ -1021,6 +1021,12 @@ const buildPagesPrintStyles = (
   /* On screen, cell content sits in the React node view's pre-wrap content
      div; ProseMirror's break-spaces would wrap a word earlier. */
   .${PRINT_HOST_CLASS} :is(td, th) { white-space: pre-wrap; }
+  /* editor.css caps a v1 table block at 90% from 1024px editor width, where
+     Pages is always active; print's @media fallback would test the paper. */
+  .${PRINT_HOST_CLASS} [data-type='d-block'].is-table > [data-node-view-content] {
+    max-width: 90%;
+    margin-inline: auto;
+  }
   /* The code block node view's box: a bordered pre whose body sits 32px
      under the overlaid header, 20px lines at the inherited size. */
   .${PRINT_HOST_CLASS} pre {

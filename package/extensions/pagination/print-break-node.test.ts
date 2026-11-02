@@ -209,4 +209,18 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     expect(out.querySelector('thead [data-print-break-before]')).toBeNull();
     expect(out.querySelector('thead [data-print-page-start]')).toBeNull();
   });
+
+  // The dBlock node view marks a table block .is-table; its width cap hangs
+  // off that class.
+  it.runIf(schemaVersion === 1)('marks a dBlock holding a table', () => {
+    const blocks = [...dom(html([])).children];
+    const tableBlocks = blocks.filter((b) => b.querySelector('table'));
+    expect(tableBlocks).toHaveLength(2);
+    tableBlocks.forEach((b) =>
+      expect(b.classList.contains('is-table')).toBe(true),
+    );
+    blocks
+      .filter((b) => !b.querySelector('table'))
+      .forEach((b) => expect(b.classList.contains('is-table')).toBe(false));
+  });
 });

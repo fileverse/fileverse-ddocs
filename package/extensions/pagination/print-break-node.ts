@@ -56,12 +56,17 @@ export const buildPrintSchema = (live: Schema): Schema => {
   if (dBlock && dBlockToDOM) {
     nodes = nodes.update('dBlock', {
       ...dBlock,
-      toDOM: (node) =>
-        replaceHole(dBlockToDOM(node), [
+      toDOM: (node) => {
+        const out = replaceHole(dBlockToDOM(node), [
           'div',
           { 'data-node-view-content': 'true' },
           0,
-        ]),
+        ]);
+        // The node view marks a table block; its width cap hangs off it.
+        return node.firstChild?.type.name === 'table'
+          ? withAttrs(out, { class: 'is-table' })
+          : out;
+      },
     });
   }
   // The table node view renders div.tableWrapper > table.
