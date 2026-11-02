@@ -387,6 +387,24 @@ describe.each([
     expect(storage().flush()).toEqual(expected());
   });
 
+  it('flush runs a pending settle follow-up until idle', () => {
+    let n = 0;
+    collect.mockImplementation(() => {
+      shiftLong = n++ ? 5 : 0;
+      return leaves();
+    });
+    enable();
+    vi.advanceTimersByTime(FRAME);
+    expect(collect).toHaveBeenCalledTimes(1);
+    expect(storage().isIdle()).toBe(false);
+    const placement = storage().flush();
+    // The changed second pass arms a third, which matches and ends the run.
+    expect(collect).toHaveBeenCalledTimes(3);
+    expect(storage().isIdle()).toBe(true);
+    shiftLong = 5;
+    expect(placement).toEqual(expected());
+  });
+
   it('debounces a remote edit by 300 ms like a local one', () => {
     enableAndSettle();
     collect.mockClear();
@@ -412,6 +430,7 @@ describe.each([
     typeAt(paragraphAt('one') + 1, 'xy');
     vi.advanceTimersByTime(DEBOUNCE + FRAME);
     expect(collect).not.toHaveBeenCalled();
+    expect(storage().lastPass).toMatchObject({ count: 3, dispatched: false });
     const after = storage().store.get().placement!;
     expect(after.spacers.map((s) => s.pos)).toEqual(
       before.spacers.map((s) => s.pos + 2),
@@ -541,6 +560,7 @@ describe.each([
       (tr) => 'spacers' in tr.getMeta(PAGINATION_META),
     );
     expect(passes).toHaveLength(2);
+    expect(storage().lastPass).toMatchObject({ count: 3, dispatched: false });
     shiftLong = 7;
     const b = expected();
     expect(storage().store.get().placement).toEqual(b);

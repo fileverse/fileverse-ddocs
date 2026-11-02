@@ -18,6 +18,7 @@ import {
   createSettleGuard,
   editStaysInOneTextblock,
   PassScheduler,
+  SETTLE_CAP,
 } from './scheduler';
 import { buildSpacerDecorations, spacerKey, spacersMatch } from './spacers';
 
@@ -196,8 +197,11 @@ class PaginationView {
     }
   }
 
+  // Runs pending passes, settle follow-ups included, until idle.
   flush() {
-    this.scheduler?.flush();
+    for (let i = 0; i <= SETTLE_CAP && this.scheduler?.isPending(); i++) {
+      this.scheduler.flush();
+    }
   }
 
   isIdle() {
@@ -332,6 +336,7 @@ class PaginationView {
     ) {
       const mapped = mapPlacement(last, edits);
       store.set({ placement: mapped, pageStarts: mapped.pageStarts });
+      this.record({ collect: 0, place: 0, emit: 0 }, false);
       return;
     }
 
@@ -345,7 +350,10 @@ class PaginationView {
     const changed = !current || !spacersMatch(current, placement.spacers);
     const sig = signature(placement.spacers);
     // a/b/a: keep b in the view and the store, and stop (§12.5).
-    if (changed && this.guard.repeats(sig)) return;
+    if (changed && this.guard.repeats(sig)) {
+      this.record({ collect: t1 - t0, place: t2 - t1, emit: 0 }, false);
+      return;
+    }
     if (changed) dispatchMeta(view, { spacers: placement.spacers });
     this.lastBottom = contentBottom(view);
     this.observeChildren(changed);
@@ -362,16 +370,16 @@ class PaginationView {
       pageStarts: placement.pageStarts,
       placement,
     });
-    storage.lastPass = {
-      count: ++this.passCount,
-      timings: { collect: t1 - t0, place: t2 - t1, emit: t3 - t2 },
-      dispatched: changed,
-    };
+    this.record({ collect: t1 - t0, place: t2 - t1, emit: t3 - t2 }, changed);
     if (!changed) {
       this.guard.reset();
     } else if (this.guard.next(sig) === 'continue') {
       this.trigger(false);
     }
+  }
+
+  private record(timings: PassInfo['timings'], dispatched: boolean) {
+    this.storage.lastPass = { count: ++this.passCount, timings, dispatched };
   }
 
   // The editor goes inert until reload and renders as one column.

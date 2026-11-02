@@ -9,8 +9,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Spacer } from './place';
 
 const DEBOUNCE_MS = 300;
+export const SETTLE_CAP = 4;
 
-export function createSettleGuard(cap = 4) {
+export function createSettleGuard(cap = SETTLE_CAP) {
   let history: string[] = [];
   return {
     next(signature: string): 'continue' | 'stop' {
