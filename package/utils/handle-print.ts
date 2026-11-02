@@ -1012,6 +1012,11 @@ const buildPagesPrintStyles = (
   .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
   .${PRINT_HOST_CLASS} thead { display: table-header-group; }
+  /* A scroll container cannot break across pages. */
+  .${PRINT_HOST_CLASS} .tableWrapper { overflow: visible !important; }
+  /* On screen, cell content sits in the React node view's pre-wrap content
+     div; ProseMirror's break-spaces would wrap a word earlier. */
+  .${PRINT_HOST_CLASS} :is(td, th) { white-space: pre-wrap; }
 `;
 };
 

@@ -64,12 +64,12 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
   });
   afterEach(() => editor.destroy());
 
-  // Header rows move into thead (spec §4.3) and v1 dBlocks gain the node
-  // view's inner wrapper, so compare a v2 doc without a header row.
+  // Print mirrors node-view DOM (thead, tableWrapper, the v1 dBlock wrapper),
+  // so compare a v2 doc without tables.
   it.runIf(schemaVersion === 2)(
     'without breaks or header rows matches getHTML',
     () => {
-      editor.commands.setContent(HTML.replace(/<table>.*?<\/table>/, ''));
+      editor.commands.setContent(HTML.replace(/<table>.*<\/table>/, ''));
       // Empty textblocks gain the trailing <br> ProseMirror draws on screen.
       const printed = html([]).replaceAll(
         '<br class="ProseMirror-trailingBreak">',
@@ -175,5 +175,17 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     );
     expect(empty).toHaveLength(2);
     empty.forEach((el) => expect(el.querySelector('br')).not.toBeNull());
+  });
+
+  // The table node view renders div.tableWrapper > table; the block gap and
+  // other rules hang off the wrapper.
+  it('wraps tables like the node view', () => {
+    const tables = [...dom(html([])).querySelectorAll('table')];
+    expect(tables.length).toBe(2);
+    tables.forEach((table) =>
+      expect(table.parentElement?.classList.contains('tableWrapper')).toBe(
+        true,
+      ),
+    );
   });
 });

@@ -65,6 +65,15 @@ describe('content print, pages', () => {
     expect(root.getAttribute('data-page-mode')).toBe('pages');
   });
 
+  // On screen, cell content sits in the React node view's pre-wrap content
+  // div; ProseMirror's own break-spaces wraps a word earlier.
+  it('matches screen wrapping inside table cells and lets tables break', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const { style } = readMounted();
+    expect(style).toMatch(/:is\(td, th\)\s*\{[^}]*white-space: pre-wrap/);
+    expect(style).toMatch(/\.tableWrapper\s*\{[^}]*overflow: visible/);
+  });
+
   it('Letter landscape', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },

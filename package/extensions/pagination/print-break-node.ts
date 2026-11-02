@@ -64,6 +64,15 @@ export const buildPrintSchema = (live: Schema): Schema => {
         ]),
     });
   }
+  // The table node view renders div.tableWrapper > table.
+  const table = nodes.get('table');
+  const tableToDOM = table?.toDOM;
+  if (table && tableToDOM) {
+    nodes = nodes.update('table', {
+      ...table,
+      toDOM: (node) => ['div', { class: 'tableWrapper' }, tableToDOM(node)],
+    });
+  }
   return new Schema({
     nodes,
     marks: live.spec.marks,
