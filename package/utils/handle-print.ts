@@ -1,6 +1,11 @@
 import renderMathInElement from 'katex/contrib/auto-render';
 import { getRegisteredFonts, primaryToken } from './font-loader';
-import type { FontDescriptor } from '../types';
+import type { FontDescriptor, PageSetup } from '../types';
+import {
+  getPaperPx,
+  PAGE_MARGIN,
+  PRINT_BOTTOM_SLACK,
+} from '../extensions/pagination/page-grid';
 import { applyMarkerFonts } from '../extensions/list-toggle/marker-font';
 
 const A4_HEIGHT_INCHES = 11.69;
@@ -940,14 +945,95 @@ export const handlePrint = (slides: string[]) => {
   printHelper(printContent);
 };
 
-export const handleContentPrint = (content: string) => {
+export type ContentPrintOptions = {
+  pageSetup?: PageSetup;
+  orientation?: 'portrait' | 'landscape';
+  rootStyle?: Partial<
+    Record<
+      | 'fontFamily'
+      | 'fontSize'
+      | 'lineHeight'
+      | 'letterSpacing'
+      | 'wordSpacing',
+      string
+    >
+  >;
+};
+
+// Pages mode prints with the editor's own CSS (docs/PAGES_MODE.md §4.4): no
+// print typography sheet, so lines wrap as they do on screen.
+const buildPagesPrintStyles = (
+  pageSetup: PageSetup,
+  orientation: ContentPrintOptions['orientation'] = 'portrait',
+) => {
+  const { width } = getPaperPx(pageSetup.paper, orientation);
+  const size = pageSetup.paper === 'a4' ? 'A4' : 'letter';
+  return `
+  ${buildRegisteredFontFaceCss()}
+  .${PRINT_HOST_CLASS} { display: none; }
+  @media print {
+    html, body {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    /* Horizontal margins ride on the root's padding: mobile WebKit honors
+       horizontal @page margins unreliably. */
+    @page {
+      size: ${size} ${orientation};
+      margin: 1in 0 calc(1in - ${PRINT_BOTTOM_SLACK}px) 0;
+    }
+    body > *:not(.${PRINT_HOST_CLASS}) { display: none !important; }
+    .${PRINT_HOST_CLASS} {
+      display: block !important;
+      position: static !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+  }
+  .${PRINT_HOST_CLASS} .print-content-root {
+    box-sizing: border-box;
+    width: ${width}px;
+    padding: 0 ${PAGE_MARGIN}px !important;
+    color-scheme: light;
+    color: #0D0D0D;
+    background: #fff;
+  }
+  .${PRINT_HOST_CLASS} .print-page { break-after: page; }
+  .${PRINT_HOST_CLASS} .print-page:last-child { break-after: auto; }
+  .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
+  .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
+  .${PRINT_HOST_CLASS} thead { display: table-header-group; }
+`;
+};
+
+// Kept in its own sheet: engines without page-margin boxes reject the rule,
+// and a stylesheet parser that fails on it must not drop the rest.
+const PAGES_PAGE_NUMBER_STYLES = `@page { @bottom-right { content: counter(page); margin-right: 1in; } }`;
+
+export const mountContentPrintHost = (
+  content: string,
+  options: ContentPrintOptions = {},
+): { cleanup: () => void } => {
+  const isPages = options.pageSetup?.mode === 'pages';
   const sectionsHtml = getPrintSectionsHtml(
     splitContentIntoPrintSections(content),
   );
 
   const styleEl = document.createElement('style');
   styleEl.setAttribute('data-ddoc-print', 'true');
-  styleEl.textContent = buildMainDocumentPrintStyles();
+  styleEl.textContent =
+    isPages && options.pageSetup
+      ? buildPagesPrintStyles(options.pageSetup, options.orientation)
+      : buildMainDocumentPrintStyles();
 
   const host = document.createElement('div');
   host.className = PRINT_HOST_CLASS;
@@ -955,12 +1041,24 @@ export const handleContentPrint = (content: string) => {
 
   const contentRoot = document.createElement('div');
   contentRoot.className = 'print-content-root';
+  if (isPages) {
+    contentRoot.classList.add('ProseMirror', 'main-doc-editor');
+    contentRoot.setAttribute('data-page-mode', 'pages');
+    Object.assign(contentRoot.style, options.rootStyle);
+  }
   contentRoot.innerHTML = sectionsHtml;
   // Before KaTeX, so the marker vote reads only the serializer's output.
   applyMarkerFonts(contentRoot);
   host.appendChild(contentRoot);
 
   document.head.appendChild(styleEl);
+  let pageNumberEl: HTMLStyleElement | null = null;
+  if (isPages) {
+    pageNumberEl = document.createElement('style');
+    pageNumberEl.setAttribute('data-ddoc-print', 'page-numbers');
+    pageNumberEl.textContent = PAGES_PAGE_NUMBER_STYLES;
+    document.head.appendChild(pageNumberEl);
+  }
   document.body.appendChild(host);
 
   // KaTeX is bundled with the package, so render math directly against the host
@@ -971,12 +1069,26 @@ export const handleContentPrint = (content: string) => {
     // Math rendering is best-effort; print regardless.
   }
 
+  return {
+    cleanup: () => {
+      if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      pageNumberEl?.remove();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+};
+
+export const handleContentPrint = (
+  content: string,
+  options?: ContentPrintOptions,
+) => {
+  const host = mountContentPrintHost(content, options);
+
   const state: { fallback?: ReturnType<typeof setTimeout> } = {};
   const cleanup = () => {
     window.removeEventListener('afterprint', cleanup);
     if (state.fallback) clearTimeout(state.fallback);
-    if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
-    if (host.parentNode) host.parentNode.removeChild(host);
+    host.cleanup();
   };
   window.addEventListener('afterprint', cleanup);
   // Safety net: some mobile browsers don't reliably fire afterprint.
