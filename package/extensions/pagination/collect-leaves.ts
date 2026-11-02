@@ -66,6 +66,52 @@ const blocksMarginCollapse = (style: CSSStyleDeclaration) =>
   /flex|grid|flow-root|table/.test(style.display) ||
   style.overflow !== 'visible';
 
+const realChild = (el: Element, last: boolean): HTMLElement | null => {
+  let c = last ? el.lastElementChild : el.firstElementChild;
+  while (c?.classList.contains(SPACER_CLASS)) {
+    c = last ? c.previousElementSibling : c.nextElementSibling;
+  }
+  return c instanceof HTMLElement ? c : null;
+};
+
+// Margin an element presents to its neighbour: its own, collapsed with the
+// ones of its first (top) or last (bottom) child chain until a blocker.
+function effectiveMargin(el: HTMLElement, side: 'Top' | 'Bottom'): number {
+  const style = getComputedStyle(el);
+  const own = parseFloat(style[`margin${side}`]) || 0;
+  const stops =
+    (parseFloat(style[`padding${side}`]) || 0) > 0 ||
+    (parseFloat(style[`border${side}Width`]) || 0) > 0 ||
+    /flex|grid|flow-root|table/.test(style.display) ||
+    !['visible', ''].includes(style.overflow);
+  const child = stops ? null : realChild(el, side === 'Bottom');
+  return child ? collapsedMargin(own, effectiveMargin(child, side)) : own;
+}
+export const effectiveTopMargin = (el: HTMLElement) =>
+  effectiveMargin(el, 'Top');
+export const effectiveBottomMargin = (el: HTMLElement) =>
+  effectiveMargin(el, 'Bottom');
+
+// What a block spacer adds beyond its own height between two siblings: the
+// swallowed margin, or one row gap in a flex or grid parent (no collapsing).
+function spacerExtra(
+  parent: HTMLElement | null,
+  prev: HTMLElement | null,
+  next: HTMLElement | null,
+): number {
+  if (parent) {
+    const style = getComputedStyle(parent);
+    if (/flex|grid/.test(style.display)) {
+      return prev && next ? parseFloat(style.rowGap) || 0 : 0;
+    }
+  }
+  return spacerDisplacement({
+    height: 0,
+    marginAbove: prev ? effectiveBottomMargin(prev) : 0,
+    marginBelow: next ? effectiveTopMargin(next) : 0,
+  });
+}
+
 // Leaves in document order, measured in the view.dom frame, unscaled.
 export function collectLeaves(
   view: EditorView,
@@ -79,15 +125,13 @@ export function collectLeaves(
   const leaves: Leaf[] = [];
   let tableId = 0;
 
-  const marginOf = (el: Element | null, side: 'Top' | 'Bottom') =>
-    el ? parseFloat(getComputedStyle(el)[`margin${side}`]) || 0 : 0;
   const realSibling = (
     el: Element,
     dir: 'previousElementSibling' | 'nextElementSibling',
-  ) => {
+  ): HTMLElement | null => {
     let sib = el[dir];
     while (sib?.classList.contains(SPACER_CLASS)) sib = sib[dir];
-    return sib;
+    return sib instanceof HTMLElement ? sib : null;
   };
 
   // Spacers already in the DOM shift everything below them; every position
@@ -113,14 +157,12 @@ export function collectLeaves(
       top: (rect.top - originTop) / scale,
       amount: inText
         ? height
-        : spacerDisplacement({
-            height,
-            marginAbove: marginOf(
-              realSibling(el, 'previousElementSibling'),
-              'Bottom',
-            ),
-            marginBelow: marginOf(realSibling(el, 'nextElementSibling'), 'Top'),
-          }),
+        : height +
+          spacerExtra(
+            parent,
+            realSibling(el, 'previousElementSibling'),
+            realSibling(el, 'nextElementSibling'),
+          ),
     };
   });
   const before = (el: HTMLElement, includeInside: boolean) =>
@@ -169,19 +211,14 @@ export function collectLeaves(
       spacerPos = $pos.before(d);
     }
     const outer = view.nodeDOM(spacerPos);
-    const prev =
+    const spacerCollapse =
       outer instanceof HTMLElement
-        ? realSibling(outer, 'previousElementSibling')
-        : null;
-    const spacerCollapse = prev
-      ? Math.max(
-          0,
-          Math.min(
-            marginOf(prev, 'Bottom'),
-            marginOf(outer as HTMLElement, 'Top'),
-          ),
-        )
-      : 0;
+        ? spacerExtra(
+            outer.parentElement,
+            realSibling(outer, 'previousElementSibling'),
+            outer,
+          )
+        : 0;
     return { spacerPos, spacerCollapse };
   };
 

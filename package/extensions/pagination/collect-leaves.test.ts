@@ -4,6 +4,8 @@ import {
   SPACER_CLASS,
   collapsedMargin,
   collectLeaves,
+  effectiveBottomMargin,
+  effectiveTopMargin,
   leadingOffset,
   spacerDisplacement,
 } from './collect-leaves';
@@ -11,12 +13,22 @@ import {
 const HTML = `<h2>Heading</h2><p>Paragraph</p><ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul><table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr></tbody></table><img src="data:image/svg+xml;base64,PHN2Zy8+"><div data-type="page-break"></div><aside data-type="callout"><p>note</p></aside>`;
 
 // jsdom has no layout: give every text node one 10px line at the top.
+const lineAt = (top: number) => ({
+  top,
+  bottom: top + 10,
+  left: 0,
+  right: 10,
+  width: 10,
+  height: 10,
+});
+let lineRects = [lineAt(0)];
 beforeAll(() => {
   Range.prototype.getClientRects = function () {
-    return [
-      { top: 0, bottom: 10, left: 0, right: 10, width: 10, height: 10 },
-    ] as unknown as DOMRectList;
+    return lineRects as unknown as DOMRectList;
   };
+});
+afterEach(() => {
+  lineRects = [lineAt(0)];
 });
 
 describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
@@ -79,15 +91,73 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     expect(first.kind === 'forced' ? -1 : first.spacerPos).toBe(0);
   });
 
-  it('ignores spacer elements already in the DOM', () => {
-    const bare = collectLeaves(editor.view, 931).length;
-    const spacer = document.createElement('div');
-    spacer.className = SPACER_CLASS;
-    spacer.contentEditable = 'false';
-    spacer.getBoundingClientRect = () =>
-      ({ top: 0, bottom: 200, height: 200 }) as DOMRect;
-    editor.view.dom.insertBefore(spacer, editor.view.dom.children[1]);
-    expect(collectLeaves(editor.view, 931)).toHaveLength(bare);
+  describe('with a spacer in the DOM', () => {
+    beforeEach(() => {
+      editor.commands.setContent('<p>a</p><p>b</p>');
+    });
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height }) as DOMRect;
+    };
+    const topLevel = (el: Element) => {
+      let e = el;
+      while (e.parentElement !== editor.view.dom) e = e.parentElement!;
+      return e as HTMLElement;
+    };
+    const setup = (style: Record<string, string> = {}) => {
+      const [p0, p1] = Array.from(editor.view.dom.querySelectorAll('p'));
+      Object.assign(p0.style, { marginBottom: '12px' });
+      Object.assign(p1.style, { marginTop: '24px' });
+      rectOf(p0, 0, 20);
+      rectOf(p1, 220, 20);
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      spacer.contentEditable = 'false';
+      rectOf(spacer, 20, 200);
+      Object.assign(editor.view.dom.style, style);
+      editor.view.dom.insertBefore(spacer, topLevel(p1));
+      return { p0, p1 };
+    };
+    const second = () => {
+      const leaves = collectLeaves(editor.view, 931);
+      return { first: leaves[0], leaf: leaves[1] };
+    };
+
+    it('reads natural tops, subtracting the same swallowed margin', () => {
+      setup();
+      const { first, leaf } = second();
+      expect(first.kind === 'forced' ? 0 : first.top).toBe(0);
+      if (leaf.kind === 'forced') throw new Error('unexpected');
+      expect(leaf.spacerCollapse).toBe(12);
+      expect(220 - leaf.top).toBe(200 + leaf.spacerCollapse);
+    });
+
+    it('collapses through zero-margin wrappers, not flex parents', () => {
+      const { p0, p1 } = setup({ display: 'flex', rowGap: '8px' });
+      const { leaf } = second();
+      if (leaf.kind === 'forced') throw new Error('unexpected');
+      expect(leaf.spacerCollapse).toBe(8);
+      expect(220 - leaf.top).toBe(208);
+      expect(p0.style.marginBottom).toBe('12px');
+      expect(p1.style.marginTop).toBe('24px');
+    });
+
+    it('shifts only the lines after a spacer inside a textblock', () => {
+      const p = editor.view.dom.querySelectorAll('p')[1];
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      spacer.contentEditable = 'false';
+      rectOf(spacer, 10, 20);
+      lineRects = [lineAt(0), lineAt(30)];
+      rectOf(p, 0, 50);
+      p.appendChild(spacer);
+      document.elementFromPoint = () => null;
+      const leaf = collectLeaves(editor.view, 931)[1];
+      if (leaf.kind !== 'text') throw new Error('expected a text leaf');
+      expect(leaf.top).toBe(0);
+      expect(leaf.bottom).toBe(30);
+      expect(leaf.lines.map((l) => l.top)).toEqual([0, 10]);
+    });
   });
 
   it('marks headings and the table header row', () => {
@@ -127,6 +197,45 @@ describe('leadingOffset', () => {
     // A callout with a 1px border and 16px padding: the leaf sits 17px in.
     expect(leadingOffset([box(117, 0), box(100, 0, true)])).toBe(17);
     expect(leadingOffset([box(117, 0), box(100, 24, true)])).toBe(41);
+  });
+});
+
+describe('effective margins', () => {
+  const html = (inner: string) => {
+    const host = document.createElement('div');
+    host.innerHTML = inner;
+    document.body.appendChild(host);
+    return host.firstElementChild as HTMLElement;
+  };
+  it('collapse through zero-margin wrappers', () => {
+    const el = html(
+      '<div><div><p style="margin-top:8px;margin-bottom:4px">x</p></div></div>',
+    );
+    expect(effectiveTopMargin(el)).toBe(8);
+    expect(effectiveBottomMargin(el)).toBe(4);
+  });
+  it('stop at padding, flex and overflow', () => {
+    expect(
+      effectiveTopMargin(
+        html(
+          '<div style="padding-top:1px"><p style="margin-top:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      effectiveBottomMargin(
+        html(
+          '<div style="display:flex"><p style="margin-bottom:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      effectiveTopMargin(
+        html(
+          '<div style="overflow:hidden"><p style="margin-top:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
   });
 });
 
