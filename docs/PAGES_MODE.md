@@ -1,6 +1,6 @@
 # Pages mode
 
-Status: M0 (print test) done (§7.5). M1 (on-screen pages) in design (§12). Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
+Status: M0 (print test) done (§7.5). M1 (on-screen pages) built; Chrome gate results in §12.13, manual browser QA pending. Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
 
 ## 1. Intent
 
@@ -215,7 +215,7 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 **M2** (decision): table-row spacers with the header row cloned in, image `max-height`, clipping of other atoms taller than a page, the page-break node view, Ctrl+Enter, the image editing chrome (§10), and routing the other print paths through the pipeline (§2).
 
-**Tables in M1** (my call): collected as one atomic leaf, not one leaf per row, on screen and therefore in print too (§12.10). A table that fits a page moves to the next page whole; a table taller than a page follows the tall-leaf rule (§12.3) and is the one known place where screen and paper differ until M2. M0's row-break print code stays, unused by the live path until M2 turns rows back on.
+**Tables in M1** (my call): collected as one atomic leaf, not one leaf per row, on screen and therefore in print too (§12.10). A table that fits a page moves to the next page whole; a table taller than a page follows the tall-leaf rule (§12.3) and is the one known place where screen and paper differ until M2: its drawing runs over the sheet edges, and its printed page count can differ by one (§12.3, §12.13). M0's row-break print code stays, unused by the live path until M2 turns rows back on.
 
 **Anti-goals** (from §2, unchanged): no Yjs write, no change to Pageless rendering or print, no new runtime dependency. Pageless pays nothing: the extension is registered but inert.
 
@@ -223,29 +223,34 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 `extensions/pagination/index.ts`: `Pagination`, registered in every tab editor in `buildExtensionsForTab` (`hooks/use-tab-editor.tsx`), both schemas. It adds no nodes or marks. It is not part of `getHeadlessExtensions` (headless editors have no layout).
 
-- **Storage**: `{ pageSetup, orientation, zoom, enabled, running, failed, store, flush }`. `enabled` is true when Pages is active for the editor (`isPagesActive`, §4.1): spacers are kept and the §12.7 behaviours are on. `running` is true when the editor is also the active tab: the scheduler and observers are live. Hidden cached tab editors are enabled but not running; their last spacers stay until they run again, when a pass runs.
+- **Storage**: `{ pageSetup, orientation, zoom, enabled, running, failed, store, flush, lastPass, isIdle }`. `enabled` is true when Pages is active for the editor (`isPagesActive`, §4.1): spacers are kept and the §12.7 behaviours are on. `running` is true when the editor is also the active tab: the scheduler and observers are live. Hidden cached tab editors are enabled but not running; their last spacers stay until they run again, when a pass runs.
+- `flush()` runs pending passes, settle follow-ups included, until idle (at most the settle cap + 1), then returns the store's placement, or null after a failure. `isIdle()` is true when no pass is pending. `lastPass` is `{ count, timings, dispatched, dispatches }`, updated by every pass, the skip-rule fast path included (timings 0); the checker reads it.
 - **Command**: `setPagination({ pageSetup, orientation, zoom, enabled, running })`. `ddoc-editor.tsx` calls it on the active tab editor whenever any input changes, and with `running: false` on an editor that stops being the active tab. Any changed field while running (zoom included) runs a pass on the next frame.
 - **Inert** (`enabled` false): no measuring, no observers, no listeners, empty decoration set. Turning Pages off clears the spacers with one step-less transaction carrying `PAGINATION_META` `{ enabled: false }` (turning it on carries `{ enabled: true }`), so switching to Pageless is instant.
-- **Plugin**: state is the spacer `DecorationSet`, mapped through every document-changing transaction and replaced only by the plugin's own meta. Its `view()` owns the scheduler (§12.5) and the observers.
+- **Plugin**: state is the spacer `DecorationSet`, mapped through every document-changing transaction and replaced only by the plugin's own meta. A `y-sync` transaction (remote edit, undo) replaces the whole doc in one step, which would drop every spacer; the plugin maps those through a step map built from the old and new docs' diff (`findDiffStart`/`findDiffEnd`) instead. Its `view()` owns the scheduler (§12.5) and the observers.
 
 ### 12.3 A pass
 
 `collect → place → emit`, synchronous, in one frame.
 
 1. **Collect.** `collectLeaves` (§4.2), with tables atomic (§12.1). Every leaf's `top`, `bottom` and lines are **natural**: where they would be with no spacers. The walk skips spacer elements and takes their effect out of every measurement below them, including spacers inside a leaf (a split paragraph's lines after its spacer). A pass must never measure its own output, or two layouts feed each other.
-   - **Margins around a spacer.** A spacer between two blocks stops their margins collapsing: with no spacer the gap is `max(mb, mt)`, with one it is `mb + S + mt`. Taking out `S` alone leaves the swallowed margin in the measurement. Edentext adds it back (`cumulativeDropped`) and gives some spacers a negative `margin-top`. The builder picks the mechanism; the requirement is that the natural positions do not depend on where the spacers are, which the settle check (§12.5) and I4 (§12.12) catch.
-2. **Place.** `place(leaves, grid)` (§4.2), unchanged except for the tall-leaf rule. Its output also carries, per break, the **spacer height**: the shift it adds.
-   - **Tall leaf** (an atomic leaf taller than the text height, now including tables): it starts first on its page and nothing splits it; on screen it runs over the sheet's bottom margin, the gap and the next sheets. **The leaves after it follow paper** (my call): M0's `spill` already places the next leaf where print puts it (print fragments the box at text height plus slack per page), and on screen a spacer before that next leaf moves it there. That spacer opens no page in print, so the placement carries a spacer list separate from `breaks`. The spacer is never negative: a page holds more of the box on screen (whole page plus gap) than on paper. So one placement serves both, page counts stay equal, and only the tall leaf's own drawing differs from paper (§12.1).
+   - **Margins around a spacer.** A spacer between two blocks stops their margins collapsing: with no spacer the gap is `max(mb, mt)`, with one it is `mb + S + mt`. Taking out `S` alone leaves the swallowed margin in the measurement. Edentext adds it back (`cumulativeDropped`) and gives some spacers a negative `margin-top`. The builder picks the mechanism; the requirement is that the natural positions do not depend on where the spacers are, which the settle check (§12.5) and I4 (§12.12) catch. Built: a spacer's `spacerCollapse` and the displacement it causes both come from one function over the effective (chain-collapsed) margins, with no collapse inside a flex or grid parent (its row gap counts instead).
+   - **Node-view chrome is not measured.** Lines come from the node's `contentDOM` only; a code block's line-number gutter used to merge into its lines and, once a spacer moved the code, read back as phantom lines.
+   - **Passes measure final layout.** In Pages, paragraphs transition only colour, background, border and opacity: their `transition-all` animated the margin a new paragraph gives its neighbour, so a pass on the next frame measured it half-grown.
+   - **Whole tables carry their rows.** A table leaf also carries its rows' natural boxes and its header row's height, for `place`'s print model below.
+2. **Place.** `place(leaves, grid)` (§4.2), unchanged except for the tall-leaf rule. Its output also carries, per break, the **spacer height**: the shift it adds. Heights are whole pixels; each spacer's rounding remainder carries into the next, so the screen stays within 0.5px of the placement (rounding each on its own drifted 2px by page 13).
+   - **Tall leaf** (an atomic leaf taller than the text height, now including tables): it starts first on its page and nothing splits it. A tall leaf that is not first is pushed to the next page with a printing break, unless only the heading(s) that open its page sit above it (decision): pushing it again would leave them alone on a page, and print puts no break between them; on screen it runs over the sheet's bottom margin, the gap and the next sheets. **The leaves after it follow paper** (my call): `spill` places the next leaf where print puts it, and on screen a spacer before that next leaf moves it there. A generic atomic box fragments at the page capacity (text height plus the 20px slack). A table does not: Chrome breaks it between rows, so `packRows` (decision) moves a row that does not fit the rest of the page to the next one whole, under the repeated header, and fragments only a row taller than a page's room. The header counts as repeated only when it is at most a quarter of the capacity (my reading of Chromium; not checked). That spacer opens no page in print, so the placement carries a spacer list separate from `breaks`. The spacer is never negative: a page holds more of the box on screen (whole page plus gap) than on paper. So one placement serves both, and page counts stay equal for generic atomic boxes. A tall table can still print one page off: Chrome also splits a row between its cells' lines when that row would fit a fresh page (fixture 10 v2 A4: store 16, PDF 15). Matching it needs each cell's line boundaries, which is M2's row work (§12.13).
 3. **Emit.** Compare the placement with the spacers **actually in the view** (not the last computed placement: a node replaced by a paste or a language change drops its widgets, Edentext hit this). Equal: no dispatch. Otherwise build a `DecorationSet` and dispatch one transaction with no steps, carrying the plugin meta only. Never set `addToHistory: false`: `@tiptap/y-tiptap`'s sync plugin would call `undoManager.stopCapturing()` on it and split the user's undo steps (tech spec "What a pass does" step 4).
 
 ### 12.4 Spacers
 
 - `Decoration.widget(pos, toDOM, { side: -1, key })`; `key` encodes the kind and the height, so an unchanged spacer keeps its DOM node across passes (Edentext: 1.5 s → 144 ms per keystroke at the top of a 124-page doc).
-- Element: `div.ddoc-page-spacer`, `contenteditable="false"`, `role="separator"`, `aria-label="Page N"` (N = the page it opens), `pointer-events: none`, `height` in whole pixels (fractional heights shake by 1px at some zooms), no margin, border or padding of its own.
+- Element: `div.ddoc-page-spacer`, `contenteditable="false"`, `role="separator"`, `aria-label="Page N"` (N = the page it opens), `pointer-events: none`, `height` in whole pixels (fractional heights shake by 1px at some zooms), no margin, border or padding of its own. A spacer that rounds to 0px is not emitted: an empty div lets margins collapse through it, so it would not displace what the placement assumed.
 - **Where a `before` spacer goes.** Before the **outermost** node that starts with the leaf (walk up while the leaf's node is its parent's first child, stopping below the doc): before the `dBlock` in v1, before the list for a first list item. The leaf then lands at `contentTop + marginTop`, where `marginTop` is M0's `leadingOffset` of that chain, the same position print gives it after a forced break.
 - **Where an `inText` spacer goes.** At the carried line's start position. A block `div` inside the textblock ends the line there and pushes the rest to the next page. Inside `pre` it is a block inside the `code` element.
 - **Split boxes cross the gap** (decision, accepted for M1): a code block, callout, blockquote or list split by a spacer draws its border or background through the bottom margin, the desk gap and the next sheet's top margin. M2 cuts boxes at the sheet edge.
 - **Hazards for the builder to check** (each has a fixture): an ordered list is a flex column, so a spacer between its items is a flex item and any `gap` counts on both sides of it; a spacer inside a code block shifts the line-number gutter against the text; a v1 spacer inside a `dBlock` sits in its node-view content beside the drag-handle chrome.
+- **Code-block gutter** (built): the gutter adds the inText spacer's height before the row that spacer opens (`gutter-spacers.ts`), as an element with `ddoc-page-spacer-gutter`, which the parity check hides like a spacer. It follows the node view's row model, so with word wrap on it lands before the next gutter row, not the exact visual line (the gutter was already off there in Pageless).
 
 ### 12.5 Scheduler
 
@@ -255,23 +260,23 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 | -- | -- |
 | Local edit | Spacers mapped (`DecorationSet.map`). Full pass after 300 ms with no edits |
 | Remote edit (transaction meta from `y-sync` with `isChangeOrigin`) | Same 300 ms wait. Not "run now": remote transactions also carry `addToHistory: false`, which Edentext reads as "not an edit" |
-| Caret's block now ends past its page's text bottom (held Enter, a long paste) | Pass on the next animation frame |
+| Caret's block now ends past its page's text bottom, above its page's text top, or on a page the last pass did not have (held Enter, a long paste) | Pass on the next animation frame |
 | `setPagination` with a change, mount, becoming the active tab, zoom change | Pass on the next animation frame |
 | `document.fonts` `loadingdone`; a `ResizeObserver` hit on the content (late images, embeds) | Pass on the next animation frame |
 | `view.composing` | No dispatch; reschedule for `compositionend` |
 
 - **Skip rule**, checked when the 300 ms timer fires: every edit since the last pass stayed inside one textblock, that textblock holds no `inText` spacer, and the content's bottom edge did not move. Then nothing below can have moved: no pass.
-- **ResizeObserver** watches the content's children, not `view.dom`, so the pass's own `min-height` change does not retrigger it; a pass that changes nothing does not dispatch, which ends any loop.
-- **Settle.** After a dispatch, if the placement differs from the previous pass, run one more on the next frame, at most 4 in a row. If the placement from two passes ago returns, keep the current one and stop (oscillation). The count resets on the next edit or trigger. Both guards are pure functions over placements and unit-tested.
-- **Flush**: `flush()` runs a pending pass synchronously; print calls it (§12.10).
+- **ResizeObserver** watches the content's children, not `view.dom`, so the pass's own `min-height` change does not retrigger it; a pass that changes nothing does not dispatch, which ends any loop. A hit resets the settle guard, like an edit.
+- **Settle.** After a dispatch, if the placement differs from the previous pass, run one more on the next frame, at most 4 in a row; only dispatching passes feed the guard, and a pass that matches ends the run. If the placement from two passes ago returns, keep the current one (no dispatch) and stop (oscillation). The count resets on the next edit or trigger. Both guards are pure functions over placements and unit-tested.
+- **Flush**: `flush()` runs pending passes synchronously until idle (§12.2); print calls it (§12.10).
 
 ### 12.6 Sheets and page numbers
 
-`components/page-sheets.tsx`, rendered inside `[data-ddoc-zoom-layer]` behind the editor content (`pointer-events: none`, `aria-hidden`), so it scales with zoom like the text. It reads the active tab's page store (§12.8) and draws nothing when Pages is not active.
+`components/page-sheets.tsx`, rendered inside `[data-ddoc-zoom-layer]` behind the editor content (`pointer-events: none`, `aria-hidden`), so it scales with zoom like the text. It reads the active tab's page store (§12.8) and draws nothing when Pages is not active or before the first pass has a count.
 
 - **Geometry**: sheet `i` at `top = origin + i × (pageHeight + PAGE_GAP)`, `width = paper width`, where `origin` is the active editor's `view.dom` top within the zoom layer (the `PageGrid` frame). The `.ProseMirror` element gets `min-height = pageCount × (pageHeight + gap) − gap`, so the last sheet is always fully drawn.
 - **Windowing**: only sheets within two screens of the visible part of the scroll container (`getEditorScrollContainer`, rAF-throttled scroll listener; the Split View swap of the scroller does not apply, Pages is off there).
-- **Colours**: the sheet takes the canvas fill (`documentStyling.canvasBackground`, else today's canvas token); the space between sheets is the desk (`documentStyling.background`, else the editor background), so in Pages mode `#editor-wrapper` and `.ProseMirror` stop painting the canvas fill. Sheet edge: 1px existing border token, no shadow. Dark mode uses the same tokens' dark values.
+- **Colours**: the sheet takes the canvas fill (`documentStyling.canvasBackground`, else today's canvas token); the space between sheets is the desk (`documentStyling.background`, else the editor background), so in Pages mode `#editor-wrapper` and `.ProseMirror` stop painting the canvas fill. Sheet edge: 1px existing border token, no shadow. Dark mode uses the same tokens' dark values. In focus mode the sheet takes the token fill: a custom `canvasBackground` is dropped there, as the canvas drops it today.
 - **Page numbers**: one per sheet, plain digits from 1, each tab restarting at 1, vertically centred in the bottom margin and right-aligned to the text edge; 11px, secondary text token, the document font, not selectable, `aria-hidden` (the spacer's `aria-label` announces pages).
 - Focus mode draws sheets as normal; presentation mode is untouched.
 - Anything the zoom layer renders above `view.dom` (tags) sits on the desk above the first sheet, with no canvas fill behind it (my call).
@@ -288,8 +293,8 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 ### 12.8 Page store and page count
 
-- `extensions/pagination/page-store.ts`: per tab editor, `{ pageCount, pageStarts }`, published after each pass that changes them, read with `useSyncExternalStore` by `PageSheets`.
-- `use-tab-editor.tsx`: while Pages is active for the active tab, `createPageCounter` does not run (no hidden iframe) and `statsPublisher.publish({ pages })` takes the store's count, published on every change. Leaving Pages resumes today's counter.
+- `extensions/pagination/page-store.ts`: per tab editor, `{ enabled, pageCount, pageStarts, placement }`, published after each pass that changes them, read with `useSyncExternalStore` by `PageSheets`.
+- `use-tab-editor.tsx`: while Pages is active for the active tab, `createPageCounter` does not run (no hidden iframe) and `statsPublisher.publish({ pages })` takes the store's count, published on every change. While the store has no count (before the first pass, or after a failure) today's counter still runs (decision). Leaving Pages resumes today's counter.
 
 ### 12.9 `:has()` cost
 
@@ -304,22 +309,89 @@ Measure the restyle cost of a spacer insert with Chrome's performance trace in t
 - **No writes**: every pagination transaction is checked before dispatch; one with steps is not applied and logs `console.error`, in every build (the package has no dev flag). Unit test plus the I1 check (§12.12).
 - **A pass throws**: caught, decorations cleared, that editor goes inert until reload (it renders as M0's single column at paper width), `console.error` in every build. The package has no Sentry; error reporting is the app's (M3).
 - **Marks**: `performance.mark`/`measure` around collect, place and emit, named `ddoc:pagination:*`.
-- **Debug**: the demo's `window.__ddocPages` gains the last pass's leaves, placement, pass count and timings.
+- **Debug**: the demo's `window.__ddocPages` gains the last pass's leaves, placement, pass count, dispatch count and timings (`storage.lastPass`), plus `sheetCheck()`, `stateVector()`, `watchWrites()`/`writes()` and `tabContent()` for the checker.
 
 ### 12.12 Gate
 
 M1 is done when all of these hold. The layout checks extend `scripts/pages-print-check.cjs` (CDP against the demo on 5174, my call over the tech spec's Playwright, as in M0).
 
-1. **I4, every leaf on a sheet**: on screen with spacers, every leaf's rect lies inside one sheet's text area, or it is first on its page and taller than a page. Fixtures 01–03 and 05–10, both schemas, A4 and Letter, plus 01 landscape, zoom 1.5, Fit and 0.75, and 02 with its headings collapsed (it must lay out and print as expanded).
-2. **I3, screen equals paper**: on the same matrix, each printed page starts where its sheet starts (M0's PDF markers), and the PDF page count equals the store's `pageCount`.
-3. **I1, no writes**: the Yjs state vector is identical before and after 50 passes driven by resizes, zooms and tab switches.
+1. **I4, every leaf on a sheet**: on screen with spacers, every leaf's rect lies inside one sheet's text area, or it is taller than a page and first on its page or directly under the heading(s) that open it. Fixtures 01–03 and 05–10, both schemas, A4 and Letter, plus 01 landscape, zoom 1.5, Fit and 0.75, and 02 with its headings collapsed (it must lay out and print as expanded).
+2. **I3, screen equals paper**: on the same matrix, each printed page starts where its sheet starts (M0's PDF markers; a page a tall box continues onto has none), and the PDF page count equals the store's `pageCount`. Accepted gap: a tall table's page count (§12.3).
+3. **I1, no writes**: the content of every tab (each `Y.XmlFragment`) is identical before and after 50 passes driven by resizes, zooms and tab switches, and no transaction touches anything outside the host's `tabs_state`. Not the raw state vector: the demo's tab manager writes `activeTabId` on each switch, which is host state, not pagination.
 4. **I2, undo**: the same typing script undoes in the same steps in Pages and Pageless.
 5. **Settles**: after loading each fixture, passes stop within the cap and do not dispatch again without a trigger.
-6. **Performance** on a generated 50,000 word fixture (`demo/src/fixtures/pages/gen.ts`), Chrome, measured by a new `scripts/pages-perf-check.cjs` over CDP: keystroke latency in Pages within 10% of Pageless; extra cost per keystroke under 1 ms; one pass (collect and place) under 50 ms; emit and re-render under 16 ms. The fixture from ddocs.new #1122 was never committed, so M1 generates its own.
+6. **Performance** on a generated 50,000 word fixture (fixture 11, `large()` in `demo/src/fixtures/pages/index.ts`; left out of the print check unless named with `--only`), Chrome, measured by a new `scripts/pages-perf-check.cjs` over CDP: keystroke latency in Pages within 10% of Pageless; extra cost per keystroke under 1 ms; one pass (collect and place) under 50 ms; emit and re-render under 16 ms. The fixture from ddocs.new #1122 was never committed, so M1 generates its own.
 7. Unit tests green: settle and oscillation guards, spacer keys, the skip rule, the tall-leaf rule in `place`, no-steps assertion, `page-store`, the page count in `use-tab-editor`, AI autocomplete not fetching in Pages.
 
 Safari and Firefox are spot-checked by hand on fixtures 01 and 10 (on-screen sheets only; their print is M0's).
 
 ### 12.13 Results
 
-To be filled in during M1.
+Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scripts/pages-print-check.cjs`, `scripts/pages-perf-check.cjs`). Unit tests: `npm test` 188 files, 2363 passed, 3 skipped; `npx tsc` clean; `npx eslint --no-fix` on every file M1 touched: no new problems (the 9 prettier errors in `dblock-collapse.ts` and 6 hook warnings in `use-tab-editor.tsx` predate M1).
+
+**Chrome matrix** (§12.12 items 1, 2 and 5; 44 cases: fixtures 01, 02, 02c, 03, 05–10 × v1/v2 × A4/Letter, plus 01 landscape). **36/44 pass**; the 8 failures are the two accepted gaps below. Pages are store/PDF.
+
+| Fixture | Sheets (I4) | Markers (I3) | Pages (I3) | Parity | Settle |
+| -- | -- | -- | -- | -- | -- |
+| 01 prose (+ landscape) | ok | ok | equal, every case | ok | ok, 2–4 passes |
+| 02 headings, 02c collapsed | ok | ok | equal (13, 14) | ok | ok |
+| 03 lists, 06 code, 07 fonts, 08 breaks/containers, 09 columns | ok | ok | equal, every case | ok | ok |
+| 05 images | ok | ok | equal (9, 11) | image ~50px taller on screen (§10) | ok |
+| 10 proposal | ok | ok, except v2 A4 | equal, except v2 A4: 16/15 | image, as 05 | ok |
+
+- Settle: every case stops within 2–4 passes and does not dispatch again in the next 2 s.
+- Zoom 1.5, Fit and 0.75 (fixture 01, A4, both schemas): the same spacers as at 1, sheets ok, no dispatch.
+- 02c: the 15 collapsed headings lay out and print as expanded.
+- Fixed on the way (Task 11): spacer rounding drift (§12.3), the code-block gutter (§12.3, §12.4), paragraph margin transitions (§12.3), and a tall leaf placed mid-page (§12.3).
+
+**Invariants** (`--invariants`, both schemas): all pass.
+
+| Check | v2 | v1 |
+| -- | -- | -- |
+| I1, no writes | 50 passes, 0 dispatched; 2 tabs' content equal; no write outside `tabs_state` | same |
+| I2, undo | 6 undo steps in Pages and in Pageless, across a pass that dispatched | same |
+| Enter at the end (held, 60×) | 15 → 18 pages, caret always on a sheet, sheets ok | same |
+
+**Performance** (§12.12 item 6; fixture 11, ~50,000 words, A4, 180 pages in v2 and 182 in v1). Numbers from Task 12's run. The gate rerun agrees within noise: collect + place 22.0 / 20.3 ms, emit median 12.6 / 13.4 ms (max 18.7 / 20.4), first pass after typing 16.5 / 17.3 ms (v2 / v1).
+
+| Budget | v2 | v1 | Result |
+| -- | -- | -- | -- |
+| Keystroke median, Pages ÷ Pageless (≤ 1.10) | 0.995 | 1.004 | pass |
+| Extra per keystroke, typing (< 1 ms) | −0.06 ms | 0.05 ms | pass |
+| Per keystroke with the passes after it counted | ≈ 0.6 ms | ≈ 0.9 ms | pass |
+| Collect + place, median (max) (< 50 ms) | 22.1 (23.9) ms | 21.8 (25.3) ms | pass |
+| Collect + place, first pass after typing | 37.3 ms | 43.5 ms | pass |
+| Emit, median (max) (< 16 ms) | 12.0 (18.9) ms | 15.4 (21.0) ms | median passes |
+| Emit, first pass after typing | 15.8 ms | 18.2 ms | v1 misses (v2 too in the rerun) |
+
+- Emit is close to the line. About 9 ms of it is a forced layout inside `dispatch`: the pass's own reads after it dispatches (`contentBottom`, `observeChildren`) and the host's `useEditorState` selector (`hooks/use-editor-commands.ts`, `readEffectiveSpacing`), which reads computed margins on every transaction. That layout would otherwise run in the next frame, so it mostly moves cost.
+- Before Task 12 one pass took ~4,450 ms on this fixture (the hyphen hit test per line, and a spacer scan per leaf). The fixes changed no placement: same-DOM comparison of old and new `collectLeaves`/`place` on 10 fixtures × 2 schemas, identical.
+- **`:has()` (§12.9)**: a pass's style recalc is 0.02 ms median with the 6 `.editor-main-lane:has(...)` rules and without them. Edentext's ~150 ms per inserted spacer does not happen with this selector in current Chrome, so the rules stay (decision).
+
+**Accepted gaps** (decision):
+
+- **05 and 10, image parity**: the media node view's editing chrome (§10). Break-neutral: sheets, markers and page counts pass. M2.
+- **10 v2 A4, tall-table page count**: store 16, PDF 15. Chrome splits a 492px row between its cells' lines; `packRows` moves the row whole (§12.3). Pages after the table are one page off in that print. The other three fixture 10 cases match. M2 (row leaves with cell line boundaries).
+
+**Pending, manual** (the user runs these; not yet done):
+
+- Safari and Firefox: fixtures 01 and 10, on-screen sheets only, A4 v2: every leaf on a sheet, page numbers drawn, no content in the gaps.
+- Live Chrome, in the demo:
+  - dark mode: sheet, desk and page numbers take the dark tokens;
+  - focus mode: sheets drawn with the token fill;
+  - two tabs: switch back and forth; each tab keeps its own pages and numbers restart at 1; note any flash of the old layout on return (hidden tabs keep their spacers, §12.2);
+  - collapsed headings (02c): shown expanded in Pages, chevrons hidden;
+  - turning Pages off with collapsed headings: spacers gone and the collapsed view back in the same frame, no stale `aria-label="Page N"`;
+  - suggest-mode draft: your own draft visible while typing, others' proposals hidden, the draft hidden once submitted;
+  - typing at the end of the last page (Enter held, then text): a new sheet appears, the caret never sits below the last sheet.
+
+**Known limits, for M2**:
+
+- Leaving Pages may not restore a collapsed heading that got Enter while shown expanded: that keypress still flips `isCollapsed` (`dblock-collapse.ts`), against §12.7.
+- A submitted suggest-mode draft can stay visible in Pages: the suggestion widget's key omits `isDraft`, so the old DOM may be kept.
+- The first exact page count can be dropped if the active-editor ref is not yet this editor when the store publishes; the footer shows the estimate until the next change.
+- `packRows` is checked in Chrome only. The quarter-page header-repeat rule is unverified, and a header can be counted twice when row 0 moves.
+- Settled spacer heights can differ by ±1px between runs (pairs carried, page positions unchanged): a pair on a .5px rounding boundary settles on either fixed point.
+- `Line.startPos`, `Leaf.marginTop` and `Leaf.spacerCollapse` are measured on first read: read them before the next DOM write.
+- Code gutter with word wrap: the gutter spacer lands before the next gutter row, not the visual line (§12.4).
+- Not pagination, seen in every run: `TypeError ... naturalWidth` in the image node view's `onload` when navigating mid-load; the demo's v1 fixture loader sometimes appends to the doc (§7.5).
