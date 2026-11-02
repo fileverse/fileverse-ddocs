@@ -43,6 +43,14 @@ export type PaginationStorage = {
   failed: boolean;
   store: ReturnType<typeof createPageStore>;
   flush(): Placement | null;
+  lastPass: PassInfo | null;
+  isIdle(): boolean;
+};
+
+export type PassInfo = {
+  count: number;
+  timings: { collect: number; place: number; emit: number };
+  dispatched: boolean;
 };
 
 declare module '@tiptap/core' {
@@ -147,6 +155,7 @@ class PaginationView {
   private edits: Transaction[] = [];
   private spacersBefore: Spacer[] = [];
   private lastBottom: number | null = null;
+  private passCount = 0;
 
   constructor(
     private view: EditorView,
@@ -157,7 +166,11 @@ class PaginationView {
 
   // Follows storage: starts or stops, and a call while running forces a pass.
   sync() {
-    if (!this.storage.enabled) this.view.dom.style.minHeight = '';
+    if (!this.storage.enabled) {
+      this.view.dom.style.minHeight = '';
+      this.passCount = 0;
+      this.storage.lastPass = null;
+    }
     if (!this.storage.running || this.storage.failed) {
       this.stop();
       return;
@@ -185,6 +198,10 @@ class PaginationView {
 
   flush() {
     this.scheduler?.flush();
+  }
+
+  isIdle() {
+    return !this.scheduler?.isPending();
   }
 
   destroy() {
@@ -332,7 +349,7 @@ class PaginationView {
     if (changed) dispatchMeta(view, { spacers: placement.spacers });
     this.lastBottom = contentBottom(view);
     this.observeChildren(changed);
-    mark('emit', t2);
+    const t3 = mark('emit', t2);
 
     // Style write after every read of the pass.
     const minHeight = `${placement.pageCount * (grid.height + PAGE_GAP) - PAGE_GAP}px`;
@@ -345,6 +362,11 @@ class PaginationView {
       pageStarts: placement.pageStarts,
       placement,
     });
+    storage.lastPass = {
+      count: ++this.passCount,
+      timings: { collect: t1 - t0, place: t2 - t1, emit: t3 - t2 },
+      dispatched: changed,
+    };
     if (!changed) {
       this.guard.reset();
     } else if (this.guard.next(sig) === 'continue') {
@@ -384,6 +406,8 @@ export const Pagination = Extension.create<
       failed: false,
       store: createPageStore(),
       flush: () => null,
+      lastPass: null,
+      isIdle: () => true,
     };
   },
 
@@ -394,6 +418,7 @@ export const Pagination = Extension.create<
       controllers.get(storage)?.flush();
       return storage.failed ? null : storage.store.get().placement;
     };
+    storage.isIdle = () => controllers.get(storage)?.isIdle() ?? true;
   },
 
   addCommands() {

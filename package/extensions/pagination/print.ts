@@ -162,6 +162,16 @@ const mermaidSourceBlocks = (editor: Editor) => {
   return out;
 };
 
+// The live layout's placement, so print breaks where the screen does. Null
+// (extension idle or failed) lets buildPrintHtml measure afresh.
+export function resolvePrintPlacement(
+  editor: Editor,
+  isPagesActive: boolean,
+): Placement | undefined {
+  if (!isPagesActive) return undefined;
+  return editor.storage.pagination?.flush() ?? undefined;
+}
+
 export async function buildPrintHtml(args: {
   editor: Editor;
   pageSetup?: PageSetup;

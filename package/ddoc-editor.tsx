@@ -105,7 +105,10 @@ import {
   PageGrid,
 } from './extensions/pagination/page-grid';
 import { PageSheets } from './components/page-sheets';
-import { buildPrintHtml } from './extensions/pagination/print';
+import {
+  buildPrintHtml,
+  resolvePrintPlacement,
+} from './extensions/pagination/print';
 import { handleContentPrint } from './utils/handle-print';
 import {
   EditorWidthContext,
@@ -658,6 +661,10 @@ const DdocEditor = forwardRef(
           const { html, options } = await buildPrintHtml({
             editor,
             ...printInputsRef.current,
+            placement: resolvePrintPlacement(
+              editor,
+              printInputsRef.current.isPagesActive,
+            ),
           });
           handleContentPrint(html, options);
         },

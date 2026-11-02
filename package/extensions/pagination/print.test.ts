@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-handler';
-import { buildPrintHtml } from './print';
+import { buildPrintHtml, resolvePrintPlacement } from './print';
 import type { Placement } from './place';
 
 vi.mock('../mardown-paste-handler', async (importOriginal) => ({
@@ -280,5 +280,32 @@ describe('buildPrintHtml', () => {
     const pre = div.querySelector('pre[data-language="mermaid"]');
     expect(pre?.hasAttribute('data-print-mermaid-source')).toBe(true);
     expect(pre?.textContent).toContain('graph TD');
+  });
+});
+
+describe('resolvePrintPlacement', () => {
+  const stub = (flush: () => Placement | null) =>
+    ({ storage: { pagination: { flush: vi.fn(flush) } } }) as unknown as Editor;
+  const live: Placement = { breaks: [], pageStarts: [], pageCount: 3 };
+
+  it('flushes and uses the live placement in Pages', () => {
+    const editor = stub(() => live);
+    expect(resolvePrintPlacement(editor, true)).toBe(live);
+    expect(editor.storage.pagination.flush).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back (undefined) when flush returns null', () => {
+    expect(
+      resolvePrintPlacement(
+        stub(() => null),
+        true,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('does not flush in Pageless', () => {
+    const editor = stub(() => live);
+    expect(resolvePrintPlacement(editor, false)).toBeUndefined();
+    expect(editor.storage.pagination.flush).not.toHaveBeenCalled();
   });
 });

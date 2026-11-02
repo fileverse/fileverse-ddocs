@@ -134,6 +134,10 @@ export class PassScheduler {
     });
   }
 
+  isPending(): boolean {
+    return this.timer !== null || this.frame !== null;
+  }
+
   flush(): void {
     if (this.destroyed) return;
     if (this.timer === null && this.frame === null) return;

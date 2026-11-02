@@ -1,8 +1,6 @@
 import type { Editor } from '@tiptap/core';
-import { PageGrid } from '../../../package/extensions/pagination/page-grid';
 import {
   buildPrintHtml,
-  getPrintBreaks,
   type PagesPrintBreaks,
 } from '../../../package/extensions/pagination/print';
 import { mountContentPrintHost } from '../../../package/utils/handle-print';
@@ -18,6 +16,11 @@ export type PagesDebugDeps = {
 export type PagesDebugApi = {
   ready: boolean;
   breaks: () => PagesPrintBreaks | null;
+  pass: () => {
+    passCount: number;
+    lastTimings: { collect: number; place: number; emit: number } | null;
+    settled: boolean;
+  } | null;
   parity: () => Promise<ReturnType<typeof measurePrintParity> | null>;
   mountPrint: (debugMarkers: boolean) => Promise<void>;
   unmountPrint: () => void;
@@ -38,13 +41,19 @@ const settings = (deps: PagesDebugDeps) => {
   return { editor, pageSetup, orientation: styling?.orientation };
 };
 
-export const computeBreaks = (deps: PagesDebugDeps) => {
+// The plugin's own placement, so the checker sees what the screen and print use.
+export const computeBreaks = (deps: PagesDebugDeps): PagesPrintBreaks | null => {
   const s = settings(deps);
-  if (!s) return null;
-  return getPrintBreaks(
-    s.editor.view,
-    new PageGrid(s.pageSetup.paper, s.orientation),
+  const placement = s?.editor.storage.pagination?.flush();
+  if (!s || !placement) return null;
+  const { doc } = s.editor.state;
+  const pageFirstText = placement.pageStarts.map((start) =>
+    doc
+      .textBetween(start.pos, Math.min(start.pos + 200, doc.content.size), ' ')
+      .trim()
+      .slice(0, 40),
   );
+  return { ...placement, pageFirstText };
 };
 
 export const buildPagesPrint = async (
@@ -69,6 +78,15 @@ export const installPagesDebug = (deps: PagesDebugDeps) => {
   const api: PagesDebugApi = {
     ready: false,
     breaks: () => computeBreaks(deps),
+    pass: () => {
+      const storage = deps.getEditor()?.storage.pagination;
+      if (!storage) return null;
+      return {
+        passCount: storage.lastPass?.count ?? 0,
+        lastTimings: storage.lastPass?.timings ?? null,
+        settled: storage.isIdle(),
+      };
+    },
     parity: async () => {
       const s = settings(deps);
       if (!s) return null;

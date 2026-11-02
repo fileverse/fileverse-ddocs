@@ -193,6 +193,32 @@ describe.each([
     expect(passes[0].getMeta('addToHistory')).toBeUndefined();
   });
 
+  it('lastPass reports count, timings and dispatched; resets on disable', () => {
+    expect(storage().lastPass).toBeNull();
+    enableAndSettle();
+    const info = storage().lastPass!;
+    expect(info.count).toBe(2);
+    expect(Object.keys(info.timings)).toEqual(['collect', 'place', 'emit']);
+    expect(info.timings.collect).toBeGreaterThanOrEqual(0);
+    expect(info.dispatched).toBe(false);
+    enable({ enabled: false, running: false });
+    expect(storage().lastPass).toBeNull();
+    enableAndSettle();
+    expect(storage().lastPass!.count).toBe(2);
+  });
+
+  it('isIdle is false while a pass is pending and true once settled', () => {
+    expect(storage().isIdle()).toBe(true);
+    enable();
+    expect(storage().isIdle()).toBe(false);
+    vi.advanceTimersByTime(FRAME * 3);
+    expect(storage().isIdle()).toBe(true);
+    typeAt(2, 'x');
+    expect(storage().isIdle()).toBe(false);
+    vi.advanceTimersByTime(DEBOUNCE + FRAME * 3);
+    expect(storage().isIdle()).toBe(true);
+  });
+
   it('refuses a pagination transaction with steps', () => {
     const before = editor.state.doc;
     editor.view.dispatch(
