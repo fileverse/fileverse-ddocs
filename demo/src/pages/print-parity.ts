@@ -1,9 +1,8 @@
 import type { EditorView } from '@tiptap/pm/view';
 import {
-  getPaperPx,
-  PAGE_MARGIN,
-} from '../../../package/extensions/pagination/page-grid';
-import type { ContentPrintOptions } from '../../../package/utils/handle-print';
+  mountContentPrintHost,
+  type ContentPrintOptions,
+} from '../../../package/utils/handle-print';
 import { getZoomScale } from '../../../package/utils/zoom';
 
 export type ParityMismatch = {
@@ -24,44 +23,49 @@ export function measurePrintParity(
   html: string,
   options: ContentPrintOptions,
 ): { ok: boolean; mismatches: ParityMismatch[] } {
-  const { pageSetup, orientation, rootStyle } = options;
-  const width = pageSetup ? getPaperPx(pageSetup.paper, orientation).width : 0;
-
-  const holder = document.createElement('div');
-  holder.setAttribute('data-pages-parity', '');
-  holder.style.cssText = 'position:absolute;left:-100000px;top:0';
-  const root = document.createElement('div');
-  root.className = 'print-content-root ProseMirror main-doc-editor';
-  root.setAttribute('data-page-mode', 'pages');
-  Object.assign(root.style, rootStyle);
-  root.style.boxSizing = 'border-box';
-  root.style.width = `${width}px`;
-  root.style.setProperty('padding', `0 ${PAGE_MARGIN}px`, 'important');
-  root.innerHTML = html;
-  holder.appendChild(root);
-  document.body.appendChild(holder);
+  // The real print host and its Pages CSS, shown off-screen with screen media.
+  const { cleanup } = mountContentPrintHost(html, options);
+  const hosts = document.querySelectorAll<HTMLElement>('.ddoc-print-host');
+  const host = hosts[hosts.length - 1];
+  host.setAttribute('data-pages-parity', '');
+  host.style.cssText =
+    'display:block !important;position:absolute;left:-100000px;top:0';
 
   const scale = getZoomScale(view.dom);
-  const screen: { el: HTMLElement; top: number; height: number; skip: boolean }[] =
-    [];
+  const screen: {
+    el: HTMLElement;
+    top: number;
+    height: number;
+    skip: boolean;
+    afterBreak: boolean;
+  }[] = [];
+  let afterBreak = false;
   view.state.doc.forEach((node, pos) => {
+    // A top-level page break becomes a section split in print (handle-print).
+    if (node.type.name === 'pageBreak') {
+      afterBreak = true;
+      return;
+    }
     const el = view.nodeDOM(pos);
     if (!(el instanceof HTMLElement)) return;
     const rect = el.getBoundingClientRect();
-    const inner = node.firstChild?.type.name;
     screen.push({
       el,
       top: rect.top / scale,
       height: rect.height / scale,
-      // A page break is a grey strip on screen and a section split in print.
-      skip: node.type.name === 'pageBreak' || inner === 'pageBreak',
+      // A v1 page break stays in its dBlock: a grey strip on screen only.
+      skip: node.firstChild?.type.name === 'pageBreak',
+      afterBreak,
     });
+    afterBreak = false;
   });
 
-  const printed = [...root.children].map((child) => {
-    const rect = child.getBoundingClientRect();
-    return { el: child as HTMLElement, top: rect.top, height: rect.height };
-  });
+  const printed = [...host.querySelectorAll('.print-page')]
+    .flatMap((section) => [...section.children])
+    .map((child) => {
+      const rect = child.getBoundingClientRect();
+      return { el: child as HTMLElement, top: rect.top, height: rect.height };
+    });
 
   const mismatches: ParityMismatch[] = [];
   screen.forEach((block, i) => {
@@ -78,7 +82,7 @@ export function measurePrintParity(
       mismatches.push(describe(block.height, out.height, out.el.tagName));
     }
     const prev = screen[i - 1];
-    if (i > 0 && !prev.skip && printed[i - 1]) {
+    if (i > 0 && !prev.skip && !block.afterBreak && printed[i - 1]) {
       const screenGap = block.top - (prev.top + prev.height);
       const printGap = out.top - (printed[i - 1].top + printed[i - 1].height);
       if (Math.abs(screenGap - printGap) > TOLERANCE) {
@@ -98,6 +102,6 @@ export function measurePrintParity(
     });
   }
 
-  holder.remove();
+  cleanup();
   return { ok: mismatches.length === 0, mismatches };
 }

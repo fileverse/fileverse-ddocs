@@ -12,6 +12,8 @@ const heightOf = (el: Element) =>
     ? 13
     : 10;
 beforeAll(() => {
+  // jsdom rejects the print host's page-margin box sheet (handle-print).
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
     function (this: HTMLElement) {
       let top = 0;
