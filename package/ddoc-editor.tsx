@@ -102,7 +102,9 @@ import {
 import {
   getPagesBaseWidth,
   isPagesActive,
+  PageGrid,
 } from './extensions/pagination/page-grid';
+import { PageSheets } from './components/page-sheets';
 import { buildPrintHtml } from './extensions/pagination/print';
 import { handleContentPrint } from './utils/handle-print';
 import {
@@ -904,6 +906,57 @@ const DdocEditor = forwardRef(
     });
     const scaledWidth = baseWidth * zoom;
 
+    // Primitives, so a new documentStyling object does not re-run a pass.
+    const pagesMode = pageSetup?.mode;
+    const pagesPaper = pageSetup?.paper;
+    const pagesOrientation = documentStyling?.orientation;
+    const pagesSetup = useMemo(
+      () =>
+        pagesMode && pagesPaper
+          ? { mode: pagesMode, paper: pagesPaper }
+          : undefined,
+      [pagesMode, pagesPaper],
+    );
+    const pageGrid = useMemo(
+      () =>
+        pagesPaper ? new PageGrid(pagesPaper, pagesOrientation) : undefined,
+      [pagesPaper, pagesOrientation],
+    );
+    useEffect(() => {
+      if (!editor || editor.isDestroyed) return;
+      // Pageless never touches the extension (already inert).
+      if (!isPagesMode && !editor.storage.pagination?.enabled) return;
+      editor.commands.setPagination({
+        pageSetup: pagesSetup,
+        orientation: pagesOrientation,
+        zoom,
+        enabled: isPagesMode,
+        running: isPagesMode,
+      });
+    }, [editor, isPagesMode, pagesSetup, pagesOrientation, zoom]);
+    // Leaving the active tab (or unmounting): stop passes, keep the spacers.
+    useEffect(() => {
+      if (!editor) return;
+      return () => {
+        const s = editor.storage.pagination;
+        if (editor.isDestroyed || !s?.running) return;
+        editor.commands.setPagination({
+          pageSetup: s.pageSetup,
+          orientation: s.orientation,
+          zoom: s.zoom,
+          enabled: s.enabled,
+          running: false,
+        });
+      };
+    }, [editor]);
+    // Pages mode: the sheets take the canvas fill; the rest shows the desk.
+    const contentCanvasStyle = (() => {
+      const style = getCanvasStyle();
+      return isPagesMode && style
+        ? { ...style, backgroundColor: undefined }
+        : style;
+    })();
+
     // The scroller is the canvas, except in Split View where it stays on the
     // inner wrapper. The ref object
     // itself switches, so effects keyed on it re-bind to the new element.
@@ -1260,6 +1313,7 @@ const DdocEditor = forwardRef(
                             'transition-[width,max-width] duration-300 ease-in-out',
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
+                            !isPagesMode &&
                             'color-bg-default',
                         )}
                         style={{
@@ -1271,7 +1325,7 @@ const DdocEditor = forwardRef(
                               }),
                           flexShrink: 0,
                           minHeight: '100%',
-                          ...(!isFocusMode ? getCanvasStyle() || {} : {}),
+                          ...(!isFocusMode ? contentCanvasStyle || {} : {}),
                           // Split View: fill the right pane instead of the
                           // fixed page width (kept last so it wins).
                           ...(isSplitViewActive
@@ -1282,7 +1336,11 @@ const DdocEditor = forwardRef(
                       >
                         <div
                           ref={editorRef}
-                          className={cn('w-full', isPreviewMode && 'pt-3')}
+                          className={cn(
+                            'w-full',
+                            isPreviewMode && 'pt-3',
+                            isPagesMode && 'relative isolate',
+                          )}
                           data-ddoc-zoom-layer=""
                           data-ddoc-zoom={String(zoom)}
                           style={
@@ -1298,6 +1356,15 @@ const DdocEditor = forwardRef(
                                   }
                           }
                         >
+                          {isPagesMode && pageGrid && (
+                            <PageSheets
+                              editor={editor}
+                              grid={pageGrid}
+                              canvasStyle={
+                                !isFocusMode ? getCanvasStyle() : undefined
+                              }
+                            />
+                          )}
                           <div>
                             {editor && (
                               <>
@@ -1384,8 +1451,8 @@ const DdocEditor = forwardRef(
                                           { 'pt-12': isPreviewMode },
                                         )}
                                         {...(!isFocusMode &&
-                                          getCanvasStyle() && {
-                                            style: getCanvasStyle(),
+                                          contentCanvasStyle && {
+                                            style: contentCanvasStyle,
                                           })}
                                       >
                                         {visibleTags.map((tag, index) => (

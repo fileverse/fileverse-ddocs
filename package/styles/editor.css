@@ -637,6 +637,39 @@
   --padding-l: 96px;
 }
 
+/* Sheets (docs/PAGES_MODE.md §12.6) sit behind the content in the zoom layer
+   and take the canvas fill; the content itself shows the desk between them. */
+[data-page-mode='pages'] .ProseMirror.main-doc-editor {
+  background-color: transparent;
+}
+
+.ddoc-page-sheets {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ddoc-page-sheet {
+  position: absolute;
+  left: 0;
+  box-sizing: border-box;
+  border: 1px solid hsla(var(--color-border-default));
+}
+
+.ddoc-page-number {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1;
+}
+
 /* Paper cannot scroll: Pages shows every line of a long code block. */
 [data-page-mode='pages'] .ProseMirror [data-code-body] {
   max-height: none;
