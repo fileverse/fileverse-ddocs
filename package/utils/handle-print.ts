@@ -1021,6 +1021,21 @@ const buildPagesPrintStyles = (
   /* On screen, cell content sits in the React node view's pre-wrap content
      div; ProseMirror's break-spaces would wrap a word earlier. */
   .${PRINT_HOST_CLASS} :is(td, th) { white-space: pre-wrap; }
+  /* The code block node view's box: a bordered pre whose body sits 32px
+     under the overlaid header, 20px lines at the inherited size. */
+  .${PRINT_HOST_CLASS} pre {
+    border: 1px solid hsla(var(--color-border-default));
+    border-radius: 0.5rem;
+    overflow: clip;
+  }
+  .${PRINT_HOST_CLASS} pre > code {
+    display: block;
+    margin-top: 32px;
+    font-size: inherit;
+    line-height: 20px;
+    padding-left: 16px;
+  }
+  .${PRINT_HOST_CLASS} pre[data-word-wrap='false'] > code { white-space: pre; }
 `;
 };
 

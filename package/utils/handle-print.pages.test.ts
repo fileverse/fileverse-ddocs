@@ -93,6 +93,19 @@ describe('content print, pages', () => {
     );
   });
 
+  // The code block node view: body 32px under its overlaid header, 20px
+  // lines at the inherited size, no wrapping unless word wrap is on.
+  it('lays out code blocks like the node view', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const { style } = readMounted();
+    expect(style).toMatch(
+      /pre > code\s*\{[^}]*margin-top: 32px[^}]*line-height: 20px/,
+    );
+    expect(style).toMatch(
+      /pre\[data-word-wrap='false'\] > code\s*\{[^}]*white-space: pre/,
+    );
+  });
+
   it('Letter landscape', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },

@@ -637,6 +637,12 @@
   --padding-l: 96px;
 }
 
+/* Paper cannot scroll: Pages shows every line of a long code block. */
+[data-page-mode='pages'] .ProseMirror [data-code-body] {
+  max-height: none;
+  overflow: visible;
+}
+
 /* Read-only-preview heading chrome (collapse chevron + copy link), rendered
    by the dBlock node view INSIDE the editor DOM — the floating drag-handle
    cluster can never appear in preview because the upstream plugin hides its

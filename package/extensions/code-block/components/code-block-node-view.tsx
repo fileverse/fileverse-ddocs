@@ -579,6 +579,7 @@ export default function CodeBlockNodeView({
           </Tooltip>
         </div>
         <div
+          data-code-body=""
           className={cn(
             'bg-transparent w-full p-0 font-mono select-text pointer-events-auto overflow-auto no-scrollbar max-w-[650px]',
             (!isPreviewMode || isMermaid) && 'mt-8',
