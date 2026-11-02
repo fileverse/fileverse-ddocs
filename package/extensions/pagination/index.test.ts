@@ -201,6 +201,8 @@ describe.each([
     expect(Object.keys(info.timings)).toEqual(['collect', 'place', 'emit']);
     expect(info.timings.collect).toBeGreaterThanOrEqual(0);
     expect(info.dispatched).toBe(false);
+    // The first pass dispatched its spacers, the settle pass did not.
+    expect(info.dispatches).toBe(1);
     enable({ enabled: false, running: false });
     expect(storage().lastPass).toBeNull();
     enableAndSettle();
@@ -560,7 +562,11 @@ describe.each([
       (tr) => 'spacers' in tr.getMeta(PAGINATION_META),
     );
     expect(passes).toHaveLength(2);
-    expect(storage().lastPass).toMatchObject({ count: 3, dispatched: false });
+    expect(storage().lastPass).toMatchObject({
+      count: 3,
+      dispatched: false,
+      dispatches: 2,
+    });
     shiftLong = 7;
     const b = expected();
     expect(storage().store.get().placement).toEqual(b);

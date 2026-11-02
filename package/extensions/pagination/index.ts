@@ -52,6 +52,8 @@ export type PassInfo = {
   count: number;
   timings: { collect: number; place: number; emit: number };
   dispatched: boolean;
+  // Passes that dispatched spacers, counted with `count`.
+  dispatches: number;
 };
 
 declare module '@tiptap/core' {
@@ -157,6 +159,7 @@ class PaginationView {
   private spacersBefore: Spacer[] = [];
   private lastBottom: number | null = null;
   private passCount = 0;
+  private dispatchCount = 0;
 
   constructor(
     private view: EditorView,
@@ -170,6 +173,7 @@ class PaginationView {
     if (!this.storage.enabled) {
       this.view.dom.style.minHeight = '';
       this.passCount = 0;
+      this.dispatchCount = 0;
       this.storage.lastPass = null;
     }
     if (!this.storage.running || this.storage.failed) {
@@ -379,7 +383,13 @@ class PaginationView {
   }
 
   private record(timings: PassInfo['timings'], dispatched: boolean) {
-    this.storage.lastPass = { count: ++this.passCount, timings, dispatched };
+    if (dispatched) this.dispatchCount += 1;
+    this.storage.lastPass = {
+      count: ++this.passCount,
+      timings,
+      dispatched,
+      dispatches: this.dispatchCount,
+    };
   }
 
   // The editor goes inert until reload and renders as one column.
