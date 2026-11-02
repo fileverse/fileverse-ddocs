@@ -43,6 +43,7 @@ export type PagesDebugApi = {
   } | null;
   sheetCheck: () => Check | null;
   stateVector: () => string | null;
+  tabContent: () => string | null;
   watchWrites: () => void;
   writes: () => string[];
   parity: () => Promise<ReturnType<typeof measurePrintParity> | null>;
@@ -99,8 +100,8 @@ export const buildPagesPrint = async (
 const TOLERANCE = 1;
 
 // I4 (docs/PAGES_MODE.md §12.12): on screen, with spacers, every leaf lies
-// inside one sheet's text area, or is first on its page and taller than the
-// text height. Text leaves are checked line by line; drawn sheets must sit on
+// inside one sheet's text area, or is taller than the text height and starts
+// its page (under the headings that open it, §12.3). Text leaves are checked line by line; drawn sheets must sit on
 // the grid.
 export function checkSheets(
   view: EditorView,
@@ -141,6 +142,8 @@ export function checkSheets(
   };
   const range = document.createRange();
   let lastPage = -1;
+  // Only headings so far on lastPage.
+  let headingsOnly = true;
   for (const leaf of collectLeaves(view, grid.textHeight)) {
     if (leaf.kind === 'forced') continue;
     const el = view.nodeDOM(leaf.pos);
@@ -153,12 +156,13 @@ export function checkSheets(
       const { page, ok } = inArea(top, bottom);
       const tall =
         bottom - top > grid.textHeight &&
-        page > lastPage &&
+        (page > lastPage || headingsOnly) &&
         top >= grid.contentTopOf(page) - TOLERANCE;
       if (!ok && !tall) {
         problems.push(`${where} box ${round(top)}..${round(bottom)}, ${area(page)}`);
       }
       lastPage = grid.pageAt(bottom - TOLERANCE);
+      headingsOnly = false;
       continue;
     }
     // Glyph rects per line; a line ends where the next one starts, as in place.
@@ -180,6 +184,7 @@ export function checkSheets(
       }
     }
     const lines = groupLineRects(glyphs, scale);
+    const isHeading = leaf.isHeading;
     lines.forEach((line, i) => {
       const next = lines[i + 1];
       const samePage = next && grid.pageAt(next.top) === grid.pageAt(line.top);
@@ -195,6 +200,7 @@ export function checkSheets(
           `${where} line ${i + 1}/${lines.length} ${round(lineTop)}..${round(lineBottom)}, ${area(page)}`,
         );
       }
+      headingsOnly = isHeading && (page > lastPage || headingsOnly);
       lastPage = page;
     });
     if (lines.length) {
@@ -243,6 +249,15 @@ export const installPagesDebug = (deps: PagesDebugDeps) => {
       const ydoc = deps.getYdoc?.();
       if (!ydoc) return null;
       return btoa(String.fromCharCode(...Y.encodeStateVector(ydoc)));
+    },
+    // Every tab's content (its XmlFragment), to compare before and after.
+    tabContent: () => {
+      const ydoc = deps.getYdoc?.();
+      if (!ydoc) return null;
+      const tabs = [...ydoc.share]
+        .filter(([, type]) => type instanceof Y.XmlFragment)
+        .map(([name, type]) => [name, type.toString()]);
+      return JSON.stringify(tabs);
     },
     // Records every Yjs transaction that changes something, from now on.
     watchWrites: () => {

@@ -353,8 +353,9 @@ const activeTab = (ev) =>
   );
 
 // I1 (§12.12): no Yjs write from 50+ passes driven by zooms, resizes and tab
-// switches. Tab switches write the tab manager's activeTabId themselves, so
-// the check is: the state vector is unchanged, or every write is that key.
+// switches. A tab switch writes the host's tab-manager map (tabs_state) itself,
+// so the check is: every tab's XmlFragment content is unchanged, and no Yjs
+// transaction touched anything outside tabs_state.
 async function noWrites(chrome, base, schema) {
   const doc = `pages-inv-${schema}`;
   await open(chrome, base, { id: '10', schema }, { doc });
@@ -375,7 +376,7 @@ async function noWrites(chrome, base, schema) {
   await waitSettled(chrome.ev);
 
   await chrome.ev('window.__ddocPages.watchWrites()');
-  const before = await chrome.ev('window.__ddocPages.stateVector()');
+  const before = await chrome.ev('window.__ddocPages.tabContent()');
   const seen = {};
   let passes = 0;
   let dispatches = 0;
@@ -416,15 +417,18 @@ async function noWrites(chrome, base, schema) {
   }
   await chrome.send('Emulation.clearDeviceMetricsOverride');
   await chrome.ev(`window.__ddocPages.setZoomLevel('1')`);
-  const after = await chrome.ev('window.__ddocPages.stateVector()');
+  const after = await chrome.ev('window.__ddocPages.tabContent()');
   const writes = await chrome.ev('window.__ddocPages.writes()');
-  const foreign = writes.filter((w) => !w.endsWith('.activeTabId'));
-  const ok = passes >= 50 && foreign.length === 0;
+  const foreign = writes.filter((w) => !w.startsWith('tabs_state'));
+  const fragments = JSON.parse(after).length;
+  const ok = passes >= 50 && before === after && foreign.length === 0;
   return {
     ok,
-    text: `${passes} passes (${dispatches} dispatched after a zoom/resize/switch), state vector ${
-      before === after ? 'equal' : 'changed'
-    }, writes: ${writes.length ? [...new Set(writes)].join(', ') : 'none'}`,
+    text: `${passes} passes (${dispatches} dispatched after a zoom/resize/switch), content of ${fragments} tabs ${
+      before === after ? 'equal' : 'CHANGED'
+    }, writes outside tabs_state: ${
+      foreign.length ? [...new Set(foreign)].join(', ') : 'none'
+    } (tab manager: ${writes.length - foreign.length})`,
   };
 }
 
