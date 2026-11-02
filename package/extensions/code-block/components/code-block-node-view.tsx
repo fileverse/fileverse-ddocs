@@ -14,10 +14,19 @@ import {
   Toggle,
 } from '@fileverse/ui';
 import { NodeViewWrapper, NodeViewContent, NodeViewProps } from '@tiptap/react';
-import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { useResponsive } from '../../../utils/responsive';
 import { useEditingContext } from '../../../hooks/use-editing-context';
 import { getMermaid } from '../lazy-mermaid';
+import { gutterSpacers } from '../gutter-spacers';
 
 const LANGUAGE_GROUPS = [
   {
@@ -119,6 +128,7 @@ export default function CodeBlockNodeView({
   updateAttributes,
   editor,
   deleteNode,
+  innerDecorations,
 }: NodeViewProps) {
   const codeRef = useRef<HTMLDivElement>(null);
   const [copyIcon, setCopyIcon] = useState<'Copy' | 'Check'>('Copy');
@@ -263,9 +273,12 @@ export default function CodeBlockNodeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreviewMode, mermaidError]);
 
-  const codeLines = useMemo(() => {
+  const { codeLines, rowStarts } = useMemo(() => {
     const lines = code.split('\n');
     const processedLines: string[] = [];
+    // Text offset where each gutter row starts.
+    const starts: number[] = [];
+    let offset = 0;
 
     let maxLineLength = 0;
 
@@ -284,13 +297,22 @@ export default function CodeBlockNodeView({
         // Split the line into multiple lines of max 80 characters
         const wrappedLines =
           line.match(new RegExp(`.{1,${maxLineLength}}`, 'g')) || [];
+        for (let i = 0; i < wrappedLines.length; i++) {
+          starts.push(offset + i * maxLineLength);
+        }
         processedLines.push(...wrappedLines);
       } else {
+        starts.push(offset);
         processedLines.push(line);
       }
+      offset += line.length + 1;
     }
-    return processedLines;
+    return { codeLines: processedLines, rowStarts: starts };
   }, [code, isMobile, wordWrap, lineNumbers]);
+  const spacerBefore = useMemo(
+    () => gutterSpacers(innerDecorations, rowStarts),
+    [innerDecorations, rowStarts],
+  );
 
   useEffect(() => {
     if (shouldFocus && codeRef.current) {
@@ -609,12 +631,14 @@ export default function CodeBlockNodeView({
             {lineNumbers && (
               <div className="flex-none text-right">
                 {codeLines.map((_, i) => (
-                  <div
-                    key={i}
-                    className="leading-5 h-5 text-helper-text-sm font-mono color-text-secondary opacity-50"
-                  >
-                    {i + 1}
-                  </div>
+                  <Fragment key={i}>
+                    {spacerBefore.has(i) && (
+                      <div style={{ height: spacerBefore.get(i) }} />
+                    )}
+                    <div className="leading-5 h-5 text-helper-text-sm font-mono color-text-secondary opacity-50">
+                      {i + 1}
+                    </div>
+                  </Fragment>
                 ))}
               </div>
             )}

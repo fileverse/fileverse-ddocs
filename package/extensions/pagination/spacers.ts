@@ -8,6 +8,12 @@ export function spacerKey(s: Spacer): string {
   return `${s.kind}:${s.height}:${s.page}`;
 }
 
+// Height of an inText spacer from its decoration key, null for anything else.
+export function inTextSpacerHeight(key: unknown): number | null {
+  const [kind, height] = String(key).split(':');
+  return kind === 'inText' ? Number(height) || 0 : null;
+}
+
 // A 0px div does nothing visible and lets margins collapse through it.
 const visible = (spacers: Spacer[]) => spacers.filter((s) => s.height > 0);
 

@@ -112,6 +112,12 @@ function spacerExtra(
   });
 }
 
+// A node's own content element: a node view's chrome (a code block's
+// line-number gutter) is not text of the leaf and does not move with a spacer.
+const contentOf = (el: HTMLElement): HTMLElement =>
+  (el as { pmViewDesc?: { contentDOM?: HTMLElement | null } }).pmViewDesc
+    ?.contentDOM ?? el;
+
 // Leaves in document order, measured in the view.dom frame, unscaled.
 export function collectLeaves(
   view: EditorView,
@@ -281,7 +287,7 @@ export function collectLeaves(
 
     const b = box(pos);
     if (!b) return;
-    const lines = measureLines(view, b.el, {
+    const lines = measureLines(view, contentOf(b.el), {
       from: pos + 1,
       to: pos + 1 + node.content.size,
       originTop,

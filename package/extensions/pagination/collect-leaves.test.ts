@@ -160,6 +160,39 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     });
   });
 
+  it("measures a node view's lines from its content, not its chrome", () => {
+    // A code block's line-number gutter stays put when a spacer moves the code.
+    editor.view.setProps({
+      nodeViews: {
+        codeBlock: () => {
+          const dom = document.createElement('div');
+          const gutter = document.createElement('div');
+          gutter.textContent = '1';
+          const contentDOM = document.createElement('code');
+          dom.append(gutter, contentDOM);
+          return { dom, contentDOM };
+        },
+      },
+    });
+    editor.commands.setContent('<pre><code>alpha</code></pre>');
+    const rects = Range.prototype.getClientRects;
+    Range.prototype.getClientRects = function (this: Range) {
+      const top = this.startContainer.textContent === '1' ? 300 : 0;
+      return [lineAt(top)] as unknown as DOMRectList;
+    };
+    document.elementFromPoint = () => null;
+    try {
+      const doc = editor.state.doc;
+      const leaf = collectLeaves(editor.view, 931).find(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'codeBlock',
+      );
+      if (leaf?.kind !== 'text') throw new Error('expected a text leaf');
+      expect(leaf.lines.map((l) => l.top)).toEqual([0]);
+    } finally {
+      Range.prototype.getClientRects = rects;
+    }
+  });
+
   it('marks headings and the table header row', () => {
     const leaves = collectLeaves(editor.view, 931, { tableRows: true });
     expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });
