@@ -223,9 +223,9 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 `extensions/pagination/index.ts`: `Pagination`, registered in every tab editor in `buildExtensionsForTab` (`hooks/use-tab-editor.tsx`), both schemas. It adds no nodes or marks. It is not part of `getHeadlessExtensions` (headless editors have no layout).
 
-- **Storage**: `{ pageSetup, orientation, active }`. `active` is true only when Pages is active for the editor (`isPagesActive`, §4.1) **and** the editor is the active tab. Hidden cached tab editors are inert; their last spacers stay until they become active, when a pass runs.
-- **Command**: `setPagination({ pageSetup, orientation, active })`. `ddoc-editor.tsx` calls it on the active tab editor whenever any input changes, and with `active: false` on an editor that stops being the active tab.
-- **Inert** (`active` false): no measuring, no observers, no listeners, empty decoration set. Turning Pages off clears the spacers with one step-less transaction, so switching to Pageless is instant.
+- **Storage**: `{ pageSetup, orientation, zoom, enabled, running, failed, store, flush }`. `enabled` is true when Pages is active for the editor (`isPagesActive`, §4.1): spacers are kept and the §12.7 behaviours are on. `running` is true when the editor is also the active tab: the scheduler and observers are live. Hidden cached tab editors are enabled but not running; their last spacers stay until they run again, when a pass runs.
+- **Command**: `setPagination({ pageSetup, orientation, zoom, enabled, running })`. `ddoc-editor.tsx` calls it on the active tab editor whenever any input changes, and with `running: false` on an editor that stops being the active tab. Any changed field while running (zoom included) runs a pass on the next frame.
+- **Inert** (`enabled` false): no measuring, no observers, no listeners, empty decoration set. Turning Pages off clears the spacers with one step-less transaction carrying `PAGINATION_META` `{ enabled: false }` (turning it on carries `{ enabled: true }`), so switching to Pageless is instant.
 - **Plugin**: state is the spacer `DecorationSet`, mapped through every document-changing transaction and replaced only by the plugin's own meta. Its `view()` owns the scheduler (§12.5) and the observers.
 
 ### 12.3 A pass
@@ -301,8 +301,8 @@ Measure the restyle cost of a spacer insert with Chrome's performance trace in t
 
 ### 12.11 Failures and instrumentation
 
-- **No writes**: every pagination transaction is checked before dispatch; in dev a transaction with steps throws. Unit test plus the I1 check (§12.12).
-- **A pass throws**: caught, decorations cleared, that editor goes inert until reload (it renders as M0's single column at paper width), `console.error` in dev. The package has no Sentry; error reporting is the app's (M3).
+- **No writes**: every pagination transaction is checked before dispatch; one with steps is not applied and logs `console.error`, in every build (the package has no dev flag). Unit test plus the I1 check (§12.12).
+- **A pass throws**: caught, decorations cleared, that editor goes inert until reload (it renders as M0's single column at paper width), `console.error` in every build. The package has no Sentry; error reporting is the app's (M3).
 - **Marks**: `performance.mark`/`measure` around collect, place and emit, named `ddoc:pagination:*`.
 - **Debug**: the demo's `window.__ddocPages` gains the last pass's leaves, placement, pass count and timings.
 

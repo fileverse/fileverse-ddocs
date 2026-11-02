@@ -31,6 +31,7 @@ import {
 } from '@tiptap/pm/state';
 import customTextInputRules from '../extensions/customTextInputRules';
 import { PageBreak } from '../extensions/page-break/page-break';
+import { Pagination } from '../extensions/pagination';
 import { toUint8Array } from 'js-base64';
 import { isJSONString } from '../utils/isJsonString';
 import { sanitizeContent } from '../utils/sanitize-content';
@@ -1725,6 +1726,7 @@ const useEditorExtension = ({
         createSlashCommand(),
         customTextInputRules,
         PageBreak,
+        Pagination,
         tabCommentExtension,
         Collaboration.configure({
           document: ydoc,
