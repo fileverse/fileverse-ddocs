@@ -3,6 +3,8 @@
 import { PRINT_BOTTOM_SLACK, type PageGrid } from './page-grid';
 
 export type Line = { top: number; bottom: number; startPos: number };
+// marginTop: what print keeps above the leaf after a forced break, i.e. the
+// margins, borders and padding of the boxes that start with it (leadingOffset).
 export type Leaf =
   | {
       kind: 'text';

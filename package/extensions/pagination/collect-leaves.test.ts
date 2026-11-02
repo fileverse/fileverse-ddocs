@@ -1,6 +1,6 @@
 import { Editor } from '@tiptap/react';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
-import { collectLeaves } from './collect-leaves';
+import { collectLeaves, leadingOffset } from './collect-leaves';
 
 const HTML = `<h2>Heading</h2><p>Paragraph</p><ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul><table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr></tbody></table><img src="data:image/svg+xml;base64,PHN2Zy8+"><div data-type="page-break"></div><aside data-type="callout"><p>note</p></aside>`;
 
@@ -53,5 +53,33 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
       true,
       false,
     ]);
+  });
+});
+
+// After a forced break print keeps the margin, border and padding of every box
+// that starts with the leaf; margins that collapse through count once.
+describe('leadingOffset', () => {
+  const box = (top: number, marginTop: number, blocksCollapse = false) => ({
+    top,
+    marginTop,
+    blocksCollapse,
+  });
+
+  it('is the leaf margin when nothing starts with it', () => {
+    expect(leadingOffset([box(100, 12)])).toBe(12);
+  });
+
+  it('keeps an ancestor margin that collapses through', () => {
+    expect(leadingOffset([box(100, 0), box(100, 0), box(100, 24)])).toBe(24);
+  });
+
+  it('counts collapsed margins once, the largest', () => {
+    expect(leadingOffset([box(100, 16), box(100, 8)])).toBe(16);
+  });
+
+  it('adds padding and border of an ancestor that stops collapsing', () => {
+    // A callout with a 1px border and 16px padding: the leaf sits 17px in.
+    expect(leadingOffset([box(117, 0), box(100, 0, true)])).toBe(17);
+    expect(leadingOffset([box(117, 0), box(100, 24, true)])).toBe(41);
   });
 });

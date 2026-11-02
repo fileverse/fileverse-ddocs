@@ -16,6 +16,32 @@ const WALKED = new Set([
   'blockquote',
 ]);
 
+export type BoxEdge = {
+  top: number;
+  marginTop: number;
+  blocksCollapse: boolean;
+};
+
+// Distance from the top margin edge of the outermost box that starts with a
+// leaf down to the leaf's border box. Print keeps all of it after a forced
+// break. chain[0] is the leaf, the last entry the outermost box; margins that
+// collapse through count once, as the largest.
+export function leadingOffset(chain: BoxEdge[]): number {
+  const outer = chain[chain.length - 1];
+  let collapsed = outer.marginTop;
+  for (let i = chain.length - 2; i >= 0; i -= 1) {
+    if (chain[i + 1].blocksCollapse) break;
+    collapsed = Math.max(collapsed, chain[i].marginTop);
+  }
+  return chain[0].top - outer.top + collapsed;
+}
+
+const blocksMarginCollapse = (style: CSSStyleDeclaration) =>
+  (parseFloat(style.paddingTop) || 0) > 0 ||
+  (parseFloat(style.borderTopWidth) || 0) > 0 ||
+  /flex|grid|flow-root|table/.test(style.display) ||
+  style.overflow !== 'visible';
+
 // Leaves in document order, measured in the view.dom frame, unscaled.
 export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
   const scale = getZoomScale(view.dom);
@@ -23,6 +49,24 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
   const range = document.createRange();
   const leaves: Leaf[] = [];
   let tableId = 0;
+
+  // The leaf and every box it is the first child of, below view.dom.
+  const startingChain = (el: HTMLElement): BoxEdge[] => {
+    const chain: BoxEdge[] = [];
+    for (let e: HTMLElement = el; ; ) {
+      const style = getComputedStyle(e);
+      chain.push({
+        top: (e.getBoundingClientRect().top - originTop) / scale,
+        marginTop: parseFloat(style.marginTop) || 0,
+        blocksCollapse: blocksMarginCollapse(style),
+      });
+      const parent = e.parentElement;
+      if (!parent || parent === view.dom || parent.firstElementChild !== e) {
+        return chain;
+      }
+      e = parent;
+    }
+  };
 
   const box = (pos: number) => {
     const el = view.nodeDOM(pos);
@@ -32,7 +76,7 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       el,
       top: (rect.top - originTop) / scale,
       bottom: (rect.bottom - originTop) / scale,
-      marginTop: parseFloat(getComputedStyle(el).marginTop) || 0,
+      marginTop: leadingOffset(startingChain(el)),
     };
   };
 
