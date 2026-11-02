@@ -1047,6 +1047,32 @@ const buildPagesPrintStyles = (
 // and a stylesheet parser that fails on it must not drop the rest.
 const PAGES_PAGE_NUMBER_STYLES = `@page { @bottom-right { content: counter(page); margin-right: 1in; } }`;
 
+// The light theme's colour tokens as the loaded stylesheets define them on
+// :root. Theme classes (.dark, .theme-*) redefine the same tokens above the
+// print host, and Pages print uses theme-coloured editor rules.
+const readLightThemeTokens = (): Record<string, string> => {
+  const tokens: Record<string, string> = {};
+  Array.from(document.styleSheets).forEach((sheet) => {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      return; // cross-origin sheet
+    }
+    Array.from(rules).forEach((rule) => {
+      if (!(rule instanceof CSSStyleRule) || rule.selectorText !== ':root') {
+        return;
+      }
+      for (const [, name, value] of rule.cssText.matchAll(
+        /(--color-[\w-]+)\s*:\s*([^;}]+)/g,
+      )) {
+        tokens[name] = value.trim();
+      }
+    });
+  });
+  return tokens;
+};
+
 export const mountContentPrintHost = (
   content: string,
   options: ContentPrintOptions = {},
@@ -1068,6 +1094,11 @@ export const mountContentPrintHost = (
   const host = document.createElement('div');
   host.className = PRINT_HOST_CLASS;
   host.setAttribute('aria-hidden', 'true');
+  if (isPages) {
+    Object.entries(readLightThemeTokens()).forEach(([name, value]) =>
+      host.style.setProperty(name, value),
+    );
+  }
 
   const contentRoot = document.createElement('div');
   contentRoot.className = 'print-content-root';

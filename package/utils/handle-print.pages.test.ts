@@ -119,6 +119,28 @@ describe('content print, pages', () => {
     );
   });
 
+  // The print root is .ProseMirror, so theme-coloured editor rules apply; a
+  // dark theme on <html> would print near-white code on white paper.
+  it('prints with the light theme tokens whatever the app theme', () => {
+    const theme = document.createElement('style');
+    theme.textContent =
+      ':root { --color-text-default: 207, 8%, 23%, 1; } .dark { --color-text-default: 0, 0%, 91%, 1; }';
+    document.head.appendChild(theme);
+    document.documentElement.classList.add('dark');
+    try {
+      mountContentPrintHost(HTML, {
+        pageSetup: { mode: 'pages', paper: 'a4' },
+      });
+      const host = document.querySelector<HTMLElement>('.ddoc-print-host')!;
+      expect(host.style.getPropertyValue('--color-text-default').trim()).toBe(
+        '207, 8%, 23%, 1',
+      );
+    } finally {
+      document.documentElement.classList.remove('dark');
+      theme.remove();
+    }
+  });
+
   it('Letter landscape', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },
