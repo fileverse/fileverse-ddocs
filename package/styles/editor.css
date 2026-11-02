@@ -637,6 +637,12 @@
   --padding-l: 96px;
 }
 
+/* Submitted suggestion previews are hidden in Pages (§12.7); the user's own
+   draft stays visible. */
+[data-page-mode='pages'] .ProseMirror [data-suggestion-preview]:not([data-suggestion-draft]) {
+  display: none;
+}
+
 /* Sheets (docs/PAGES_MODE.md §12.6) sit behind the content in the zoom layer
    and take the canvas fill; the content itself shows the desk between them. */
 [data-page-mode='pages'] .ProseMirror.main-doc-editor {

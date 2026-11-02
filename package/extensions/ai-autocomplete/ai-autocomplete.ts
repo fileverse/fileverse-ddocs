@@ -108,7 +108,8 @@ export const AiAutocomplete = Extension.create({
       if (
         !extension.storage.isEnabled ||
         extension.storage.isTyping ||
-        extension.storage.isSlashCommandActive
+        extension.storage.isSlashCommandActive ||
+        extension.editor?.storage.pagination?.enabled
       )
         return;
 
