@@ -151,7 +151,7 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 
 ### 7.5 Results
 
-**Chrome** (headless, `Page.printToPDF`, 48 cases: 10 fixtures × v1/v2 × A4/Letter, plus landscape for 01 and 04). Baseline 10/48; after the fixes in §4.3–4.4, 36/48.
+**Chrome** (headless, `Page.printToPDF`, 48 cases: 10 fixtures × v1/v2 × A4/Letter, plus landscape for 01 and 04). Baseline 10/48; after the fixes in §4.3–4.4 and the final review's fixes, 40/48, and **every case's page breaks match**. The 8 remaining failures are the image parity difference below, which moves no break.
 
 | Fixture | Page breaks (markers) | Parity | Notes |
 | -- | -- | -- | -- |
@@ -159,7 +159,7 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 | 04 tables | Match, every case | Match | Header row repeats on each page |
 | 05 images | Match, every case | Image ~45–55px taller on screen | Media node view's in-flow editing chrome; break-neutral (print is shorter, so only whitespace at a page bottom) |
 | 10 proposal | Match, every case | Image, as 05 | |
-| 06 code | Match up to the Mermaid block, then off by one | Mermaid 78 vs 278px | Before the Mermaid decision; rerun below |
+| 06 code | Match, every case | Match | Mermaid prints in the state it shows |
 
 - No glyph-metric drift (class b) seen: no break moved for any reason other than the structural mismatches above. The 20px slack was never needed as more than headroom.
 - Zoom 1.5, Fit and 0.75 give the same breaks as 100%.
@@ -167,7 +167,7 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 
 **Safari, Firefox, iPad Safari:** pending the manual round (§6.4).
 
-**Verdict so far:** Chrome passes for every block type except Mermaid, which waits on the §10 decision. The gate is not called until Safari is in.
+**Verdict so far:** Chrome passes: zero mismatched breaks across the matrix. The gate is not called until Safari is in.
 
 ## 8. Tests
 
