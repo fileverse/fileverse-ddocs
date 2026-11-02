@@ -1,6 +1,6 @@
 // Ported from Edentext (https://github.com/stffnb/edentext, b5ee86a), src/lib/editor/extensions/pageBreaks.ts. AGPL-3.0.
 // Placement only: leaf measurements in, break positions out. No DOM.
-import type { PageGrid } from './page-grid';
+import { PRINT_BOTTOM_SLACK, type PageGrid } from './page-grid';
 
 export type Line = { top: number; bottom: number; startPos: number };
 export type Leaf =
@@ -26,7 +26,11 @@ export type Leaf =
 export type PrintBreak =
   | { kind: 'before'; pos: number }
   | { kind: 'inText'; pos: number };
-export type PageStart = { kind: 'before' | 'inText'; pos: number };
+// 'continued': a box taller than a page carries on at the top of this page.
+export type PageStart = {
+  kind: 'before' | 'inText' | 'continued';
+  pos: number;
+};
 export type Placement = {
   breaks: PrintBreak[];
   pageStarts: PageStart[];
@@ -44,7 +48,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   let shift = 0;
   let page = 0;
   let placedOnPage = false;
-  let startNextPage: 'forced' | 'overflow' | null = null;
+  let startNextPage = false;
 
   const bottomOfPage = () => grid.contentBottomOf(page);
   const fits = (leaf: FlowLeaf) => leaf.bottom + shift <= bottomOfPage();
@@ -56,6 +60,24 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     shift +=
       grid.contentTopOf(page) + leaf.marginTop + reserve - (leaf.top + shift);
     pageStarts.push({ kind: 'before', pos: leaf.pos });
+  };
+
+  // Print fragments a box taller than a page across pages; each printed page
+  // holds the text height plus the bottom slack, less a repeated table header.
+  const spill = (leaf: Extract<FlowLeaf, { kind: 'atomic' }>) => {
+    const reserve = leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
+    const capacity = grid.textHeight + PRINT_BOTTOM_SLACK - reserve;
+    let rest =
+      leaf.bottom + shift - (grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK);
+    while (rest > 0) {
+      page += 1;
+      pageStarts.push({ kind: 'continued', pos: leaf.pos });
+      if (rest <= capacity) {
+        shift +=
+          grid.contentTopOf(page) + reserve + rest - (leaf.bottom + shift);
+      }
+      rest -= capacity;
+    }
   };
 
   const nextFlowLeaf = (i: number): FlowLeaf | null => {
@@ -76,19 +98,16 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
 
   leaves.forEach((leaf, i) => {
     if (leaf.kind === 'forced') {
-      startNextPage = 'forced';
+      startNextPage = true;
       return;
     }
     if (pageStarts.length === 0) {
       pageStarts.push({ kind: 'before', pos: leaf.pos });
     } else if (startNextPage) {
-      if (startNextPage === 'overflow') {
-        breaks.push({ kind: 'before', pos: leaf.pos });
-      }
       pushToNextPage(leaf);
       placedOnPage = false;
     }
-    startNextPage = null;
+    startNextPage = false;
     const firstOnPage = !placedOnPage;
 
     if (leaf.kind === 'atomic') {
@@ -100,17 +119,15 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
         placedOnPage = true;
         return;
       }
-      if (firstOnPage) {
-        // Taller than a page: it stays and overflows (clipped), and the next
-        // leaf starts the following page.
-        startNextPage = 'overflow';
-        placedOnPage = true;
-        return;
+      // Taller than a page: it fits nowhere, so it spans from where it is.
+      const isTall = leaf.bottom - leaf.top > grid.textHeight;
+      if (!firstOnPage && !isTall) {
+        const reserve =
+          leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
+        breaks.push({ kind: 'before', pos: leaf.pos });
+        pushToNextPage(leaf, reserve);
       }
-      const reserve =
-        leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
-      breaks.push({ kind: 'before', pos: leaf.pos });
-      pushToNextPage(leaf, reserve);
+      if (!fits(leaf)) spill(leaf);
       placedOnPage = true;
       return;
     }

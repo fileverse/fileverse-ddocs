@@ -107,14 +107,59 @@ describe('place', () => {
     });
   });
 
-  it('never pushes a tall atomic that is first on its page', () => {
+  // Print fragments a box taller than a page across pages (rows, flex boxes,
+  // images); each printed page holds the text height plus the bottom slack.
+  it('spans a tall atomic first on its page across the pages it fills', () => {
     const r = place([atom(0, 96, 1500), para(50, 1596, 1)], grid);
-    expect(r.breaks).toEqual([{ kind: 'before', pos: 50 }]);
+    // 884px on page 0, the remaining 616 on page 1, then the paragraph.
+    expect(r.breaks).toEqual([]);
     expect(r.pageStarts).toEqual([
       { kind: 'before', pos: 0 },
-      { kind: 'before', pos: 50 },
+      { kind: 'continued', pos: 0 },
     ]);
     expect(r.pageCount).toBe(2);
+  });
+
+  it('spans a box taller than two pages', () => {
+    const after = para(50, 2596, 5);
+    const r = place([atom(0, 96, 2500), after], grid);
+    // 884 + 884 + 732: ends 2240 + 732 = 2972 on page 2; 132px (6 lines) left.
+    expect(r.breaks).toEqual([]);
+    expect(r.pageStarts.filter((s) => s.kind === 'continued')).toHaveLength(2);
+    expect(r.pageCount).toBe(3);
+  });
+
+  // A box taller than a page never fits anywhere: pushing it would only
+  // waste the space above it, so it spans from where it starts.
+  it('spans a tall atomic from where it starts instead of pushing it', () => {
+    const r = place(
+      [para(0, 96, 1), atom(50, 900, 1500), para(90, 2400, 1)],
+      grid,
+    );
+    // 80 on page 0, 884 on page 1, 536 on page 2.
+    expect(r.breaks).toEqual([]);
+    expect(r.pageStarts).toEqual([
+      { kind: 'before', pos: 0 },
+      { kind: 'continued', pos: 50 },
+      { kind: 'continued', pos: 50 },
+    ]);
+    expect(r.pageCount).toBe(3);
+  });
+
+  it('reserves the repeated header on pages a tall row continues onto', () => {
+    const row = (pos: number, top: number, height: number, isHeader = false) =>
+      atom(pos, top, height, {
+        row: { tableId: 1, isHeader, headerHeight: 30 },
+      });
+    // Body row 126..1596 under a 30px header: page 1 holds 884 - 30 = 854,
+    // so the 616 left ends at 1168 + 30 + 616 = 1814. Ten of the paragraph's
+    // 11 lines fit, so two carry. Without the reserve (1784) all 11 would fit.
+    const after = para(90, 1596, 11);
+    const r = place([row(10, 96, 30, true), row(20, 126, 1470), after], grid);
+    expect(r.breaks).toEqual([
+      { kind: 'inText', pos: after.lines[9].startPos },
+    ]);
+    expect(r.pageCount).toBe(3);
   });
 
   it('splits a paragraph taller than a page on every page', () => {
