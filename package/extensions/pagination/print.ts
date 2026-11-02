@@ -58,7 +58,9 @@ const addDebugMarkers = (html: string) => {
       'position:absolute;font-size:4px;line-height:1;color:#fff',
     );
     marker.textContent = `§P${el.getAttribute('data-print-page-start')}§`;
-    el.insertBefore(marker, el.firstChild);
+    // A span directly in a <tr> would be moved out of the table on parse.
+    const host = el.tagName === 'TR' ? (el.querySelector('td, th') ?? el) : el;
+    host.insertBefore(marker, host.firstChild);
   });
   return root.innerHTML;
 };

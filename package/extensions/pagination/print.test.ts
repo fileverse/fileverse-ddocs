@@ -117,4 +117,36 @@ describe('buildPrintHtml', () => {
       [...div.querySelectorAll('.ddoc-print-marker')].map((m) => m.textContent),
     ).toEqual(['§P1§', '§P2§']);
   });
+
+  // A span directly in a <tr> is moved out of the table by the HTML parser.
+  it('puts a table row marker inside its first cell', async () => {
+    editor.commands.setContent(
+      '<table><tbody><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table>',
+    );
+    let rowPos = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableRow' && node.textContent === 'b')
+        rowPos = pos;
+    });
+    const { html } = await buildPrintHtml({
+      editor,
+      pageSetup: pages,
+      isPagesActive: true,
+      placement: {
+        breaks: [{ kind: 'before', pos: rowPos }],
+        pageStarts: [
+          { kind: 'before', pos: 0 },
+          { kind: 'before', pos: rowPos },
+        ],
+        pageCount: 2,
+      },
+      debugMarkers: true,
+    });
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const marker = [...div.querySelectorAll('.ddoc-print-marker')].find(
+      (m) => m.textContent === '§P2§',
+    );
+    expect(marker?.closest('td')?.textContent).toContain('b');
+  });
 });
