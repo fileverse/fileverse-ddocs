@@ -27,6 +27,8 @@ export type Leaf =
       spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
+      // A whole table: its rows' natural boxes, for print's row breaks.
+      table?: { rows: { top: number; bottom: number }[]; headerHeight: number };
     }
   | { kind: 'forced'; pos: number };
 export type PrintBreak =
@@ -73,6 +75,9 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   let shift = 0;
   let page = 0;
   let placedOnPage = false;
+  // Only headings (or a header row) so far on this page: a keep-with-next
+  // chain that opens it.
+  let headingsOnly = true;
   let startNextPage = false;
   // Placed minus rendered shift: each spacer's rounding is carried into the
   // next one, so the screen never drifts from the placement by more than 0.5px.
@@ -111,14 +116,57 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       print: true,
     });
     pageStarts.push({ kind: 'before', pos: leaf.pos });
+    headingsOnly = true;
+  };
+
+  const continuePage = (leaf: FlowLeaf) => {
+    page += 1;
+    pageStarts.push({ kind: 'continued', pos: leaf.pos });
+  };
+
+  // Chrome breaks a table between rows: a row that does not fit what is left
+  // of the page starts the next one, under the repeated header; only a row
+  // taller than that is fragmented. Moves `shift` to the table's printed end.
+  const packRows = (
+    leaf: FlowLeaf,
+    {
+      rows,
+      headerHeight,
+    }: { rows: { top: number; bottom: number }[]; headerHeight: number },
+  ) => {
+    const end = () => grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK;
+    const room = grid.textHeight + PRINT_BOTTOM_SLACK - headerHeight;
+    let y = rows[0].top + shift;
+    rows.forEach((row, i) => {
+      const height = row.bottom - row.top;
+      if (y + height > end() && height <= room) {
+        continuePage(leaf);
+        y = grid.contentTopOf(page) + headerHeight;
+      }
+      let rest = y + height - end();
+      y += height;
+      while (rest > 0) {
+        continuePage(leaf);
+        y = grid.contentTopOf(page) + headerHeight + rest;
+        rest -= room;
+      }
+      if (i + 1 < rows.length) y += rows[i + 1].top - row.bottom;
+    });
+    shift +=
+      y + (leaf.bottom - rows[rows.length - 1].bottom) - (leaf.bottom + shift);
   };
 
   // Print fragments a box taller than a page across pages; each printed page
   // holds the text height plus the bottom slack, less a repeated table header.
   const spill = (leaf: Extract<FlowLeaf, { kind: 'atomic' }>) => {
+    const shiftBefore = shift;
+    if (leaf.table?.rows.length) {
+      packRows(leaf, leaf.table);
+      carry = shift - shiftBefore;
+      return;
+    }
     const reserve = leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
     const capacity = grid.textHeight + PRINT_BOTTOM_SLACK - reserve;
-    const shiftBefore = shift;
     let rest =
       leaf.bottom + shift - (grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK);
     while (rest > 0) {
@@ -184,11 +232,13 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
         strandsNext(nextFlowLeaf(i));
       if (fits(leaf) && !(keepsNext && !firstOnPage)) {
         placedOnPage = true;
+        if (!leaf.row?.isHeader) headingsOnly = false;
         return;
       }
-      // Taller than a page: it fits nowhere, so it spans from where it is.
+      // Taller than a page: it starts its page (§12.3), or sits under the
+      // headings that open it, and spans from there.
       const isTall = leaf.bottom - leaf.top > grid.textHeight;
-      if (!firstOnPage && !isTall) {
+      if (!firstOnPage && !(isTall && headingsOnly)) {
         const reserve =
           leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
         breaks.push({ kind: 'before', pos: leaf.pos });
@@ -196,6 +246,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       }
       if (!fits(leaf)) spill(leaf);
       placedOnPage = true;
+      if (!leaf.row?.isHeader) headingsOnly = false;
       return;
     }
 
@@ -251,6 +302,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       isFirst = true;
     }
     placedOnPage = true;
+    if (!leaf.isHeading) headingsOnly = false;
   });
 
   return { breaks, pageStarts, pageCount: page + 1, spacers };

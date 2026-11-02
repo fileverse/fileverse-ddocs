@@ -135,21 +135,80 @@ describe('place', () => {
     expect(r.pageCount).toBe(3);
   });
 
-  // A box taller than a page never fits anywhere: pushing it would only
-  // waste the space above it, so it spans from where it starts.
-  it('spans a tall atomic from where it starts instead of pushing it', () => {
+  // §12.3: a box taller than a page starts its page, then spans from there.
+  it('pushes a tall atomic that is not first on its page, then spans it', () => {
     const r = place(
       [para(0, 96, 1), atom(50, 900, 1500), para(90, 2400, 1)],
       grid,
     );
-    // 80 on page 0, 884 on page 1, 536 on page 2.
-    expect(r.breaks).toEqual([]);
+    // Page 1 from 1168: 884 there, the remaining 616 on page 2.
+    expect(r.breaks).toEqual([{ kind: 'before', pos: 50 }]);
     expect(r.pageStarts).toEqual([
       { kind: 'before', pos: 0 },
-      { kind: 'continued', pos: 50 },
+      { kind: 'before', pos: 50 },
       { kind: 'continued', pos: 50 },
     ]);
+    expect(r.spacers[0]).toMatchObject({ pos: 50, print: true, page: 2 });
     expect(r.pageCount).toBe(3);
+  });
+
+  it('keeps a tall atomic under the heading that opens its page', () => {
+    const heading = para(10, 900, 1, { isHeading: true });
+    const r = place([para(0, 96, 1), heading, atom(50, 920, 1500)], grid);
+    // The heading moves with the table (keep-with-next) and is not left alone.
+    expect(r.breaks).toEqual([{ kind: 'before', pos: 10 }]);
+    expect(r.pageStarts.map((s) => s.kind)).toEqual([
+      'before',
+      'before',
+      'continued',
+    ]);
+  });
+
+  describe('a whole table taller than a page prints row by row', () => {
+    const rowsFrom = (top: number, heights: number[]) => {
+      let y = top;
+      return heights.map((h) => ({ top: y, bottom: (y += h) }));
+    };
+    const table = (top: number, heights: number[], headerHeight = 0) => {
+      const rows = rowsFrom(top, heights);
+      return atom(0, top, rows[rows.length - 1].bottom - top, {
+        table: { rows, headerHeight },
+      });
+    };
+
+    it('starts a row that does not fit on the next page', () => {
+      const heights = Array(7).fill(230);
+      const after = para(100, 96 + 1610, 1);
+      // As one box: 1610 - 884 = 726 left fits page 1, two pages.
+      const generic = place([atom(0, 96, 1610), after], grid);
+      expect(generic.pageCount).toBe(2);
+      // Rows: 3 on page 0 (to 786), 3 on page 1 (1168..1858), 1 on page 2.
+      const r = place([table(96, heights), after], grid);
+      expect(r.pageCount).toBe(3);
+      expect(r.pageStarts.filter((s) => s.kind === 'continued')).toHaveLength(
+        2,
+      );
+      expect(r.spacers).toEqual([
+        { kind: 'block', pos: 100, height: 2470 - 1706, page: 3, print: false },
+      ]);
+    });
+
+    it('reserves the repeated header on each continued page', () => {
+      // Header 40, then 230px rows: 3 on page 0, 3 on page 1 from 1168 + 40.
+      const t = table(96, [40, ...Array(6).fill(230)], 40);
+      const after = para(100, t.kind === 'atomic' ? t.bottom : 0, 1);
+      const r = place([t, after], grid);
+      expect(r.pageCount).toBe(2);
+      expect(r.spacers[0]).toMatchObject({ height: 1898 - 1516, print: false });
+    });
+
+    it('fragments a row taller than what a page holds', () => {
+      // Row 2 (1100px) runs from 196: 316px past page 0 continue at 1168.
+      const after = para(100, 1296, 1);
+      const r = place([table(96, [100, 1100]), after], grid);
+      expect(r.pageCount).toBe(2);
+      expect(r.spacers[0]).toMatchObject({ height: 1484 - 1296, print: false });
+    });
   });
 
   it('reserves the repeated header on pages a tall row continues onto', () => {
