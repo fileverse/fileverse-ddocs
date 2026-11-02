@@ -492,6 +492,7 @@ export const Pagination = Extension.create<
             if (meta?.enabled === false) return DecorationSet.empty;
             if (!tr.docChanged) return set;
             controllers.get(storage)?.noteEdit(tr, set);
+            if (set === DecorationSet.empty) return set;
             return set.map(spacerMapping(tr), tr.doc);
           },
         },

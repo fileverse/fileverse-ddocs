@@ -1,5 +1,6 @@
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
 import { ySyncPluginKey, yUndoPluginKey } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
@@ -423,6 +424,18 @@ describe.each([
     expect(collect).not.toHaveBeenCalled();
     vi.advanceTimersByTime(DEBOUNCE);
     expect(collect).toHaveBeenCalled();
+  });
+
+  it('does not diff a remote change when there are no spacers', () => {
+    const diff = vi.spyOn(Fragment.prototype, 'findDiffStart');
+    editor.view.dispatch(
+      editor.state.tr
+        .insertText('x', paragraphAt('one') + 1)
+        .setMeta(ySyncPluginKey, { isChangeOrigin: true })
+        .setMeta('addToHistory', false),
+    );
+    expect(diff).not.toHaveBeenCalled();
+    diff.mockRestore();
   });
 
   it('skip rule: typing in one textblock skips the pass and maps the placement', () => {
