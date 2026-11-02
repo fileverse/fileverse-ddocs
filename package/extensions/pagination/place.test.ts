@@ -296,12 +296,56 @@ describe('place spacers', () => {
   });
 
   it('a follow spacer and a push on the same leaf merge into one printing spacer', () => {
-    const next = para(100, 1600, 2);
-    const r = place([atom(10, 96, 1500), para(60, 1596, 1), next], a4);
-    expect(r.spacers.filter((s) => s.pos === 60)).toHaveLength(1);
+    const next = atom(100, 1596, 400, { spacerCollapse: 10 });
+    const r = place([atom(10, 96, 1500), next], a4);
+    expect(r.spacers).toEqual([
+      {
+        kind: 'block',
+        pos: next.spacerPos,
+        height: a4.contentTopOf(2) - 1596 - 10,
+        page: 3,
+        print: true,
+      },
+    ]);
   });
 
-  it('printing spacers correspond one-to-one with breaks', () => {
+  it('a tall box, a leaf, a forced break, then a leaf keeps the first follow spacer', () => {
+    const a = para(100, 1600, 2);
+    const b = para(200, 1700, 2);
+    const r = place(
+      [atom(10, 96, 1500), a, { kind: 'forced', pos: 150 }, b],
+      a4,
+    );
+    const follow = r.spacers.find((s) => s.pos === a.spacerPos)!;
+    expect(follow).toMatchObject({ print: false, page: 2 });
+    const own = r.spacers.filter((s) => s.pos === b.spacerPos);
+    expect(own).toHaveLength(1);
+    expect(own[0]).toMatchObject({ print: true, page: 3 });
+    expect(r.breaks).toEqual([]);
+  });
+
+  it('a leaf after a forced break has a printing spacer and no break', () => {
+    const r = place(
+      [para(0, 96, 1), { kind: 'forced', pos: 5 }, para(10, 130, 1)],
+      a4,
+    );
+    expect(r.breaks).toEqual([]);
+    expect(r.spacers).toHaveLength(1);
+    expect(r.spacers[0]).toMatchObject({ pos: 10, print: true, page: 2 });
+  });
+
+  it('a spacer is never negative', () => {
+    const r = place(
+      [
+        para(1, 96, 45),
+        atom(50, 1010, 50, { spacerPos: 49, spacerCollapse: 5000 }),
+      ],
+      a4,
+    );
+    expect(r.spacers[0].height).toBe(0);
+  });
+
+  it('without forced breaks, printing spacers correspond one-to-one with breaks', () => {
     const leaves = [
       para(0, 96, 1),
       para(10, 860, 12, { lineH: 40 }),

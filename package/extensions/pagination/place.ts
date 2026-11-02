@@ -40,7 +40,9 @@ export type PageStart = {
 // spacerPos: start of the outermost node that starts with the leaf.
 // spacerCollapse: margin that stops collapsing when a spacer sits there.
 // page: the 1-based page the spacer opens; print is false when paper has no
-// break there (the leaf after a box taller than a page).
+// break there (the leaf after a box taller than a page). print means the
+// page also starts on paper, not that `breaks` has an entry: a leaf after a
+// forced pageBreak gets print: true and no break.
 export type Spacer = {
   kind: 'block' | 'inText';
   pos: number;
@@ -92,7 +94,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     spacers.push({
       kind: 'block',
       pos: leaf.spacerPos,
-      height: Math.round(height - leaf.spacerCollapse),
+      height: Math.max(0, Math.round(height - leaf.spacerCollapse)),
       page: page + 1,
       print: true,
     });
@@ -140,13 +142,6 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       startNextPage = true;
       return;
     }
-    if (pageStarts.length === 0) {
-      pageStarts.push({ kind: 'before', pos: leaf.pos });
-    } else if (startNextPage) {
-      pushToNextPage(leaf);
-      placedOnPage = false;
-    }
-    startNextPage = false;
     followIdx = -1;
     if (carry > 0) {
       followIdx = spacers.length;
@@ -155,11 +150,18 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       spacers.push({
         kind: 'block',
         pos: leaf.spacerPos,
-        height: Math.round(followDelta - leaf.spacerCollapse),
+        height: Math.max(0, Math.round(followDelta - leaf.spacerCollapse)),
         page: page + 1,
         print: false,
       });
     }
+    if (pageStarts.length === 0) {
+      pageStarts.push({ kind: 'before', pos: leaf.pos });
+    } else if (startNextPage) {
+      pushToNextPage(leaf);
+      placedOnPage = false;
+    }
+    startNextPage = false;
     const firstOnPage = !placedOnPage;
 
     if (leaf.kind === 'atomic') {
