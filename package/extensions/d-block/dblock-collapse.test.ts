@@ -60,6 +60,26 @@ describe.each([1, 2])('collapsed headings in Pages mode (schema v%i)', (v) => {
     send(editor, { enabled: false });
     expect(hidden(editor)).toBe(3);
   });
+
+  it('Enter at the end of a collapsed heading is a plain split while expanded', () => {
+    editor = makeCollapsed(v);
+    send(editor, { enabled: true });
+    let end = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'heading') end = pos + node.nodeSize - 1;
+    });
+    editor.commands.setTextSelection(end);
+    editor.view.someProp('handleKeyDown', (f) =>
+      f(editor.view, new KeyboardEvent('keydown', { key: 'Enter' })),
+    );
+    expect(headingCollapsed(editor)).toBe(true);
+    expect(editor.state.doc.textContent).toBe('Titlebodymore');
+    const texts: string[] = [];
+    editor.state.doc.descendants((n) => {
+      if (n.isTextblock) texts.push(n.textContent);
+    });
+    expect(texts).toEqual(['Title', '', 'body', 'more']);
+  });
 });
 
 describe('v2 preview controls while expanded', () => {

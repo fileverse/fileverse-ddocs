@@ -879,6 +879,9 @@ export const createDBlockCollapsePlugin = (
         if (event.key !== 'Enter') {
           return false;
         }
+        if (dBlockCollapsePluginKey.getState(view.state)?.expandAll) {
+          return false;
+        }
 
         const expandResult = buildExpandCollapsedHeadingAtSelectionTransaction(
           view.state,
