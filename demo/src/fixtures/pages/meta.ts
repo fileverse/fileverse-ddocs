@@ -12,4 +12,5 @@ export const PAGES_FIXTURES_META = [
   { id: '08', title: 'Breaks and containers' },
   { id: '09', title: 'Columns' },
   { id: '10', title: 'Proposal' },
+  { id: '11', title: 'Large, ~50,000 words' },
 ];

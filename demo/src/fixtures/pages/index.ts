@@ -168,6 +168,25 @@ const proposal = () => {
   ].join('');
 };
 
+// ~50,000 words for the performance check (§12.12 item 6).
+const large = () => {
+  const r = rng(11);
+  const parts = ['<h1>Large document</h1>'];
+  for (let i = 0; i < 58; i += 1) {
+    parts.push(`<h2>${sentence(r, 2, 6)}</h2>`, paragraphs(r, 6));
+    if (i % 2 === 1) parts.push(`<h3>${sentence(r, 2, 5)}</h3>`);
+    parts.push(paragraphs(r, 6));
+    if (i % 3 === 0) {
+      parts.push(
+        `<ul>${Array.from({ length: 6 }, () => `<li><p>${sentences(r, 1, 3)}</p></li>`).join('')}</ul>`,
+      );
+    }
+    if (i % 12 === 5) parts.push(svgImage(602, 300));
+    if (i % 16 === 9) parts.push(table(r, 8, true));
+  }
+  return parts.join('');
+};
+
 const BUILDERS: Record<string, () => string> = {
   '01': prose,
   '02': headings,
@@ -181,6 +200,7 @@ const BUILDERS: Record<string, () => string> = {
   '08': breaksAndContainers,
   '09': columns,
   '10': proposal,
+  '11': large,
 };
 
 export const PAGES_FIXTURES: PagesFixture[] = PAGES_FIXTURES_META.map(
