@@ -92,6 +92,12 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   };
 
   const bottomOfPage = () => grid.contentBottomOf(page);
+  // What one printed page holds. A header repeats on continued pages only
+  // when it is at most a quarter of that (my reading of Chromium's table
+  // fragmentation); a taller one would leave no room for rows.
+  const capacity = grid.textHeight + PRINT_BOTTOM_SLACK;
+  const repeated = (headerHeight: number) =>
+    headerHeight <= capacity / 4 ? headerHeight : 0;
   const fits = (leaf: FlowLeaf) => leaf.bottom + shift <= bottomOfPage();
 
   // Moves `leaf` to the top of the next page, keeping its margin-top: print
@@ -135,19 +141,20 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     }: { rows: { top: number; bottom: number }[]; headerHeight: number },
   ) => {
     const end = () => grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK;
-    const room = grid.textHeight + PRINT_BOTTOM_SLACK - headerHeight;
+    const header = repeated(headerHeight);
+    const room = Math.max(1, capacity - header);
     let y = rows[0].top + shift;
     rows.forEach((row, i) => {
       const height = row.bottom - row.top;
       if (y + height > end() && height <= room) {
         continuePage(leaf);
-        y = grid.contentTopOf(page) + headerHeight;
+        y = grid.contentTopOf(page) + header;
       }
       let rest = y + height - end();
       y += height;
       while (rest > 0) {
         continuePage(leaf);
-        y = grid.contentTopOf(page) + headerHeight + rest;
+        y = grid.contentTopOf(page) + header + rest;
         rest -= room;
       }
       if (i + 1 < rows.length) y += rows[i + 1].top - row.bottom;
@@ -165,18 +172,19 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       carry = shift - shiftBefore;
       return;
     }
-    const reserve = leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
-    const capacity = grid.textHeight + PRINT_BOTTOM_SLACK - reserve;
+    const reserve =
+      leaf.row && !leaf.row.isHeader ? repeated(leaf.row.headerHeight) : 0;
+    const room = Math.max(1, capacity - reserve);
     let rest =
       leaf.bottom + shift - (grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK);
     while (rest > 0) {
       page += 1;
       pageStarts.push({ kind: 'continued', pos: leaf.pos });
-      if (rest <= capacity) {
+      if (rest <= room) {
         shift +=
           grid.contentTopOf(page) + reserve + rest - (leaf.bottom + shift);
       }
-      rest -= capacity;
+      rest -= room;
     }
     carry = shift - shiftBefore;
   };
@@ -240,7 +248,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       const isTall = leaf.bottom - leaf.top > grid.textHeight;
       if (!firstOnPage && !(isTall && headingsOnly)) {
         const reserve =
-          leaf.row && !leaf.row.isHeader ? leaf.row.headerHeight : 0;
+          leaf.row && !leaf.row.isHeader ? repeated(leaf.row.headerHeight) : 0;
         breaks.push({ kind: 'before', pos: leaf.pos });
         pushToNextPage(leaf, reserve);
       }

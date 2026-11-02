@@ -202,6 +202,24 @@ describe('place', () => {
       expect(r.spacers[0]).toMatchObject({ height: 1898 - 1516, print: false });
     });
 
+    // Letter landscape: text 96..720 on page 0, a printed page holds 644.
+    const landscape = new PageGrid('letter', 'landscape');
+
+    it('does not repeat a header taller than a quarter of the page', () => {
+      const rows = rowsFrom(96, [300, ...Array(5).fill(200)]);
+      const t = atom(0, 96, 1300, { table: { rows, headerHeight: 300 } });
+      const r = place([t, para(100, 1396, 1)], landscape);
+      // Header and row 1 on page 0, rows 2-4 on page 1 from 928, 5 on page 2 from 1760.
+      expect(r.pageCount).toBe(3);
+      expect(r.spacers[0]).toMatchObject({ height: 1960 - 1396 });
+    });
+
+    it('ends with a header row taller than a page', () => {
+      const rows = rowsFrom(96, [700, 200, 200]);
+      const t = atom(0, 96, 1100, { table: { rows, headerHeight: 700 } });
+      expect(place([t], landscape).pageCount).toBe(2);
+    });
+
     it('fragments a row taller than what a page holds', () => {
       // Row 2 (1100px) runs from 196: 316px past page 0 continue at 1168.
       const after = para(100, 1296, 1);
@@ -209,6 +227,17 @@ describe('place', () => {
       expect(r.pageCount).toBe(2);
       expect(r.spacers[0]).toMatchObject({ height: 1484 - 1296, print: false });
     });
+  });
+
+  it('spills a tall row under a header taller than a page', () => {
+    const landscape = new PageGrid('letter', 'landscape');
+    const row = (pos: number, top: number, height: number, isHeader = false) =>
+      atom(pos, top, height, {
+        row: { tableId: 1, isHeader, headerHeight: 700 },
+      });
+    // 700 + 1400 = 2100px over 644px pages: the header does not repeat.
+    const r = place([row(10, 96, 700, true), row(20, 796, 1400)], landscape);
+    expect(r.pageCount).toBe(4);
   });
 
   it('reserves the repeated header on pages a tall row continues onto', () => {
