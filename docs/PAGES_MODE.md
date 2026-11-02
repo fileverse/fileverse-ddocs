@@ -249,7 +249,7 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 ### 12.5 Scheduler
 
-`extensions/pagination/scheduler.ts`, one per plugin view, running only while `active`.
+`extensions/pagination/scheduler.ts`, one per plugin view, running only while `running` (§12.2).
 
 | Trigger | Response |
 | -- | -- |

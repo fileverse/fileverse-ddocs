@@ -19,6 +19,10 @@ export function createSettleGuard(cap = 4) {
       if (twoAgo === signature) return 'stop';
       return history.length >= cap ? 'stop' : 'continue';
     },
+    // True when `signature` is the one from two passes ago (oscillation).
+    repeats(signature: string): boolean {
+      return history[history.length - 2] === signature;
+    },
     reset() {
       history = [];
     },

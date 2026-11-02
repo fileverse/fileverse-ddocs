@@ -8,6 +8,7 @@ import { collectLeaves, SPACER_CLASS } from './collect-leaves';
 import { PAGINATION_META, Pagination, paginationPluginKey } from './index';
 import { PageGrid } from './page-grid';
 import { place, type Leaf } from './place';
+import { spacerKey } from './spacers';
 
 vi.mock('./collect-leaves', async (importActual) => ({
   ...(await importActual<typeof import('./collect-leaves')>()),
@@ -25,6 +26,7 @@ describe.each([
   ['v2 (flat)', 2],
 ])('Pagination — %s', (_label, schemaVersion) => {
   let editor: Editor;
+  let ydoc: Y.Doc;
   let trs: Transaction[];
   let errors: ReturnType<typeof vi.spyOn>;
   // Moves the long paragraph's measured box; a different shift is a
@@ -120,12 +122,13 @@ describe.each([
     });
     errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     shiftLong = 0;
+    ydoc = new Y.Doc();
     const element = document.createElement('div');
     document.body.appendChild(element);
     editor = new Editor({
       element,
       extensions: [
-        ...getHeadlessExtensions({ ydoc: new Y.Doc(), schemaVersion }),
+        ...getHeadlessExtensions({ ydoc, schemaVersion }),
         Pagination,
       ] as AnyExtension[],
       textDirection: 'auto',
@@ -426,32 +429,50 @@ describe.each([
     expect(collect).toHaveBeenCalled();
   });
 
-  it('a content resize runs a pass; observers go when it stops', () => {
+  type FakeObserver = {
+    observed: Set<Element>;
+    cb: (entries: { target: Element }[]) => void;
+  };
+  const stubObserver = () => {
     const observers: FakeObserver[] = [];
-    class FakeObserver {
-      observed = new Set<Element>();
-      constructor(public cb: (entries: { target: Element }[]) => void) {
-        observers.push(this);
-      }
-      observe(el: Element) {
-        this.observed.add(el);
-      }
-      unobserve(el: Element) {
-        this.observed.delete(el);
-      }
-      disconnect() {
-        this.observed.clear();
-      }
-    }
-    vi.stubGlobal('ResizeObserver', FakeObserver);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observed = new Set<Element>();
+        constructor(public cb: FakeObserver['cb']) {
+          observers.push(this);
+        }
+        observe(el: Element) {
+          this.observed.add(el);
+        }
+        unobserve(el: Element) {
+          this.observed.delete(el);
+        }
+        disconnect() {
+          this.observed.clear();
+        }
+      },
+    );
+    return observers;
+  };
+
+  const resize = (ro: FakeObserver, height: number) => {
+    const [child] = Array.from(editor.view.dom.children);
+    Object.defineProperty(child, 'offsetHeight', {
+      value: height,
+      configurable: true,
+    });
+    ro.cb([{ target: child }]);
+  };
+
+  it('a content resize runs a pass; observers go when it stops', () => {
+    const observers = stubObserver();
     try {
       enableAndSettle();
       const [ro] = observers;
-      const children = Array.from(editor.view.dom.children);
-      expect([...ro.observed]).toEqual(children);
+      expect([...ro.observed]).toEqual(Array.from(editor.view.dom.children));
       collect.mockClear();
-      Object.defineProperty(children[0], 'offsetHeight', { value: 99 });
-      ro.cb([{ target: children[0] }]);
+      resize(ro, 99);
       vi.advanceTimersByTime(FRAME);
       expect(collect).toHaveBeenCalledTimes(1);
       enable({ running: false });
@@ -459,5 +480,112 @@ describe.each([
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('a resize after a capped run starts a fresh settle run', () => {
+    const observers = stubObserver();
+    try {
+      // Every pass measures a new layout, so every pass dispatches.
+      collect.mockImplementation(() => {
+        shiftLong += 1;
+        return leaves();
+      });
+      enable();
+      vi.advanceTimersByTime(FRAME * 8);
+      expect(collect).toHaveBeenCalledTimes(4);
+      resize(observers[0], 99);
+      vi.advanceTimersByTime(FRAME * 2);
+      expect(collect).toHaveBeenCalledTimes(6);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('oscillation keeps the current layout and stops', () => {
+    let n = 0;
+    collect.mockImplementation(() => {
+      shiftLong = n++ % 2 ? 7 : 0;
+      return leaves();
+    });
+    enable();
+    vi.advanceTimersByTime(FRAME * 8);
+    // a, b, then a again: not dispatched.
+    expect(collect).toHaveBeenCalledTimes(3);
+    const passes = paginationTrs().filter(
+      (tr) => 'spacers' in tr.getMeta(PAGINATION_META),
+    );
+    expect(passes).toHaveLength(2);
+    shiftLong = 7;
+    const b = expected();
+    expect(storage().store.get().placement).toEqual(b);
+    expect(decorations().map((d) => d.spec.key)).toEqual(
+      b.spacers.map((sp) => spacerKey(sp)),
+    );
+  });
+
+  it('spacers survive undo through the y-tiptap undo manager', () => {
+    enableAndSettle();
+    typeAt(paragraphAt('one') + 1, 'x');
+    editor.commands.undo();
+    expect(() => paragraphAt('one')).not.toThrow();
+    expect(decorations().map((d) => d.from)).toEqual(
+      expected().spacers.map((sp) => sp.pos),
+    );
+  });
+
+  it('spacers survive a Y update from another client', () => {
+    enableAndSettle();
+    const other = new Y.Doc();
+    Y.applyUpdate(other, Y.encodeStateAsUpdate(ydoc));
+    const firstText = (el: Y.XmlFragment | Y.XmlElement): Y.XmlText | null => {
+      for (const child of el.toArray()) {
+        if (child instanceof Y.XmlText) return child;
+        if (child instanceof Y.XmlElement) {
+          const found = firstText(child);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    firstText(other.getXmlFragment('default'))!.insert(0, 'Z');
+    Y.applyUpdate(
+      ydoc,
+      Y.encodeStateAsUpdate(other, Y.encodeStateVector(ydoc)),
+    );
+    expect(() => paragraphAt('Zone')).not.toThrow();
+    expect(decorations().map((d) => d.from)).toEqual(
+      expected().spacers.map((sp) => sp.pos),
+    );
+  });
+
+  it('a caret block on a page the last pass did not have runs a pass', () => {
+    shiftLong = -500;
+    enableAndSettle();
+    expect(storage().store.get().pageCount).toBe(1);
+    collect.mockClear();
+    const at = paragraphAt('two');
+    const el = editor.view.nodeDOM(at) as HTMLElement;
+    // Inside page 2's text band (1235..2166).
+    el.getBoundingClientRect = () =>
+      ({ top: 1300, bottom: 1340, height: 40 }) as DOMRect;
+    editor.commands.setTextSelection(at + 4);
+    typeAt(at + 4, 'x');
+    vi.advanceTimersByTime(FRAME);
+    expect(collect).toHaveBeenCalledTimes(1);
+  });
+
+  it('an error in the edit path fails the editor, not the edit', () => {
+    enableAndSettle();
+    const at = paragraphAt('two');
+    const el = editor.view.nodeDOM(at) as HTMLElement;
+    el.getBoundingClientRect = () => {
+      throw new Error('rect');
+    };
+    editor.commands.setTextSelection(at + 4);
+    expect(() => typeAt(at + 4, 'x')).not.toThrow();
+    expect(() => paragraphAt('twox')).not.toThrow();
+    expect(storage().failed).toBe(true);
+    expect(decorations()).toEqual([]);
+    expect(errors).toHaveBeenCalled();
   });
 });

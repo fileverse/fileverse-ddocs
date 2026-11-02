@@ -28,6 +28,16 @@ describe('createSettleGuard', () => {
     ]);
   });
 
+  it('repeats spots the layout from two passes ago without recording it', () => {
+    const g = createSettleGuard();
+    g.next('a');
+    expect(g.repeats('a')).toBe(false);
+    g.next('b');
+    expect(g.repeats('a')).toBe(true);
+    expect(g.repeats('c')).toBe(false);
+    expect(g.next('c')).toBe('continue');
+  });
+
   it('reset starts over', () => {
     const g = createSettleGuard();
     g.next('a');

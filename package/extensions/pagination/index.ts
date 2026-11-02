@@ -1,10 +1,12 @@
 import { Extension } from '@tiptap/core';
+import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import {
   Plugin,
   PluginKey,
   type EditorState,
   type Transaction,
 } from '@tiptap/pm/state';
+import { Mapping, StepMap } from '@tiptap/pm/transform';
 import { DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { PageSetup } from '../../types';
 import { getZoomScale } from '../../utils/zoom';
@@ -95,6 +97,24 @@ function mapPlacement(p: Placement, trs: readonly Transaction[]): Placement {
   };
 }
 
+// y-sync applies every remote change, undo and redo as one whole-doc replace,
+// which would drop every spacer. Map through the range that really changed;
+// unchanged nodes are reused, so the diff is cheap.
+function spacerMapping(tr: Transaction): Mapping {
+  if (!isChangeOrigin(tr)) return tr.mapping;
+  const a = tr.before.content;
+  const b = tr.doc.content;
+  const start = a.findDiffStart(b);
+  if (start === null) return new Mapping();
+  let { a: endA, b: endB } = a.findDiffEnd(b) ?? { a: a.size, b: b.size };
+  const overlap = start - Math.min(endA, endB);
+  if (overlap > 0) {
+    endA += overlap;
+    endB += overlap;
+  }
+  return new Mapping([new StepMap([start, endA - start, endB - start])]);
+}
+
 // Bottom of the last content element in the view.dom frame, unscaled.
 function contentBottom(view: EditorView): number {
   let last = view.dom.lastElementChild;
@@ -154,9 +174,13 @@ class PaginationView {
 
   update(view: EditorView, prev: EditorState) {
     if (!this.scheduler || view.state.doc === prev.doc) return;
-    this.guard.reset();
-    if (this.caretOverflows()) this.trigger(false);
-    else this.scheduler.onEdit(this.edits);
+    try {
+      this.guard.reset();
+      if (this.caretOverflows()) this.trigger(false);
+      else this.scheduler.onEdit(this.edits);
+    } catch (error) {
+      this.fail(error);
+    }
   }
 
   flush() {
@@ -196,7 +220,7 @@ class PaginationView {
     this.edits = [];
   }
 
-  // Settle passes and resizes keep the guard's count; edits and inputs reset it.
+  // Settle passes keep the guard's count; edits and other triggers reset it.
   private trigger(reset: boolean) {
     if (!this.scheduler) return;
     if (reset) this.guard.reset();
@@ -220,11 +244,13 @@ class PaginationView {
         moved = true;
       }
     }
-    // Growth from typing waits for that edit's own debounced pass.
-    if (moved && !this.edits.length) this.trigger(false);
+    // Growth from typing waits for that edit's own debounced pass; our own
+    // spacers' resizes are filtered by the height refresh after a dispatch.
+    if (moved && !this.edits.length) this.trigger(true);
   }
 
-  // Held Enter or a long paste: the caret's block ends outside a page's text.
+  // Held Enter or a long paste: the caret's block ends outside a page's text,
+  // or on a page the last pass did not have.
   private caretOverflows(): boolean {
     const { pageSetup, orientation } = this.storage;
     const { $head } = this.view.state.selection;
@@ -238,7 +264,9 @@ class PaginationView {
     const grid = new PageGrid(pageSetup.paper, orientation);
     const page = grid.pageAt(bottom);
     return (
-      bottom > grid.contentBottomOf(page) || bottom < grid.contentTopOf(page)
+      bottom > grid.contentBottomOf(page) ||
+      bottom < grid.contentTopOf(page) ||
+      page >= (this.storage.store.get().pageCount ?? 1)
     );
   }
 
@@ -298,6 +326,9 @@ class PaginationView {
     const t2 = mark('place', t1);
     const current = paginationPluginKey.getState(view.state);
     const changed = !current || !spacersMatch(current, placement.spacers);
+    const sig = signature(placement.spacers);
+    // a/b/a: keep b in the view and the store, and stop (§12.5).
+    if (changed && this.guard.repeats(sig)) return;
     if (changed) dispatchMeta(view, { spacers: placement.spacers });
     this.lastBottom = contentBottom(view);
     this.observeChildren(changed);
@@ -316,7 +347,7 @@ class PaginationView {
     });
     if (!changed) {
       this.guard.reset();
-    } else if (this.guard.next(signature(placement.spacers)) === 'continue') {
+    } else if (this.guard.next(sig) === 'continue') {
       this.trigger(false);
     }
   }
@@ -418,7 +449,7 @@ export const Pagination = Extension.create<
             if (meta?.enabled === false) return DecorationSet.empty;
             if (!tr.docChanged) return set;
             controllers.get(storage)?.noteEdit(tr, set);
-            return set.map(tr.mapping, tr.doc);
+            return set.map(spacerMapping(tr), tr.doc);
           },
         },
         filterTransaction: (tr) => !refuses(tr),
