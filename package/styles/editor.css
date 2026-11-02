@@ -2185,3 +2185,12 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     padding: 0;
   }
 }
+
+.ProseMirror .ddoc-page-spacer {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  user-select: none;
+}
