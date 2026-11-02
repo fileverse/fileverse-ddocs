@@ -171,6 +171,8 @@ const proposal = () => {
 const BUILDERS: Record<string, () => string> = {
   '01': prose,
   '02': headings,
+  // Pages shows collapsed headings expanded (§12.7): lays out and prints as 02.
+  '02c': () => headings().replace(/<h2>/g, '<h2 data-collapsed="true">'),
   '03': lists,
   '04': tables,
   '05': images,

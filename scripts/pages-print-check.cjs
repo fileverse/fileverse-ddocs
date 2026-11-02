@@ -1,15 +1,18 @@
-/* Pages mode M0 gate: does Chrome's print break pages where the screen says?
- * (docs/PAGES_MODE.md §6.3)
+/* Pages mode gate: on-screen sheets, and does Chrome's print break pages where
+ * the screen does? (docs/PAGES_MODE.md §6.3, §12.12)
  *
  * Usage:
  *   cd demo && npx vite --port 5174       # in another terminal
  *   npm i --no-save pdfjs-dist@4.10.38     # once; kept out of package.json
  *   node scripts/pages-print-check.cjs "$(mktemp -d)" [--base http://localhost:5174/] [--only 01,04]
+ *   node scripts/pages-print-check.cjs "$(mktemp -d)" --invariants   # I1, I2, Enter at the end
  *   node scripts/pages-print-check.cjs --pdf-dir <folder>   # PDFs printed by hand, debug markers on
  *
- * Each case loads a fixture in a real (headless) Chrome, checks screen vs
- * print-root block heights, prints to PDF with §Pn§ markers on every predicted
- * page start, and reads them back: page n must carry exactly §Pn§.
+ * Each case loads a fixture in a real (headless) Chrome, waits for the passes
+ * to settle (and checks none runs in the next 2 s), checks every leaf sits on a
+ * sheet (I4), checks screen vs print-root block heights, prints to PDF with
+ * §Pn§ markers on every page start of the plugin's placement, and reads them
+ * back: page n must carry exactly §Pn§, and the PDF has the store's page count.
  */
 const path = require('path');
 const fs = require('fs');
@@ -119,6 +122,10 @@ async function openChrome(profile) {
         (m.params.exceptionDetails.exception?.description || '').slice(0, 160),
       );
     }
+    if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
+      const text = m.params.args.map((a) => a.value ?? '').join(' ');
+      if (text.includes('ddoc pagination')) errors.push(text.slice(0, 160));
+    }
   });
   const send = (method, params = {}) =>
     new Promise((res) => {
@@ -149,15 +156,12 @@ async function openChrome(profile) {
 }
 
 // Waits for this navigation's page: right after Page.navigate the previous
-// page (already ready) can still answer.
-const waitReady = (ev, doc, fixture) =>
+// page (already ready) can still answer, so the whole query must match.
+const waitReady = (ev, search) =>
   ev(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 60000;
     const tick = () => {
-      const q = new URLSearchParams(location.search);
-      const isThisPage =
-        q.get('doc') === ${JSON.stringify(doc)} &&
-        q.get('pagesFixture') === ${JSON.stringify(fixture)};
+      const isThisPage = location.search === ${JSON.stringify(`?${search}`)};
       if (isThisPage && window.__ddocPages?.ready) return resolve(true);
       if (Date.now() > deadline) return reject(new Error('fixture never ready'));
       setTimeout(tick, 150);
@@ -165,25 +169,77 @@ const waitReady = (ev, doc, fixture) =>
     tick();
   })`);
 
-async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
+// Resolves with pass() once no pass is pending, two frames later.
+const waitSettled = (ev) =>
+  ev(`new Promise((resolve) => {
+    const deadline = Date.now() + 20000;
+    const frames = () =>
+      new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const tick = async () => {
+      const p = window.__ddocPages.pass();
+      if (p && p.passCount > 0 && p.settled) {
+        await frames();
+        const again = window.__ddocPages.pass();
+        if (again.settled) return resolve(again);
+      }
+      if (Date.now() > deadline) return resolve(p);
+      setTimeout(tick, 50);
+    };
+    tick();
+  })`);
+
+let navigations = 0;
+async function open(chrome, base, c, extra = {}) {
   // One doc per schema: the schema is stamped when a doc is created.
+  const doc = extra.doc || `pages-m0-${c.schema}`;
   const query = new URLSearchParams({
-    doc: `pages-m0-${c.schema}`,
+    doc,
     pagesFixture: c.id,
-    paper: c.paper,
+    paper: c.paper || 'a4',
   });
   if (c.landscape) query.set('orientation', 'landscape');
   if (c.schema === 'v1') query.set('v1', '1');
+  if (extra.mode) query.set('mode', extra.mode);
+  // A fresh URL every time, so waitReady never sees the previous page.
+  query.set('n', String((navigations += 1)));
   await chrome.send('Page.navigate', { url: `${base}?${query}` });
-  await waitReady(chrome.ev, `pages-m0-${c.schema}`, c.id);
-
+  await waitReady(chrome.ev, query.toString());
   const stamp = await chrome.ev(
     `window.__ddoc.current.getYdoc().getMap('ddocMeta').get('schemaVersion') ?? null`,
   );
-  const schema = stamp === 2 ? 'v2' : 'v1';
-  if (schema !== c.schema) {
-    return { ...c, result: 'SKIP', problems: [`schema stamp ${stamp}`] };
+  return (stamp === 2 ? 'v2' : 'v1') === c.schema
+    ? null
+    : `schema stamp ${stamp}`;
+}
+
+const editorJs = 'window.__ddoc.current.getEditor()';
+
+async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
+  const wrongSchema = await open(chrome, base, c);
+  if (wrongSchema) return { ...c, result: 'SKIP', problems: [wrongSchema] };
+  const problems = [];
+  if (c.id === '02c') {
+    const collapsed = await chrome.ev(`(() => {
+      let n = 0;
+      ${editorJs}.state.doc.descendants((node) => { if (node.attrs.isCollapsed) n += 1; });
+      return n;
+    })()`);
+    if (!collapsed) problems.push('02c: no collapsed heading in the doc');
   }
+  // Settles: passes stop, and none runs without a trigger.
+  const settled = await waitSettled(chrome.ev);
+  await sleep(2000);
+  const later = await chrome.ev('window.__ddocPages.pass()');
+  const settleOk =
+    settled?.settled && later.passCount === settled.passCount && later.settled;
+  if (!settleOk) {
+    problems.push(
+      `settle: ${settled?.passCount} passes, ${later.passCount} after 2 s`,
+    );
+  }
+  const sheets = await chrome.ev('window.__ddocPages.sheetCheck()');
+  problems.push(...(sheets?.problems ?? ['sheetCheck: no store']).slice(0, 3));
+  const storePages = later.pageCount;
   const breaks = await chrome.ev('window.__ddocPages.breaks()');
   const parity = await chrome.ev('window.__ddocPages.parity()');
   await chrome.ev('window.__ddocPages.mountPrint(true)');
@@ -196,8 +252,14 @@ async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
   const name = `${c.id}-${c.schema}-${c.paper}${c.landscape ? '-landscape' : ''}.pdf`;
   fs.writeFileSync(path.join(pdfDir, name), bytes);
   const pages = await pdfText(bytes);
-  const markers = checkMarkers(pages, breaks.pageCount);
-  const problems = [
+  const continued = breaks.pageStarts
+    .map((start, i) => (start.kind === 'continued' ? i + 1 : 0))
+    .filter(Boolean);
+  const markers = checkMarkers(pages, storePages, continued);
+  if (breaks.pageCount !== storePages) {
+    problems.push(`placement ${breaks.pageCount} pages, store ${storePages}`);
+  }
+  problems.push(
     ...(parity.ok
       ? []
       : parity.mismatches
@@ -207,7 +269,7 @@ async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
               `parity #${m.index} ${m.tag} screen ${m.screen} print ${m.print} "${m.text}"`,
           )),
     ...markers.problems.slice(0, 2),
-  ];
+  );
   // First text of the first mismatched page, to find it on screen.
   const badPage = markers.problems
     .map((p) => /^page (\d+)/.exec(p)?.[1])
@@ -219,32 +281,280 @@ async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
       }"`,
     );
   }
+  const sheetOk = !!sheets?.ok;
   return {
     ...c,
+    sheets: sheetOk ? 'ok' : `${sheets?.problems.length ?? '-'} bad`,
+    markers: markers.ok ? 'ok' : `${markers.problems.length} bad`,
     parity: parity.ok ? 'ok' : `${parity.mismatches.length} diff`,
-    pages: `${breaks.pageCount}/${pages.length}`,
-    result: markers.ok && parity.ok ? 'PASS' : 'FAIL',
+    pages: `${storePages}/${pages.length}`,
+    settle: settleOk ? `ok (${later.passCount})` : 'FAIL',
+    result:
+      markers.ok && parity.ok && sheetOk && settleOk && problems.length === 0
+        ? 'PASS'
+        : 'FAIL',
     problems,
   };
 }
 
-async function zoomCheck(chrome, base) {
-  await chrome.send('Page.navigate', {
-    url: `${base}?doc=pages-m0-v2&pagesFixture=01&paper=a4`,
-  });
-  await waitReady(chrome.ev, 'pages-m0-v2', '01');
+// Fixture 01 at zoom 1.5, Fit and 0.75: same placement as 1, every leaf on a
+// sheet, and the zoom's pass does not dispatch (breaks do not move with zoom).
+async function zoomCheck(chrome, base, schema) {
+  await open(chrome, base, { id: '01', schema, paper: 'a4' });
   const at = async (zoom) => {
     await chrome.ev(`window.__ddocPages.setZoomLevel(${JSON.stringify(zoom)})`);
-    await sleep(1200);
+    await sleep(400);
+    const pass = await waitSettled(chrome.ev);
     const b = await chrome.ev('window.__ddocPages.breaks()');
-    return JSON.stringify({ breaks: b.breaks, pageStarts: b.pageStarts });
+    const sheets = await chrome.ev('window.__ddocPages.sheetCheck()');
+    return {
+      placement: JSON.stringify(b.spacers),
+      dispatched: pass.dispatched,
+      sheets,
+    };
   };
   const one = await at('1');
   const results = [];
+  let ok = true;
   for (const zoom of ['1.5', 'fit', '0.75']) {
-    results.push(`${zoom}: ${(await at(zoom)) === one ? 'same' : 'DIFFERENT'}`);
+    const r = await at(zoom);
+    const same = r.placement === one.placement;
+    ok = ok && same && !r.dispatched && r.sheets.ok;
+    results.push(
+      `${zoom}: ${same ? 'same' : 'DIFFERENT'}, sheets ${
+        r.sheets.ok ? 'ok' : r.sheets.problems[0]
+      }${r.dispatched ? ', DISPATCHED' : ''}`,
+    );
   }
   await at('1');
+  return { ok, text: results.join('; ') };
+}
+
+const KEYS = {
+  Enter: { code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' },
+  Backspace: { code: 'Backspace', windowsVirtualKeyCode: 8 },
+};
+async function press(chrome, key) {
+  await chrome.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key,
+    ...KEYS[key],
+  });
+  await chrome.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key,
+    ...KEYS[key],
+  });
+}
+
+const activeTab = (ev) =>
+  ev(
+    `document.querySelector('[data-testid^="tab-item-"][data-active="true"]')?.dataset.testid ?? null`,
+  );
+
+// I1 (§12.12): no Yjs write from 50+ passes driven by zooms, resizes and tab
+// switches. Tab switches write the tab manager's activeTabId themselves, so
+// the check is: the state vector is unchanged, or every write is that key.
+async function noWrites(chrome, base, schema) {
+  const doc = `pages-inv-${schema}`;
+  await open(chrome, base, { id: '10', schema }, { doc });
+  let tabs = await chrome.ev(
+    `[...document.querySelectorAll('[data-testid^="tab-item-"]')].map((e) => e.dataset.testid)`,
+  );
+  if (tabs.length < 2) {
+    await chrome.ev('window.__ddoc.current.createTab()');
+    await sleep(1000);
+    tabs = await chrome.ev(
+      `[...document.querySelectorAll('[data-testid^="tab-item-"]')].map((e) => e.dataset.testid)`,
+    );
+  }
+  const click = (id) =>
+    chrome.ev(`document.querySelector('[data-testid="${id}"]').click()`);
+  await click('tab-item-default');
+  await sleep(500);
+  await waitSettled(chrome.ev);
+
+  await chrome.ev('window.__ddocPages.watchWrites()');
+  const before = await chrome.ev('window.__ddocPages.stateVector()');
+  const seen = {};
+  let passes = 0;
+  let dispatches = 0;
+  const count = async () => {
+    const tab = await activeTab(chrome.ev);
+    const p = await waitSettled(chrome.ev);
+    if (!p) return;
+    const last = seen[tab] ?? 0;
+    passes += p.passCount >= last ? p.passCount - last : p.passCount;
+    seen[tab] = p.passCount;
+  };
+  await count();
+  passes = 0;
+  const zooms = ['1.5', 'fit', '0.75', '1'];
+  for (let i = 0; i < 60 && passes < 50; i += 1) {
+    const before = passes;
+    if (i % 5 === 4) {
+      await click(tabs.find((t) => t !== 'tab-item-default'));
+      await sleep(300);
+      await count();
+      await click('tab-item-default');
+    } else if (i % 5 === 2) {
+      await chrome.send('Emulation.setDeviceMetricsOverride', {
+        width: i % 2 ? 1300 : 1600,
+        height: 1100,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+    } else {
+      await chrome.ev(
+        `window.__ddocPages.setZoomLevel(${JSON.stringify(zooms[i % 4])})`,
+      );
+    }
+    await sleep(300);
+    await count();
+    const p = await chrome.ev('window.__ddocPages.pass()');
+    if (passes > before && p.dispatched) dispatches += 1;
+  }
+  await chrome.send('Emulation.clearDeviceMetricsOverride');
+  await chrome.ev(`window.__ddocPages.setZoomLevel('1')`);
+  const after = await chrome.ev('window.__ddocPages.stateVector()');
+  const writes = await chrome.ev('window.__ddocPages.writes()');
+  const foreign = writes.filter((w) => !w.endsWith('.activeTabId'));
+  const ok = passes >= 50 && foreign.length === 0;
+  return {
+    ok,
+    text: `${passes} passes (${dispatches} dispatched after a zoom/resize/switch), state vector ${
+      before === after ? 'equal' : 'changed'
+    }, writes: ${writes.length ? [...new Set(writes)].join(', ') : 'none'}`,
+  };
+}
+
+const SCRIPT = [
+  ['text', 'Alpha beta gamma delta'],
+  ['wait'],
+  ['key', 'Enter'],
+  ['text', 'Second line typed here'],
+  ['wait'],
+  ['text', ' and more words'],
+  ['wait'],
+  ['key', 'Enter'],
+  ['key', 'Enter'],
+  ['text', 'Third block'],
+  ['wait'],
+  ['key', 'Backspace'],
+  ['key', 'Backspace'],
+  ['wait'],
+];
+
+// I2 (§12.12): the same typing undoes in the same steps in Pages and
+// Pageless. Each pause outlasts the undo capture (500 ms) and the pass
+// debounce (300 ms), so a pass runs between typing groups and between undos.
+async function undoSteps(chrome, base, schema, mode) {
+  const doc = `pages-inv-${schema}`;
+  await open(chrome, base, { id: '10', schema }, { doc, mode });
+  await chrome.ev(`(() => {
+    const ed = ${editorJs};
+    const ids = [...document.querySelectorAll('[data-testid^="tab-item-"]')];
+    ids.find((e) => e.dataset.testid === 'tab-item-default')?.click();
+    return ed ? true : false;
+  })()`);
+  await sleep(1000);
+  const baseline = await chrome.ev(`JSON.stringify(${editorJs}.getJSON())`);
+  // End of the second textblock, under the title.
+  await chrome.ev(`(() => {
+    const ed = ${editorJs};
+    let seen = 0;
+    let at = null;
+    ed.state.doc.descendants((node, pos) => {
+      if (at === null && node.isTextblock && ++seen === 2) at = pos + node.nodeSize - 1;
+    });
+    ed.commands.focus(at);
+  })()`);
+  for (const [kind, arg] of SCRIPT) {
+    if (kind === 'text') await chrome.send('Input.insertText', { text: arg });
+    if (kind === 'key') await press(chrome, arg);
+    if (kind === 'wait') await sleep(800);
+  }
+  await sleep(800);
+  const typed = await chrome.ev(
+    `${editorJs}.state.doc.textContent.slice(0, 400)`,
+  );
+  let steps = 0;
+  let back = false;
+  for (; steps < 60; steps += 1) {
+    back = await chrome.ev(
+      `JSON.stringify(${editorJs}.getJSON()) === ${JSON.stringify(baseline)}`,
+    );
+    if (back) break;
+    await chrome.ev(`${editorJs}.commands.undo()`);
+    await sleep(450);
+  }
+  return { steps, back, typed };
+}
+
+// Review focus 1: Enter held at the end of the last page. After each key and
+// two frames, the caret is on a sheet and the store has grown to hold it.
+// Prose (01), so a tall table (10) does not mask the result.
+async function enterAtEnd(chrome, base, schema) {
+  await open(
+    chrome,
+    base,
+    { id: '01', schema },
+    { doc: `pages-inv-${schema}` },
+  );
+  await waitSettled(chrome.ev);
+  const start = await chrome.ev('window.__ddocPages.pass().pageCount');
+  await chrome.ev(`${editorJs}.commands.focus('end')`);
+  const bad = [];
+  for (let i = 0; i < 60; i += 1) {
+    await press(chrome, 'Enter');
+    const r =
+      await chrome.ev(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const ed = ${editorJs};
+      const view = ed.view;
+      const scale = view.dom.getBoundingClientRect().height / view.dom.offsetHeight;
+      const caret = view.coordsAtPos(view.state.selection.head);
+      const bottom = (caret.bottom - view.dom.getBoundingClientRect().top) / scale;
+      const pages = window.__ddocPages.pass().pageCount;
+      const grid = ${JSON.stringify({ height: 1123, gap: 16 })};
+      resolve({ bottom, pages, lastSheetBottom: pages * (grid.height + grid.gap) - grid.gap - 96 });
+    })))`);
+    if (r.bottom > r.lastSheetBottom + 1) {
+      bad.push(
+        `Enter ${i + 1}: caret at ${Math.round(r.bottom)}, last sheet text ends ${r.lastSheetBottom} (${r.pages} pages)`,
+      );
+    }
+    await sleep(30);
+  }
+  const p = await waitSettled(chrome.ev);
+  const sheets = await chrome.ev('window.__ddocPages.sheetCheck()');
+  const ok = bad.length === 0 && p.pageCount > start && sheets.ok;
+  return {
+    ok,
+    text: `pages ${start} -> ${p.pageCount}; ${bad.length ? bad.slice(0, 2).join('; ') : 'caret always on a sheet'}; sheets ${sheets.ok ? 'ok' : sheets.problems[0]}`,
+  };
+}
+
+async function invariants(chrome, base, schema) {
+  const results = [];
+  const report = (ok, text) => {
+    results.push(ok);
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${text}`);
+  };
+  const i1 = await noWrites(chrome, base, schema);
+  report(i1.ok, `I1 ${schema}: ${i1.text}`);
+  const pages = await undoSteps(chrome, base, schema, 'pages');
+  const pageless = await undoSteps(chrome, base, schema, 'pageless');
+  const sameText = pages.typed === pageless.typed;
+  report(
+    pages.back && pageless.back && pages.steps === pageless.steps && sameText,
+    `I2 ${schema}: undo steps Pages ${pages.steps}${
+      pages.back ? '' : ' (not back)'
+    }, Pageless ${pageless.steps}${pageless.back ? '' : ' (not back)'}${
+      sameText ? '' : ', typed text differs'
+    }`,
+  );
+  const enter = await enterAtEnd(chrome, base, schema);
+  report(enter.ok, `Enter at end ${schema}: ${enter.text}`);
   return results;
 }
 
@@ -275,11 +585,17 @@ async function main() {
   fs.mkdirSync(pdfDir, { recursive: true });
 
   const rows = [];
+  const extra = [];
+  const runInvariants = args.includes('--invariants');
   for (const schema of ['v2', 'v1']) {
     // The schema is stamped once per new doc, so each gets its own profile.
     const chrome = await openChrome(path.join(profile, schema));
+    await chrome.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     try {
-      for (const f of fixtures) {
+      if (runInvariants) {
+        extra.push(...(await invariants(chrome, base, schema)));
+      }
+      for (const f of runInvariants ? [] : fixtures) {
         for (const paper of ['a4', 'letter']) {
           const cases = [{ id: f.id, schema, paper }];
           if (f.landscape)
@@ -306,31 +622,41 @@ async function main() {
             console.log(
               `${row.result.padEnd(5)} ${c.id} ${c.schema} ${c.paper}${
                 c.landscape ? ' landscape' : ''
-              }  parity ${row.parity ?? '-'}  pages ${row.pages ?? '-'}`,
+              }  sheets ${row.sheets ?? '-'}  markers ${row.markers ?? '-'}  pages ${
+                row.pages ?? '-'
+              }  parity ${row.parity ?? '-'}  settle ${row.settle ?? '-'}`,
             );
             (row.problems || []).forEach((p) => console.log(`        ${p}`));
           }
         }
       }
-      if (schema === 'v2' && (!only || only.includes('01'))) {
+      if (!runInvariants && (!only || only.includes('01'))) {
+        const zoom = await zoomCheck(chrome, base, schema);
+        extra.push(zoom.ok);
         console.log(
-          `zoom (fixture 01, v2, A4): ${(await zoomCheck(chrome, base)).join(', ')}`,
+          `${zoom.ok ? 'PASS' : 'FAIL'}  zoom (fixture 01, ${schema}, A4): ${zoom.text}`,
         );
       }
       if (chrome.errors.length) {
         console.log(
           `page errors (${schema}): ${chrome.errors.slice(0, 3).join(' | ')}`,
         );
+        if (chrome.errors.some((e) => e.includes('ddoc pagination'))) {
+          extra.push(false);
+        }
       }
     } finally {
       await chrome.close();
     }
   }
   const failed = rows.filter((r) => r.result !== 'PASS');
+  const extraFailed = extra.filter((ok) => !ok).length;
   console.log(
-    `\n${rows.length - failed.length}/${rows.length} passed. PDFs in ${pdfDir}`,
+    `\n${rows.length - failed.length}/${rows.length} cases passed, ${
+      extra.length - extraFailed
+    }/${extra.length} other checks. PDFs in ${pdfDir}`,
   );
-  process.exit(failed.length ? 1 : 0);
+  process.exit(failed.length || extraFailed ? 1 : 0);
 }
 
 main().catch((e) => {

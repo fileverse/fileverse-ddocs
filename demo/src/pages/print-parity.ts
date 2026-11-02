@@ -4,6 +4,8 @@ import {
   type ContentPrintOptions,
 } from '../../../package/utils/handle-print';
 import { getZoomScale } from '../../../package/utils/zoom';
+import { SPACER_CLASS } from '../../../package/extensions/pagination/collect-leaves';
+import { GUTTER_SPACER_CLASS } from '../../../package/extensions/code-block/gutter-spacers';
 
 export type ParityMismatch = {
   index: number;
@@ -32,6 +34,14 @@ export function measurePrintParity(
     'display:block !important;position:absolute;left:-100000px;top:0';
 
   const scale = getZoomScale(view.dom);
+  // Pages spacers (§12.4) are screen-only: measure the screen without them.
+  // Restored before the frame ends, so nothing paints or observes the change.
+  const spacers = [
+    ...view.dom.querySelectorAll<HTMLElement>(
+      `.${SPACER_CLASS}, .${GUTTER_SPACER_CLASS}`,
+    ),
+  ];
+  spacers.forEach((el) => el.style.setProperty('display', 'none'));
   const screen: {
     el: HTMLElement;
     top: number;
@@ -55,6 +65,7 @@ export function measurePrintParity(
     });
     afterBreak = isBreak;
   });
+  spacers.forEach((el) => el.style.removeProperty('display'));
 
   const root = host.querySelector('.print-content-root');
   const printed: {

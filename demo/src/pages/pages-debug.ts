@@ -1,9 +1,24 @@
 import type { Editor } from '@tiptap/core';
+import type { EditorView } from '@tiptap/pm/view';
+import * as Y from 'yjs';
 import {
   buildPrintHtml,
   type PagesPrintBreaks,
 } from '../../../package/extensions/pagination/print';
+import {
+  collectLeaves,
+  SPACER_CLASS,
+} from '../../../package/extensions/pagination/collect-leaves';
+import {
+  groupLineRects,
+  type Rect,
+} from '../../../package/extensions/pagination/line-split';
+import {
+  PAGE_GAP,
+  PageGrid,
+} from '../../../package/extensions/pagination/page-grid';
 import { mountContentPrintHost } from '../../../package/utils/handle-print';
+import { getZoomScale } from '../../../package/utils/zoom';
 import type { DocumentStyling } from '../../../package/types';
 import { measurePrintParity } from './print-parity';
 
@@ -11,7 +26,10 @@ export type PagesDebugDeps = {
   getEditor: () => Editor | null | undefined;
   getStyling: () => DocumentStyling | undefined;
   setZoomLevel: (zoom: string) => void;
+  getYdoc?: () => Y.Doc | null | undefined;
 };
+
+type Check = { ok: boolean; problems: string[] };
 
 export type PagesDebugApi = {
   ready: boolean;
@@ -19,8 +37,14 @@ export type PagesDebugApi = {
   pass: () => {
     passCount: number;
     lastTimings: { collect: number; place: number; emit: number } | null;
+    dispatched: boolean;
     settled: boolean;
+    pageCount: number | null;
   } | null;
+  sheetCheck: () => Check | null;
+  stateVector: () => string | null;
+  watchWrites: () => void;
+  writes: () => string[];
   parity: () => Promise<ReturnType<typeof measurePrintParity> | null>;
   mountPrint: (debugMarkers: boolean) => Promise<void>;
   unmountPrint: () => void;
@@ -72,9 +96,128 @@ export const buildPagesPrint = async (
   });
 };
 
+const TOLERANCE = 1;
+
+// I4 (docs/PAGES_MODE.md §12.12): on screen, with spacers, every leaf lies
+// inside one sheet's text area, or is first on its page and taller than the
+// text height. Text leaves are checked line by line; drawn sheets must sit on
+// the grid.
+export function checkSheets(
+  view: EditorView,
+  grid: PageGrid,
+  pageCount: number,
+): Check {
+  const problems: string[] = [];
+  const scale = getZoomScale(view.dom);
+  const originTop = view.dom.getBoundingClientRect().top;
+  const y = (clientY: number) => (clientY - originTop) / scale;
+  const cycle = grid.height + PAGE_GAP;
+  const { doc } = view.state;
+  const textAt = (pos: number) =>
+    doc
+      .textBetween(pos, Math.min(pos + 80, doc.content.size), ' ')
+      .trim()
+      .slice(0, 30);
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const area = (page: number) =>
+    `page ${page + 1} text ${grid.contentTopOf(page)}..${grid.contentBottomOf(page)}`;
+
+  document.querySelectorAll<HTMLElement>('.ddoc-page-sheet').forEach((el) => {
+    const top = y(el.getBoundingClientRect().top);
+    const i = Math.round(top / cycle);
+    if (Math.abs(top - i * cycle) > TOLERANCE || i >= pageCount) {
+      problems.push(`sheet at ${round(top)} is off the grid (${pageCount} pages)`);
+    }
+  });
+
+  const inArea = (top: number, bottom: number) => {
+    const page = grid.pageAt(top);
+    return {
+      page,
+      ok:
+        top >= grid.contentTopOf(page) - TOLERANCE &&
+        bottom <= grid.contentBottomOf(page) + TOLERANCE,
+    };
+  };
+  const range = document.createRange();
+  let lastPage = -1;
+  for (const leaf of collectLeaves(view, grid.textHeight)) {
+    if (leaf.kind === 'forced') continue;
+    const el = view.nodeDOM(leaf.pos);
+    if (!(el instanceof HTMLElement)) continue;
+    const rect = el.getBoundingClientRect();
+    const top = y(rect.top);
+    const bottom = y(rect.bottom);
+    const where = `@${leaf.pos} "${textAt(leaf.pos)}"`;
+    if (leaf.kind === 'atomic') {
+      const { page, ok } = inArea(top, bottom);
+      const tall =
+        bottom - top > grid.textHeight &&
+        page > lastPage &&
+        top >= grid.contentTopOf(page) - TOLERANCE;
+      if (!ok && !tall) {
+        problems.push(`${where} box ${round(top)}..${round(bottom)}, ${area(page)}`);
+      }
+      lastPage = grid.pageAt(bottom - TOLERANCE);
+      continue;
+    }
+    // Glyph rects per line; a line ends where the next one starts, as in place.
+    const glyphs: Rect[] = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const chrome = n.parentElement?.closest('[contenteditable="false"]');
+      if (chrome && chrome !== el && el.contains(chrome)) continue;
+      range.selectNodeContents(n);
+      for (const r of Array.from(range.getClientRects())) {
+        if (r.width > 0 && r.height > 0) {
+          glyphs.push({
+            top: r.top - originTop,
+            bottom: r.bottom - originTop,
+            left: r.left,
+            right: r.right,
+          });
+        }
+      }
+    }
+    const lines = groupLineRects(glyphs, scale);
+    lines.forEach((line, i) => {
+      const next = lines[i + 1];
+      const samePage = next && grid.pageAt(next.top) === grid.pageAt(line.top);
+      const lineTop = i === 0 ? Math.max(line.top, top) : line.top;
+      const lineBottom = samePage
+        ? Math.min(line.bottom, next.top)
+        : i === lines.length - 1
+          ? Math.max(Math.min(line.bottom, bottom), line.top)
+          : line.bottom;
+      const { page, ok } = inArea(lineTop, lineBottom);
+      if (!ok) {
+        problems.push(
+          `${where} line ${i + 1}/${lines.length} ${round(lineTop)}..${round(lineBottom)}, ${area(page)}`,
+        );
+      }
+      lastPage = page;
+    });
+    if (lines.length) {
+      const endPage = grid.pageAt(lines[lines.length - 1].top);
+      if (bottom > grid.contentBottomOf(endPage) + TOLERANCE) {
+        problems.push(`${where} box bottom ${round(bottom)}, ${area(endPage)}`);
+      }
+    }
+  }
+  if (lastPage >= pageCount) {
+    problems.push(`content on page ${lastPage + 1}, store has ${pageCount}`);
+  }
+  if (!view.dom.querySelector(`.${SPACER_CLASS}`) && pageCount > 1) {
+    problems.push(`${pageCount} pages but no spacer in the view`);
+  }
+  return { ok: problems.length === 0, problems };
+}
+
 // window.__ddocPages: the hook scripts/pages-print-check.cjs drives.
 export const installPagesDebug = (deps: PagesDebugDeps) => {
   let cleanup: (() => void) | null = null;
+  let unwatch: (() => void) | null = null;
+  let written: string[] = [];
   const api: PagesDebugApi = {
     ready: false,
     breaks: () => computeBreaks(deps),
@@ -84,9 +227,42 @@ export const installPagesDebug = (deps: PagesDebugDeps) => {
       return {
         passCount: storage.lastPass?.count ?? 0,
         lastTimings: storage.lastPass?.timings ?? null,
+        dispatched: storage.lastPass?.dispatched ?? false,
         settled: storage.isIdle(),
+        pageCount: storage.store.get().pageCount,
       };
     },
+    sheetCheck: () => {
+      const s = settings(deps);
+      const pageCount = s?.editor.storage.pagination?.store.get().pageCount;
+      if (!s || !pageCount) return null;
+      const grid = new PageGrid(s.pageSetup.paper, s.orientation);
+      return checkSheets(s.editor.view, grid, pageCount);
+    },
+    stateVector: () => {
+      const ydoc = deps.getYdoc?.();
+      if (!ydoc) return null;
+      return btoa(String.fromCharCode(...Y.encodeStateVector(ydoc)));
+    },
+    // Records every Yjs transaction that changes something, from now on.
+    watchWrites: () => {
+      unwatch?.();
+      written = [];
+      const ydoc = deps.getYdoc?.();
+      if (!ydoc) return;
+      const onTr = (tr: Y.Transaction) => {
+        tr.changed.forEach((keys, type) => {
+          const name =
+            [...ydoc.share].find(([, t]) => t === type)?.[0] ??
+            type._item?.parentSub;
+          const keyList = [...keys].filter(Boolean).join(',');
+          written.push(`${name ?? type.constructor.name}${keyList ? `.${keyList}` : ''}`);
+        });
+      };
+      ydoc.on('afterTransaction', onTr);
+      unwatch = () => ydoc.off('afterTransaction', onTr);
+    },
+    writes: () => written,
     parity: async () => {
       const s = settings(deps);
       if (!s) return null;

@@ -3,6 +3,7 @@
 export const PAGES_FIXTURES_META = [
   { id: '01', title: 'Long prose', landscape: true },
   { id: '02', title: 'Headings' },
+  { id: '02c', title: 'Headings, H2 collapsed' },
   { id: '03', title: 'Lists' },
   { id: '04', title: 'Tables', landscape: true },
   { id: '05', title: 'Images' },

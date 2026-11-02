@@ -7,10 +7,13 @@ const OPTIONS = { pageSetup: { mode: 'pages', paper: 'a4' } } as const;
 // jsdom has no layout: every block is 10px tall, except where a test says so.
 // Blocks stack: a block's top is the sum of its previous siblings' heights.
 let tallerInPrint = '';
-const heightOf = (el: Element) =>
-  el.closest('[data-pages-parity]') && el.textContent === tallerInPrint
+const heightOf = (el: Element) => {
+  if ((el as HTMLElement).style.display === 'none') return 0;
+  if (/ddoc-page-spacer/.test(el.className)) return 200;
+  return el.closest('[data-pages-parity]') && el.textContent === tallerInPrint
     ? 13
     : 10;
+};
 beforeAll(() => {
   // jsdom rejects the print host's page-margin box sheet (handle-print).
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -70,6 +73,22 @@ describe('measurePrintParity', () => {
       ok: true,
       mismatches: [],
     });
+  });
+
+  it('measures the screen without Pages spacers, and puts them back', () => {
+    const spacer = document.createElement('div');
+    spacer.className = 'ddoc-page-spacer';
+    const dom = editor.view.dom;
+    dom.insertBefore(spacer, dom.children[1]);
+    // A code block's gutter takes the same height (code-block gutter-spacers).
+    const gutter = document.createElement('div');
+    gutter.className = 'ddoc-page-spacer-gutter';
+    dom.insertBefore(gutter, dom.children[3]);
+    const result = measurePrintParity(editor.view, editor.getHTML(), OPTIONS);
+    expect(result).toEqual({ ok: true, mismatches: [] });
+    expect(spacer.style.display).toBe('');
+    spacer.remove();
+    gutter.remove();
   });
 
   it('leaves nothing mounted', () => {

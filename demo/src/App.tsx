@@ -269,7 +269,7 @@ function App() {
 
   // Document styling state - starts undefined to allow dark mode to work.
   // ?pagesFixture=<id>&paper=a4|letter&orientation=landscape opens a Pages M0
-  // fixture (docs/PAGES_MODE.md §6).
+  // fixture (docs/PAGES_MODE.md §6); &mode=pageless opens it in Pageless.
   const [documentStyling, setDocumentStyling] = useState<
     DocumentStyling | undefined
   >(() => {
@@ -277,7 +277,7 @@ function App() {
     if (!params.get('pagesFixture')) return undefined;
     return {
       pageSetup: {
-        mode: 'pages',
+        mode: params.get('mode') === 'pageless' ? 'pageless' : 'pages',
         paper: params.get('paper') === 'letter' ? 'letter' : 'a4',
       },
       orientation:
@@ -377,6 +377,7 @@ function App() {
       getEditor: () => editorRef.current?.getEditor(),
       getStyling: () => documentStylingRef.current,
       setZoomLevel: (zoom: string) => setZoomLevel(zoom),
+      getYdoc: () => editorRef.current?.getYdoc(),
     }),
     [],
   );

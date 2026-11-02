@@ -3,15 +3,24 @@
 // it with Node's type stripping.
 const MARKER = /§\s*P\s*(\d+)\s*§/g;
 
+// `continued`: 1-based pages a box taller than a page carries on onto; no
+// element starts there, so they carry no marker.
 export function checkMarkers(
   pages: string[],
   expectedPageCount?: number,
+  continued: number[] = [],
 ): { ok: boolean; problems: string[] } {
   const problems: string[] = [];
   pages.forEach((text, i) => {
     const page = i + 1;
     const found = [...text.matchAll(MARKER)].map((m) => Number(m[1]));
-    if (found.length === 0) {
+    if (continued.includes(page)) {
+      if (found.length) {
+        problems.push(
+          `page ${page}: found ${found.map((n) => `§P${n}§`).join(', ')} on a continued page`,
+        );
+      }
+    } else if (found.length === 0) {
       problems.push(`page ${page}: no marker (a break the screen did not predict)`);
     } else if (found.length > 1 || found[0] !== page) {
       problems.push(

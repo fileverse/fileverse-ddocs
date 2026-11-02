@@ -24,6 +24,11 @@ describe('checkMarkers', () => {
     expect(checkMarkers(['§P1§', '§P2§'], 3).ok).toBe(false);
   });
 
+  it('expects no marker on a page a tall box continues onto', () => {
+    expect(checkMarkers(['§P1§', 'table', '§P3§'], 3, [2]).ok).toBe(true);
+    expect(checkMarkers(['§P1§', '§P2§', '§P3§'], 3, [2]).ok).toBe(false);
+  });
+
   it('reads a marker split by the PDF text layer', () => {
     expect(checkMarkers(['§P 1 §', '§ P2§'], 2).ok).toBe(true);
   });
