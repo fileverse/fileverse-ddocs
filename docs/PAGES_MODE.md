@@ -1,6 +1,6 @@
 # Pages mode
 
-Status: M0 (print test) in design. Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
+Status: M0 (print test) done (§7.5). M1 (on-screen pages) in design (§12). Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
 
 ## 1. Intent
 
@@ -196,11 +196,130 @@ M0 lives on branch `pages-mode` and does **not** merge to `main`: every push to 
 
 ## 10. Open for M1
 
-- **Layout-changing widgets.** Pending suggestions render the proposed text as `Decoration.widget`s (`comment-decoration-plugin.ts`), and AI autocomplete renders ghost text; the print copy has neither, so while one is on screen the screen's pages and the printout differ. Options: hide them in Pages mode, measure around them, or accept and document the gap. Product decision before M1's spacers. M0 fixtures contain none.
+- **Layout-changing widgets.** Pending suggestions render the proposed text as `Decoration.widget`s (`comment-decoration-plugin.ts`), and AI autocomplete renders ghost text; the print copy has neither, so while one is on screen the screen's pages and the printout differ. Decided (2026-11-02): hidden in Pages mode, §12.7.
 
 - **Image editing chrome.** The media node view keeps ~45px of toolbar row, padding and margins in flow on screen. Break-neutral, but the sheet's fill differs from paper. Belongs with M2's image work (`max-height` to the text height).
-- **`:has()` cost.** `.editor-main-lane:has(...)` (`styles/index.css`) sits above the editor: Edentext measured this pattern at ~150ms of Chromium restyle per inserted spacer. Measure in M1.
+- **`:has()` cost.** `.editor-main-lane:has(...)` (`styles/index.css`) sits above the editor: Edentext measured this pattern at ~150ms of Chromium restyle per inserted spacer. Measured in M1, §12.9.
 
 ## 11. Left to the builder
 
 Internal types and names beyond those above, module boundaries inside `extensions/pagination/`, the demo panel's look, the checker's report format, and fixture wording.
+
+## 12. M1: on-screen pages
+
+### 12.1 Intent and scope
+
+M1 turns the M0 column into sheets of paper while you write: the live editor runs passes that insert spacers, so every leaf sits on a drawn sheet, with page numbers, and the footer gets the exact page count. Print reads the same layout, so the screen and the printout come from one placement.
+
+**In M1**: the `Pagination` extension in every tab editor (§12.2), collapsed headings shown expanded (§12.7), passes with spacers (§12.3, §12.4), the scheduler with its settle and oscillation guards (§12.5), the sheets layer and page numbers (§12.6), hiding layout-changing widgets (§12.7), the page store and `onStatsChange` page count (§12.8), the `:has()` measurement (§12.9), print from the live layout (§12.10), failure handling and instrumentation (§12.11), and the checks that gate M1 (§12.12).
+
+**M2** (decision): table-row spacers with the header row cloned in, image `max-height`, clipping of other atoms taller than a page, the page-break node view, Ctrl+Enter, the image editing chrome (§10), and routing the other print paths through the pipeline (§2).
+
+**Tables in M1** (my call): collected as one atomic leaf, not one leaf per row, on screen and therefore in print too (§12.10). A table that fits a page moves to the next page whole; a table taller than a page follows the tall-leaf rule (§12.3) and is the one known place where screen and paper differ until M2. M0's row-break print code stays, unused by the live path until M2 turns rows back on.
+
+**Anti-goals** (from §2, unchanged): no Yjs write, no change to Pageless rendering or print, no new runtime dependency. Pageless pays nothing: the extension is registered but inert.
+
+### 12.2 The extension
+
+`extensions/pagination/index.ts`: `Pagination`, registered in every tab editor in `buildExtensionsForTab` (`hooks/use-tab-editor.tsx`), both schemas. It adds no nodes or marks. It is not part of `getHeadlessExtensions` (headless editors have no layout).
+
+- **Storage**: `{ pageSetup, orientation, active }`. `active` is true only when Pages is active for the editor (`isPagesActive`, §4.1) **and** the editor is the active tab. Hidden cached tab editors are inert; their last spacers stay until they become active, when a pass runs.
+- **Command**: `setPagination({ pageSetup, orientation, active })`. `ddoc-editor.tsx` calls it on the active tab editor whenever any input changes, and with `active: false` on an editor that stops being the active tab.
+- **Inert** (`active` false): no measuring, no observers, no listeners, empty decoration set. Turning Pages off clears the spacers with one step-less transaction, so switching to Pageless is instant.
+- **Plugin**: state is the spacer `DecorationSet`, mapped through every document-changing transaction and replaced only by the plugin's own meta. Its `view()` owns the scheduler (§12.5) and the observers.
+
+### 12.3 A pass
+
+`collect → place → emit`, synchronous, in one frame.
+
+1. **Collect.** `collectLeaves` (§4.2), with tables atomic (§12.1). Every leaf's `top`, `bottom` and lines are **natural**: where they would be with no spacers. The walk skips spacer elements and takes their effect out of every measurement below them, including spacers inside a leaf (a split paragraph's lines after its spacer). A pass must never measure its own output, or two layouts feed each other.
+   - **Margins around a spacer.** A spacer between two blocks stops their margins collapsing: with no spacer the gap is `max(mb, mt)`, with one it is `mb + S + mt`. Taking out `S` alone leaves the swallowed margin in the measurement. Edentext adds it back (`cumulativeDropped`) and gives some spacers a negative `margin-top`. The builder picks the mechanism; the requirement is that the natural positions do not depend on where the spacers are, which the settle check (§12.5) and I4 (§12.12) catch.
+2. **Place.** `place(leaves, grid)` (§4.2), unchanged except for the tall-leaf rule. Its output also carries, per break, the **spacer height**: the shift it adds.
+   - **Tall leaf** (an atomic leaf taller than the text height, now including tables): it starts first on its page and nothing splits it; on screen it runs over the sheet's bottom margin, the gap and the next sheets. **The leaves after it follow paper** (my call): M0's `spill` already places the next leaf where print puts it (print fragments the box at text height plus slack per page), and on screen a spacer before that next leaf moves it there. That spacer opens no page in print, so the placement carries a spacer list separate from `breaks`. The spacer is never negative: a page holds more of the box on screen (whole page plus gap) than on paper. So one placement serves both, page counts stay equal, and only the tall leaf's own drawing differs from paper (§12.1).
+3. **Emit.** Compare the placement with the spacers **actually in the view** (not the last computed placement: a node replaced by a paste or a language change drops its widgets, Edentext hit this). Equal: no dispatch. Otherwise build a `DecorationSet` and dispatch one transaction with no steps, carrying the plugin meta only. Never set `addToHistory: false`: `@tiptap/y-tiptap`'s sync plugin would call `undoManager.stopCapturing()` on it and split the user's undo steps (tech spec "What a pass does" step 4).
+
+### 12.4 Spacers
+
+- `Decoration.widget(pos, toDOM, { side: -1, key })`; `key` encodes the kind and the height, so an unchanged spacer keeps its DOM node across passes (Edentext: 1.5 s → 144 ms per keystroke at the top of a 124-page doc).
+- Element: `div.ddoc-page-spacer`, `contenteditable="false"`, `role="separator"`, `aria-label="Page N"` (N = the page it opens), `pointer-events: none`, `height` in whole pixels (fractional heights shake by 1px at some zooms), no margin, border or padding of its own.
+- **Where a `before` spacer goes.** Before the **outermost** node that starts with the leaf (walk up while the leaf's node is its parent's first child, stopping below the doc): before the `dBlock` in v1, before the list for a first list item. The leaf then lands at `contentTop + marginTop`, where `marginTop` is M0's `leadingOffset` of that chain, the same position print gives it after a forced break.
+- **Where an `inText` spacer goes.** At the carried line's start position. A block `div` inside the textblock ends the line there and pushes the rest to the next page. Inside `pre` it is a block inside the `code` element.
+- **Split boxes cross the gap** (decision, accepted for M1): a code block, callout, blockquote or list split by a spacer draws its border or background through the bottom margin, the desk gap and the next sheet's top margin. M2 cuts boxes at the sheet edge.
+- **Hazards for the builder to check** (each has a fixture): an ordered list is a flex column, so a spacer between its items is a flex item and any `gap` counts on both sides of it; a spacer inside a code block shifts the line-number gutter against the text; a v1 spacer inside a `dBlock` sits in its node-view content beside the drag-handle chrome.
+
+### 12.5 Scheduler
+
+`extensions/pagination/scheduler.ts`, one per plugin view, running only while `active`.
+
+| Trigger | Response |
+| -- | -- |
+| Local edit | Spacers mapped (`DecorationSet.map`). Full pass after 300 ms with no edits |
+| Remote edit (transaction meta from `y-sync` with `isChangeOrigin`) | Same 300 ms wait. Not "run now": remote transactions also carry `addToHistory: false`, which Edentext reads as "not an edit" |
+| Caret's block now ends past its page's text bottom (held Enter, a long paste) | Pass on the next animation frame |
+| `setPagination` with a change, mount, becoming the active tab, zoom change | Pass on the next animation frame |
+| `document.fonts` `loadingdone`; a `ResizeObserver` hit on the content (late images, embeds) | Pass on the next animation frame |
+| `view.composing` | No dispatch; reschedule for `compositionend` |
+
+- **Skip rule**, checked when the 300 ms timer fires: every edit since the last pass stayed inside one textblock, that textblock holds no `inText` spacer, and the content's bottom edge did not move. Then nothing below can have moved: no pass.
+- **ResizeObserver** watches the content's children, not `view.dom`, so the pass's own `min-height` change does not retrigger it; a pass that changes nothing does not dispatch, which ends any loop.
+- **Settle.** After a dispatch, if the placement differs from the previous pass, run one more on the next frame, at most 4 in a row. If the placement from two passes ago returns, keep the current one and stop (oscillation). The count resets on the next edit or trigger. Both guards are pure functions over placements and unit-tested.
+- **Flush**: `flush()` runs a pending pass synchronously; print calls it (§12.10).
+
+### 12.6 Sheets and page numbers
+
+`components/page-sheets.tsx`, rendered inside `[data-ddoc-zoom-layer]` behind the editor content (`pointer-events: none`, `aria-hidden`), so it scales with zoom like the text. It reads the active tab's page store (§12.8) and draws nothing when Pages is not active.
+
+- **Geometry**: sheet `i` at `top = origin + i × (pageHeight + PAGE_GAP)`, `width = paper width`, where `origin` is the active editor's `view.dom` top within the zoom layer (the `PageGrid` frame). The `.ProseMirror` element gets `min-height = pageCount × (pageHeight + gap) − gap`, so the last sheet is always fully drawn.
+- **Windowing**: only sheets within two screens of the visible part of the scroll container (`getEditorScrollContainer`, rAF-throttled scroll listener; the Split View swap of the scroller does not apply, Pages is off there).
+- **Colours**: the sheet takes the canvas fill (`documentStyling.canvasBackground`, else today's canvas token); the space between sheets is the desk (`documentStyling.background`, else the editor background), so in Pages mode `#editor-wrapper` and `.ProseMirror` stop painting the canvas fill. Sheet edge: 1px existing border token, no shadow. Dark mode uses the same tokens' dark values.
+- **Page numbers**: one per sheet, plain digits from 1, each tab restarting at 1, vertically centred in the bottom margin and right-aligned to the text edge; 11px, secondary text token, the document font, not selectable, `aria-hidden` (the spacer's `aria-label` announces pages).
+- Focus mode draws sheets as normal; presentation mode is untouched.
+- Anything the zoom layer renders above `view.dom` (tags) sits on the desk above the first sheet, with no canvas fill behind it (my call).
+
+### 12.7 Collapsed headings and layout-changing widgets in Pages mode
+
+**Collapsed headings** (pulled forward from M2: hidden blocks measure as zero-size boxes and would corrupt every placement after them, and print serialises them anyway). While Pages is active, `buildHiddenDecorationSet` (`d-block/dblock-collapse.ts`) returns an empty set in both schemas and the collapse chevrons are hidden. The `isCollapsed` attribute is untouched; leaving Pages restores the collapsed view. The plugin rebuilds its decorations when Pages turns on or off, through its own meta.
+
+**Widgets.** Decided (2026-11-02): hidden, so the screen's pages match print.
+
+- **Pending suggestions.** The proposed-text widgets from `createSuggestionWidgetRenderer` (`comment-decoration-plugin.ts`) are `display: none` under `[data-page-mode='pages']`; the struck-through original range and the suggestion card in the rail stay. Any other suggestion decoration that changes layout (check the `suggestion-source-caret-hidden` node class) is hidden the same way.
+- **Your own draft stays visible** (decision, 2026-11-02): text typed in suggest mode lives only in that widget (`anchor.isDraft`), so hiding it would hide the suggester's typing. The draft widget (and its `suggestion-source-caret-hidden` block) is exempt; while it is open the pass measures it as content, so that user's page breaks are off by the draft until it is submitted, after which it is hidden like any other. Print never includes it.
+- **AI autocomplete** (`ai-autocomplete.ts`): while Pages is active it does not fetch a suggestion at all (my call), so Tab can never accept text the user cannot see. Hiding the ghost text with CSS alone would leave that trap.
+
+### 12.8 Page store and page count
+
+- `extensions/pagination/page-store.ts`: per tab editor, `{ pageCount, pageStarts }`, published after each pass that changes them, read with `useSyncExternalStore` by `PageSheets`.
+- `use-tab-editor.tsx`: while Pages is active for the active tab, `createPageCounter` does not run (no hidden iframe) and `statsPublisher.publish({ pages })` takes the store's count, published on every change. Leaving Pages resumes today's counter.
+
+### 12.9 `:has()` cost
+
+Measure the restyle cost of a spacer insert with Chrome's performance trace in the demo, on the 50,000 word fixture, with the `.editor-main-lane:has(...)` rules (`styles/index.css`) present and with them removed. If they cost more than a few ms per pass, replace the `:has()` with a class that React sets on `.editor-main-lane` from the floating-comment state it already holds. The numbers go in §12.13.
+
+### 12.10 Print from the live layout
+
+`printCurrentTab()` in Pages mode: `flush()` the active editor's scheduler, then take the breaks from the plugin's current placement instead of running `getPrintBreaks` again. The rest of the pipeline (§4.3) is unchanged. Because collect measures natural positions, a fresh run would give the same answer; reading the plugin's placement guarantees it and costs nothing. Print falls back to `getPrintBreaks` when the plugin has no placement (it failed, §12.11, or never ran). With tables atomic, print breaks before a table, never between its rows, in M1.
+
+### 12.11 Failures and instrumentation
+
+- **No writes**: every pagination transaction is checked before dispatch; in dev a transaction with steps throws. Unit test plus the I1 check (§12.12).
+- **A pass throws**: caught, decorations cleared, that editor goes inert until reload (it renders as M0's single column at paper width), `console.error` in dev. The package has no Sentry; error reporting is the app's (M3).
+- **Marks**: `performance.mark`/`measure` around collect, place and emit, named `ddoc:pagination:*`.
+- **Debug**: the demo's `window.__ddocPages` gains the last pass's leaves, placement, pass count and timings.
+
+### 12.12 Gate
+
+M1 is done when all of these hold. The layout checks extend `scripts/pages-print-check.cjs` (CDP against the demo on 5174, my call over the tech spec's Playwright, as in M0).
+
+1. **I4, every leaf on a sheet**: on screen with spacers, every leaf's rect lies inside one sheet's text area, or it is first on its page and taller than a page. Fixtures 01–03 and 05–10, both schemas, A4 and Letter, plus 01 landscape, zoom 1.5, Fit and 0.75, and 02 with its headings collapsed (it must lay out and print as expanded).
+2. **I3, screen equals paper**: on the same matrix, each printed page starts where its sheet starts (M0's PDF markers), and the PDF page count equals the store's `pageCount`.
+3. **I1, no writes**: the Yjs state vector is identical before and after 50 passes driven by resizes, zooms and tab switches.
+4. **I2, undo**: the same typing script undoes in the same steps in Pages and Pageless.
+5. **Settles**: after loading each fixture, passes stop within the cap and do not dispatch again without a trigger.
+6. **Performance** on a generated 50,000 word fixture (`demo/src/fixtures/pages/gen.ts`), Chrome, measured by a new `scripts/pages-perf-check.cjs` over CDP: keystroke latency in Pages within 10% of Pageless; extra cost per keystroke under 1 ms; one pass (collect and place) under 50 ms; emit and re-render under 16 ms. The fixture from ddocs.new #1122 was never committed, so M1 generates its own.
+7. Unit tests green: settle and oscillation guards, spacer keys, the skip rule, the tall-leaf rule in `place`, no-steps assertion, `page-store`, the page count in `use-tab-editor`, AI autocomplete not fetching in Pages.
+
+Safari and Firefox are spot-checked by hand on fixtures 01 and 10 (on-screen sheets only; their print is M0's).
+
+### 12.13 Results
+
+To be filled in during M1.
