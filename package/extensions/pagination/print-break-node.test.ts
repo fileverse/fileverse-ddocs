@@ -64,11 +64,32 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
   });
   afterEach(() => editor.destroy());
 
-  // Header rows move into thead (spec §4.3), so compare a doc without one.
-  it('without breaks or header rows matches getHTML', () => {
-    editor.commands.setContent(HTML.replace(/<table>.*?<\/table>/, ''));
-    expect(html([])).toBe(editor.getHTML());
-  });
+  // Header rows move into thead (spec §4.3) and v1 dBlocks gain the node
+  // view's inner wrapper, so compare a v2 doc without a header row.
+  it.runIf(schemaVersion === 2)(
+    'without breaks or header rows matches getHTML',
+    () => {
+      editor.commands.setContent(HTML.replace(/<table>.*?<\/table>/, ''));
+      expect(html([])).toBe(editor.getHTML());
+    },
+  );
+
+  // The v1 block-spacing rules are written for the node view's DOM:
+  // [data-type=d-block] > [data-node-view-content] > block.
+  it.runIf(schemaVersion === 1)(
+    'wraps dBlock content like the node view',
+    () => {
+      const blocks = [...dom(html([])).children];
+      expect(blocks.length).toBeGreaterThan(0);
+      blocks.forEach((block) => {
+        expect(block.getAttribute('data-type')).toBe('d-block');
+        expect(block.children).toHaveLength(1);
+        expect(block.children[0].getAttribute('data-node-view-content')).toBe(
+          'true',
+        );
+      });
+    },
+  );
 
   it.each([
     ['heading', 'text'],

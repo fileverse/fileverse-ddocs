@@ -34,6 +34,22 @@ export const buildPrintSchema = (live: Schema): Schema => {
       content: '(text | printPageBreak)*',
     });
   }
+  // v1 block spacing is written for the node view's DOM, which wraps the
+  // block in a content div: [data-type=d-block] > [data-node-view-content].
+  const dBlock = nodes.get('dBlock');
+  const dBlockToDOM = dBlock?.toDOM;
+  if (dBlock && dBlockToDOM) {
+    nodes = nodes.update('dBlock', {
+      ...dBlock,
+      toDOM: (node) => {
+        const out = dBlockToDOM(node);
+        if (!Array.isArray(out)) return out;
+        return out.map((part) =>
+          part === 0 ? ['div', { 'data-node-view-content': 'true' }, 0] : part,
+        ) as unknown as DOMOutputSpec;
+      },
+    });
+  }
   return new Schema({
     nodes,
     marks: live.spec.marks,
