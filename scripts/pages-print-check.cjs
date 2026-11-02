@@ -301,7 +301,9 @@ async function runCase(chrome, base, c, pdfText, checkMarkers, pdfDir) {
 // sheet, and the zoom's pass does not dispatch (breaks do not move with zoom).
 async function zoomCheck(chrome, base, schema) {
   await open(chrome, base, { id: '01', schema, paper: 'a4' });
+  // Counts every dispatching pass, so a transient A -> A' -> A shows too.
   const at = async (zoom) => {
+    const before = await waitSettled(chrome.ev);
     await chrome.ev(`window.__ddocPages.setZoomLevel(${JSON.stringify(zoom)})`);
     await sleep(400);
     const pass = await waitSettled(chrome.ev);
@@ -309,7 +311,7 @@ async function zoomCheck(chrome, base, schema) {
     const sheets = await chrome.ev('window.__ddocPages.sheetCheck()');
     return {
       placement: JSON.stringify(b.spacers),
-      dispatched: pass.dispatched,
+      dispatched: pass.dispatches !== before.dispatches,
       sheets,
     };
   };
@@ -377,6 +379,7 @@ async function noWrites(chrome, base, schema) {
 
   await chrome.ev('window.__ddocPages.watchWrites()');
   const before = await chrome.ev('window.__ddocPages.tabContent()');
+  // Per tab editor: its pass and dispatch counters (they restart on enable).
   const seen = {};
   let passes = 0;
   let dispatches = 0;
@@ -384,15 +387,17 @@ async function noWrites(chrome, base, schema) {
     const tab = await activeTab(chrome.ev);
     const p = await waitSettled(chrome.ev);
     if (!p) return;
-    const last = seen[tab] ?? 0;
-    passes += p.passCount >= last ? p.passCount - last : p.passCount;
-    seen[tab] = p.passCount;
+    const last = seen[tab] ?? { passCount: 0, dispatches: 0 };
+    const grew = p.passCount >= last.passCount;
+    passes += grew ? p.passCount - last.passCount : p.passCount;
+    dispatches += grew ? p.dispatches - last.dispatches : p.dispatches;
+    seen[tab] = p;
   };
   await count();
   passes = 0;
+  dispatches = 0;
   const zooms = ['1.5', 'fit', '0.75', '1'];
   for (let i = 0; i < 60 && passes < 50; i += 1) {
-    const before = passes;
     if (i % 5 === 4) {
       await click(tabs.find((t) => t !== 'tab-item-default'));
       await sleep(300);
@@ -412,8 +417,6 @@ async function noWrites(chrome, base, schema) {
     }
     await sleep(300);
     await count();
-    const p = await chrome.ev('window.__ddocPages.pass()');
-    if (passes > before && p.dispatched) dispatches += 1;
   }
   await chrome.send('Emulation.clearDeviceMetricsOverride');
   await chrome.ev(`window.__ddocPages.setZoomLevel('1')`);
@@ -421,10 +424,11 @@ async function noWrites(chrome, base, schema) {
   const writes = await chrome.ev('window.__ddocPages.writes()');
   const foreign = writes.filter((w) => !w.startsWith('tabs_state'));
   const fragments = JSON.parse(after).length;
-  const ok = passes >= 50 && before === after && foreign.length === 0;
+  const ok =
+    passes >= 50 && dispatches === 0 && before === after && !foreign.length;
   return {
     ok,
-    text: `${passes} passes (${dispatches} dispatched after a zoom/resize/switch), content of ${fragments} tabs ${
+    text: `${passes} passes, ${dispatches} dispatched, content of ${fragments} tabs ${
       before === after ? 'equal' : 'CHANGED'
     }, writes outside tabs_state: ${
       foreign.length ? [...new Set(foreign)].join(', ') : 'none'
@@ -452,8 +456,12 @@ const SCRIPT = [
 // I2 (§12.12): the same typing undoes in the same steps in Pages and
 // Pageless. Each pause outlasts the undo capture (500 ms) and the pass
 // debounce (300 ms), so a pass runs between typing groups and between undos.
-async function undoSteps(chrome, base, schema, mode) {
-  const doc = `pages-inv-${schema}`;
+// Then a dispatching pass inside the capture window: Enter at the end until
+// the caret pass opens a page, and type at once. A pass that split the undo
+// group would cost Pages one more step. Pageless presses the same Enters.
+async function undoSteps(chrome, base, schema, mode, enters) {
+  // A fresh doc: the v1 loader sometimes appends to an existing one.
+  const doc = `pages-i2-${schema}-${mode}-${Date.now()}`;
   await open(chrome, base, { id: '10', schema }, { doc, mode });
   await chrome.ev(`(() => {
     const ed = ${editorJs};
@@ -478,10 +486,35 @@ async function undoSteps(chrome, base, schema, mode) {
     if (kind === 'key') await press(chrome, arg);
     if (kind === 'wait') await sleep(800);
   }
+  await chrome.ev(`${editorJs}.commands.focus('end')`);
+  const dispatchesNow = () =>
+    chrome.ev('window.__ddocPages.pass()?.dispatches ?? 0');
+  const d0 = await dispatchesNow();
+  let n = 0;
+  let windowMs = 0;
+  while (n < (enters ?? 80)) {
+    await press(chrome, 'Enter');
+    n += 1;
+    const last = n === enters;
+    // In the page, so the text follows the pass by one frame: wait two
+    // frames, and if that Enter's pass dispatched (or it is Pageless's last
+    // Enter), type right away.
+    windowMs = await chrome.ev(`new Promise((resolve) => {
+      const t0 = performance.now();
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const d = window.__ddocPages.pass()?.dispatches ?? 0;
+        if (${last} || (${enters === undefined} && d > ${d0})) {
+          const ed = ${editorJs};
+          ed.view.dispatch(ed.state.tr.insertText('after the break'));
+          resolve(performance.now() - t0);
+        } else resolve(null);
+      }));
+    })`);
+    if (windowMs !== null) break;
+  }
+  const dispatched = (await dispatchesNow()) > d0;
   await sleep(800);
-  const typed = await chrome.ev(
-    `${editorJs}.state.doc.textContent.slice(0, 400)`,
-  );
+  const typed = await chrome.ev(`${editorJs}.state.doc.textContent`);
   let steps = 0;
   let back = false;
   for (; steps < 60; steps += 1) {
@@ -492,7 +525,7 @@ async function undoSteps(chrome, base, schema, mode) {
     await chrome.ev(`${editorJs}.commands.undo()`);
     await sleep(450);
   }
-  return { steps, back, typed };
+  return { steps, back, typed, enters: n, windowMs, dispatched };
 }
 
 // Review focus 1: Enter held at the end of the last page. After each key and
@@ -547,15 +580,29 @@ async function invariants(chrome, base, schema) {
   const i1 = await noWrites(chrome, base, schema);
   report(i1.ok, `I1 ${schema}: ${i1.text}`);
   const pages = await undoSteps(chrome, base, schema, 'pages');
-  const pageless = await undoSteps(chrome, base, schema, 'pageless');
+  const pageless = await undoSteps(
+    chrome,
+    base,
+    schema,
+    'pageless',
+    pages.enters,
+  );
   const sameText = pages.typed === pageless.typed;
+  // The pass must land inside the 500 ms capture window to test anything.
+  const inWindow = pages.dispatched && pages.windowMs < 500;
   report(
-    pages.back && pageless.back && pages.steps === pageless.steps && sameText,
+    pages.back &&
+      pageless.back &&
+      pages.steps === pageless.steps &&
+      sameText &&
+      inWindow,
     `I2 ${schema}: undo steps Pages ${pages.steps}${
       pages.back ? '' : ' (not back)'
     }, Pageless ${pageless.steps}${pageless.back ? '' : ' (not back)'}${
       sameText ? '' : ', typed text differs'
-    }`,
+    }; Enter x${pages.enters}, pass ${
+      pages.dispatched ? 'dispatched' : 'DID NOT dispatch'
+    }, typed ${Math.round(pages.windowMs ?? -1)} ms after the last Enter`,
   );
   const enter = await enterAtEnd(chrome, base, schema);
   report(enter.ok, `Enter at end ${schema}: ${enter.text}`);

@@ -38,6 +38,7 @@ export type PagesDebugApi = {
     passCount: number;
     lastTimings: { collect: number; place: number; emit: number } | null;
     dispatched: boolean;
+    dispatches: number;
     settled: boolean;
     pageCount: number | null;
   } | null;
@@ -157,7 +158,8 @@ export function checkSheets(
       const tall =
         bottom - top > grid.textHeight &&
         (page > lastPage || headingsOnly) &&
-        top >= grid.contentTopOf(page) - TOLERANCE;
+        top >= grid.contentTopOf(page) - TOLERANCE &&
+        top <= grid.contentBottomOf(page);
       if (!ok && !tall) {
         problems.push(`${where} box ${round(top)}..${round(bottom)}, ${area(page)}`);
       }
@@ -234,6 +236,7 @@ export const installPagesDebug = (deps: PagesDebugDeps) => {
         passCount: storage.lastPass?.count ?? 0,
         lastTimings: storage.lastPass?.timings ?? null,
         dispatched: storage.lastPass?.dispatched ?? false,
+        dispatches: storage.lastPass?.dispatches ?? 0,
         settled: storage.isIdle(),
         pageCount: storage.store.get().pageCount,
       };

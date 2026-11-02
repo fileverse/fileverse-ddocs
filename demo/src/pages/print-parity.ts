@@ -41,7 +41,6 @@ export function measurePrintParity(
       `.${SPACER_CLASS}, .${GUTTER_SPACER_CLASS}`,
     ),
   ];
-  spacers.forEach((el) => el.style.setProperty('display', 'none'));
   const screen: {
     el: HTMLElement;
     top: number;
@@ -50,22 +49,26 @@ export function measurePrintParity(
     afterBreak: boolean;
   }[] = [];
   let afterBreak = false;
-  view.state.doc.forEach((node, pos) => {
-    // A page break is a grey strip on screen and a zero-height break in print.
-    const isBreak = node.type.name === 'pageBreak';
-    const el = view.nodeDOM(pos);
-    if (!(el instanceof HTMLElement)) return;
-    const rect = el.getBoundingClientRect();
-    screen.push({
-      el,
-      top: rect.top / scale,
-      height: rect.height / scale,
-      skip: isBreak,
-      afterBreak,
+  spacers.forEach((el) => el.style.setProperty('display', 'none'));
+  try {
+    view.state.doc.forEach((node, pos) => {
+      // A page break is a grey strip on screen and a zero-height break in print.
+      const isBreak = node.type.name === 'pageBreak';
+      const el = view.nodeDOM(pos);
+      if (!(el instanceof HTMLElement)) return;
+      const rect = el.getBoundingClientRect();
+      screen.push({
+        el,
+        top: rect.top / scale,
+        height: rect.height / scale,
+        skip: isBreak,
+        afterBreak,
+      });
+      afterBreak = isBreak;
     });
-    afterBreak = isBreak;
-  });
-  spacers.forEach((el) => el.style.removeProperty('display'));
+  } finally {
+    spacers.forEach((el) => el.style.removeProperty('display'));
+  }
 
   const root = host.querySelector('.print-content-root');
   const printed: {
