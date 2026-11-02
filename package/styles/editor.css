@@ -682,6 +682,12 @@
   overflow: visible;
 }
 
+/* Passes read the final layout (§12.3), so in Pages a paragraph's margins do
+   not animate: paragraphs carry transition-all. */
+[data-page-mode='pages'] .ProseMirror p {
+  transition-property: color, background-color, border-color, opacity;
+}
+
 /* Pages mode shows collapsed sections expanded, so the collapse toggles go
    (preview chevron in both schemas, floating drag-handle cluster). Copy-link
    stays. */
