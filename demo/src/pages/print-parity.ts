@@ -41,11 +41,9 @@ export function measurePrintParity(
   }[] = [];
   let afterBreak = false;
   view.state.doc.forEach((node, pos) => {
-    // A top-level page break becomes a section split in print (handle-print).
-    if (node.type.name === 'pageBreak') {
-      afterBreak = true;
-      return;
-    }
+    // A page break is a grey strip on screen and a zero-height break in print.
+    const isBreak =
+      node.type.name === 'pageBreak' || node.firstChild?.type.name === 'pageBreak';
     const el = view.nodeDOM(pos);
     if (!(el instanceof HTMLElement)) return;
     const rect = el.getBoundingClientRect();
@@ -53,16 +51,14 @@ export function measurePrintParity(
       el,
       top: rect.top / scale,
       height: rect.height / scale,
-      // A v1 page break stays in its dBlock: a grey strip on screen only.
-      skip: node.firstChild?.type.name === 'pageBreak',
+      skip: isBreak,
       afterBreak,
     });
-    afterBreak = false;
+    afterBreak = isBreak;
   });
 
-  const printed = [...host.querySelectorAll('.print-page')]
-    .flatMap((section) => [...section.children])
-    .map((child) => {
+  const root = host.querySelector('.print-content-root');
+  const printed = [...(root?.children ?? [])].map((child) => {
       const rect = child.getBoundingClientRect();
       return { el: child as HTMLElement, top: rect.top, height: rect.height };
     });

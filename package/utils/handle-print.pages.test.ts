@@ -74,6 +74,25 @@ describe('content print, pages', () => {
     expect(style).toMatch(/\.tableWrapper\s*\{[^}]*overflow: visible/);
   });
 
+  // Sections would break the editor's `.ProseMirror > p` spacing rules, so
+  // Pages prints flat and a page break forces its own break.
+  it('prints blocks flat, with page breaks as zero-height forced breaks', () => {
+    mountContentPrintHost(
+      '<p>a</p><br data-page-break="true" style="page-break-after: always"><p>b</p>',
+      { pageSetup: { mode: 'pages', paper: 'a4' } },
+    );
+    const root = document.querySelector('.print-content-root')!;
+    expect(root.querySelector('.print-page')).toBeNull();
+    expect([...root.children].map((el) => el.tagName)).toEqual([
+      'P',
+      'BR',
+      'P',
+    ]);
+    expect(readMounted().style).toMatch(
+      /\[data-page-break='true'\]\s*\{[^}]*break-after: page/,
+    );
+  });
+
   it('Letter landscape', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },

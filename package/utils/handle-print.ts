@@ -1007,8 +1007,12 @@ const buildPagesPrintStyles = (
     color: #0D0D0D;
     background: #fff;
   }
-  .${PRINT_HOST_CLASS} .print-page { break-after: page; }
-  .${PRINT_HOST_CLASS} .print-page:last-child { break-after: auto; }
+  .${PRINT_HOST_CLASS} [data-page-break='true'] {
+    display: block;
+    height: 0;
+    overflow: hidden;
+    break-after: page;
+  }
   .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
   .${PRINT_HOST_CLASS} thead { display: table-header-group; }
@@ -1029,9 +1033,11 @@ export const mountContentPrintHost = (
   options: ContentPrintOptions = {},
 ): { cleanup: () => void } => {
   const isPages = options.pageSetup?.mode === 'pages';
-  const sectionsHtml = getPrintSectionsHtml(
-    splitContentIntoPrintSections(content),
-  );
+  // Pages prints flat: section wrappers would break the editor's
+  // `.ProseMirror > block` spacing rules. Page breaks break on their own.
+  const sectionsHtml = isPages
+    ? content
+    : getPrintSectionsHtml(splitContentIntoPrintSections(content));
 
   const styleEl = document.createElement('style');
   styleEl.setAttribute('data-ddoc-print', 'true');
