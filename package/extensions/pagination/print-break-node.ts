@@ -97,9 +97,15 @@ const withAttrs = (
 ): DOMOutputSpec => {
   if (Array.isArray(out)) {
     const [tag, maybeAttrs, ...rest] = out as unknown[];
-    return (isAttrs(maybeAttrs)
-      ? [tag, { ...maybeAttrs, ...attrs }, ...rest]
-      : [tag, attrs, ...out.slice(1)]) as unknown as DOMOutputSpec;
+    if (!isAttrs(maybeAttrs)) {
+      return [tag, attrs, ...out.slice(1)] as unknown as DOMOutputSpec;
+    }
+    const style = [maybeAttrs.style, attrs.style].filter(Boolean).join('; ');
+    return [
+      tag,
+      { ...maybeAttrs, ...attrs, ...(style ? { style } : {}) },
+      ...rest,
+    ] as unknown as DOMOutputSpec;
   }
   const dom = (out as { dom?: Node }).dom ?? (out as Node);
   if (dom instanceof HTMLElement) {
@@ -132,6 +138,76 @@ const moveHeaderRowsToThead = (root: HTMLElement) => {
       first.removeAttribute(name);
       outer.setAttribute(name, value);
     });
+  });
+};
+
+const topLevel = (root: HTMLElement, el: Element) => {
+  while (el.parentElement && el.parentElement !== root) el = el.parentElement;
+  return el;
+};
+
+// WebKit ignores break-before on a table row. The table splits there instead:
+// each piece repeats the header, and the live column widths stay pinned.
+const splitTablesAtRowBreaks = (root: HTMLElement) => {
+  const rows = [...root.querySelectorAll('tr[data-print-break-before]')];
+  rows.reverse().forEach((row) => {
+    const table = row.closest('table');
+    if (!table) return;
+    const top = topLevel(root, table);
+    row.removeAttribute('data-print-break-before');
+    if (!row.previousElementSibling) {
+      top.setAttribute('data-print-break-before', '');
+      return;
+    }
+    const chain: Element[] = [];
+    for (
+      let el: Element | null = table;
+      el && el !== root;
+      el = el.parentElement
+    ) {
+      chain.unshift(el);
+    }
+    const clones = chain.map((el) => el.cloneNode(false) as Element);
+    clones.forEach((clone, i) => {
+      clone.removeAttribute('data-print-break-before');
+      clone.removeAttribute('data-print-page-start');
+      clone.setAttribute('data-print-continued', '');
+      if (i > 0) clones[i - 1].appendChild(clone);
+    });
+    const piece = clones[clones.length - 1];
+    table
+      .querySelectorAll(':scope > colgroup, :scope > thead')
+      .forEach((el) => piece.appendChild(el.cloneNode(true)));
+    const body = document.createElement('tbody');
+    for (let r: Element | null = row; r; ) {
+      const next: Element | null = r.nextElementSibling;
+      body.appendChild(r);
+      r = next;
+    }
+    piece.appendChild(body);
+    clones[0].setAttribute('data-print-break-before', '');
+    chain.forEach((el) => el.setAttribute('data-print-split', ''));
+    top.after(clones[0]);
+  });
+
+  root.querySelectorAll('[data-print-col-widths]').forEach((holder) => {
+    const widths = holder.getAttribute('data-print-col-widths')!.split(',');
+    holder.removeAttribute('data-print-col-widths');
+    const split =
+      holder.hasAttribute('data-print-split') ||
+      holder.hasAttribute('data-print-continued');
+    const table =
+      holder instanceof HTMLTableElement
+        ? holder
+        : holder.querySelector('table');
+    const cols = table?.querySelectorAll<HTMLElement>(
+      ':scope > colgroup > col',
+    );
+    if (!split || !table || cols?.length !== widths.length) return;
+    const total = widths.reduce((sum, w) => sum + Number(w), 0);
+    table.style.tableLayout = 'fixed';
+    table.style.width = `${total}px`;
+    cols.forEach((col, i) => (col.style.width = `${widths[i]}px`));
   });
 };
 
@@ -202,5 +278,6 @@ export const serializeWithBreaks = (
     new DOMSerializer(nodes, base.marks).serializeFragment(tr.doc.content),
   );
   moveHeaderRowsToThead(root);
+  splitTablesAtRowBreaks(root);
   return root.innerHTML;
 };

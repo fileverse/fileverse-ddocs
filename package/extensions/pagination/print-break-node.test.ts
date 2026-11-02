@@ -131,10 +131,11 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
       ]),
     );
     const marked = [...out.querySelectorAll('[data-print-break-before]')];
-    expect(marked.map((el) => el.tagName)).toEqual(['LI', 'DIV', 'TR']);
+    // A row break moves to the table piece the split starts there.
+    expect(marked.map((el) => el.tagName)).toEqual(['LI', 'DIV', 'DIV']);
     expect(marked[0].textContent).toBe('second item');
     expect(marked[1].querySelector('img')).not.toBeNull();
-    expect(marked[2].textContent).toBe('b');
+    expect(marked[2].querySelector('tbody')?.textContent).toBe('b');
     expect(out.querySelectorAll('ul')).toHaveLength(1);
   });
 
@@ -208,6 +209,49 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     expect(wrapper.getAttribute('data-print-page-start')).toBe('2');
     expect(out.querySelector('thead [data-print-break-before]')).toBeNull();
     expect(out.querySelector('thead [data-print-page-start]')).toBeNull();
+  });
+
+  // WebKit ignores break-before on a table row: the table splits there, and
+  // the piece after the break repeats the header and starts the page.
+  it('splits a table at a row break', () => {
+    const doc = editor.state.doc;
+    const row = nodePos(doc, 'tableRow', 2);
+    const out = dom(
+      html(
+        [{ kind: 'before', pos: row }],
+        [
+          { kind: 'before', pos: nodePos(doc, 'heading') },
+          { kind: 'before', pos: row },
+        ],
+      ),
+    );
+    const tables = [...out.querySelectorAll('table')];
+    expect(tables).toHaveLength(3);
+    const [first, rest] = tables;
+    expect(
+      [...first.querySelectorAll('tbody tr')].map((r) => r.textContent),
+    ).toEqual(['a']);
+    expect(
+      [...rest.querySelectorAll('tbody tr')].map((r) => r.textContent),
+    ).toEqual(['b']);
+    expect(rest.querySelector('thead')?.textContent).toBe('H');
+    expect(rest.querySelector('[data-print-page-start]')?.textContent).toBe(
+      'b',
+    );
+    expect(out.querySelector('tr[data-print-break-before]')).toBeNull();
+
+    // Each piece is a top-level block; only the second starts a page.
+    const top = (el: Element) => {
+      while (el.parentElement !== out) el = el.parentElement!;
+      return el;
+    };
+    expect(top(first)).not.toBe(top(rest));
+    expect(top(first).hasAttribute('data-print-break-before')).toBe(false);
+    expect(top(rest).hasAttribute('data-print-break-before')).toBe(true);
+    expect(top(rest).hasAttribute('data-print-page-start')).toBe(false);
+    expect(top(first).hasAttribute('data-print-split')).toBe(true);
+    expect(top(rest).hasAttribute('data-print-continued')).toBe(true);
+    expect(top(rest).hasAttribute('data-print-split')).toBe(false);
   });
 
   // The dBlock node view marks a table block .is-table; its width cap hangs

@@ -74,6 +74,22 @@ describe('content print, pages', () => {
     expect(style).toMatch(/\.tableWrapper\s*\{[^}]*overflow: visible/);
   });
 
+  // WebKit cannot break pages inside a flex or grid item, and ignores
+  // break-before on a table row (those tables print split).
+  it('prints lists as blocks and joins a split table without extra gaps', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const { style } = readMounted();
+    expect(style).toMatch(/ ol\s*\{[^}]*display: flow-root !important/);
+    expect(style).toMatch(
+      /li\[data-type='taskItem'\]\s*\{[^}]*display: flow-root !important/,
+    );
+    expect(style).toMatch(
+      /li\[data-type='taskItem'\] > label\s*\{[^}]*float: inline-start/,
+    );
+    expect(style).toMatch(/\[data-print-split\]\s*\{[^}]*margin-bottom: 0/);
+    expect(style).toMatch(/\[data-print-continued\]\s*\{[^}]*margin-top: 0/);
+  });
+
   // Sections would break the editor's `.ProseMirror > p` spacing rules, so
   // Pages prints flat and a page break forces its own break.
   it('prints blocks flat and breaks the page after a page break', () => {

@@ -57,10 +57,30 @@ export function measurePrintParity(
   });
 
   const root = host.querySelector('.print-content-root');
-  const printed = [...(root?.children ?? [])].map((child) => {
-      const rect = child.getBoundingClientRect();
-      return { el: child as HTMLElement, top: rect.top, height: rect.height };
+  const printed: {
+    el: HTMLElement;
+    top: number;
+    height: number;
+    bottom: number;
+  }[] = [];
+  [...(root?.children ?? [])].forEach((child) => {
+    const rect = child.getBoundingClientRect();
+    const prev = printed[printed.length - 1];
+    // A table piece after a row break joins its table; its header row repeats
+    // what the screen shows once.
+    if (prev && child.hasAttribute('data-print-continued')) {
+      const head = child.querySelector('thead')?.getBoundingClientRect();
+      prev.height += rect.height - (head?.height ?? 0);
+      prev.bottom = rect.top + rect.height;
+      return;
+    }
+    printed.push({
+      el: child as HTMLElement,
+      top: rect.top,
+      height: rect.height,
+      bottom: rect.top + rect.height,
     });
+  });
 
   const mismatches: ParityMismatch[] = [];
   screen.forEach((block, i) => {
@@ -79,7 +99,7 @@ export function measurePrintParity(
     const prev = screen[i - 1];
     if (i > 0 && !prev.skip && !block.afterBreak && printed[i - 1]) {
       const screenGap = block.top - (prev.top + prev.height);
-      const printGap = out.top - (printed[i - 1].top + printed[i - 1].height);
+      const printGap = out.top - printed[i - 1].bottom;
       if (Math.abs(screenGap - printGap) > TOLERANCE) {
         mismatches.push(
           describe(screenGap, printGap, `${out.el.tagName} (gap above)`),

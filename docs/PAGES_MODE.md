@@ -71,7 +71,8 @@ Ported from Edentext `src/lib/editor/extensions/pageBreaks.ts`, cut to the tech 
 3. **Fix 2 — breaks before blocks.** An inline node cannot sit between blocks (before an image, a list item, a table row). `kind: 'before'` breaks are applied at serialisation: a `DOMSerializer` built from the print schema's `nodes` map, each `toDOM` wrapped to add `data-print-break-before` when the node is in a `Set` of target nodes (matched by identity in the copied doc). Probed: marks `UL` and `PRE` correctly in both schemas, public API only.
 4. `inText` breaks are inserted as `printPageBreak` nodes, last position first.
 5. Header rows move into a `<thead>` after serialisation so print repeats them. Chrome ignores `break-before` on a row in a repeated `thead` (and a page-start mark there would repeat on every page), so a break or page start on a header row moves to the table's wrapper.
-6. **Print mirrors node-view DOM** where `editor.css` rules depend on it (found by the parity check): v1 `dBlock` content goes in `div[data-node-view-content]`, and a `dBlock` holding a table gets `.is-table`; tables go in `div.tableWrapper`; an empty textblock gets the trailing `<br>` ProseMirror draws (else it prints 0px tall).
+6. **Table rows (WebKit).** WebKit ignores `break-before` on a table row, and on a `tbody` too. The print copy splits a table at each row break: the piece after the break is a copy of the block's wrapper chain with the header and `colgroup` cloned in, and it carries the break. The pieces are pinned to the live column widths (`table-layout: fixed`, read from a row without merged cells), because automatic layout would size each piece's columns anew. Margins only go around the whole table: a piece followed by another drops its bottom margin (truncated at a forced break anyway), and a continued piece drops its top margin (kept after a forced break). A break on a table's first row moves to the table's block.
+7. **Print mirrors node-view DOM** where `editor.css` rules depend on it (found by the parity check): v1 `dBlock` content goes in `div[data-node-view-content]`, and a `dBlock` holding a table gets `.is-table`; tables go in `div.tableWrapper`; an empty textblock gets the trailing `<br>` ProseMirror draws (else it prints 0px tall).
 
 Pipeline for `printCurrentTab()` (tech spec order): compute breaks → `searchForSecureImageNodeAndEmbedImageContent` on a copy (assert the copy has the same `content.size`, else fail loudly in dev and print without breaks) → print copy with breaks → `getHTML`-equivalent serialisation → `renderMermaidBlocks` → `handleContentPrint(html, { pageSetup, orientation })`. In Pageless the same handle method prints as today (no breaks, today's styles). When `pageSetup.mode === 'pages'` but Pages is not active (editor under 1024px, Split View, version history), it prints with the Pages CSS (paper size, margins, editor styling) and **no computed breaks**, so the browser breaks pages itself (tech spec "Below 1024 px").
 
@@ -99,6 +100,7 @@ Hazards found and closed by the parity check (§6.2):
 - **Mermaid** prints in the state it shows (decision): the node view exposes `data-mermaid-view="preview|source"`, and Pages print renders only the blocks showing the diagram; blocks showing source print as code. Pageless print still renders every diagram.
 - **Page-break `<br>`** is hidden in print (`display: none`); left visible, its line box could spill onto a blank page.
 - **Theme.** The print root matches `.ProseMirror` theme-coloured rules, so the print host carries the light `:root` `--color-*` tokens whatever theme class sits above it.
+- **Flex and grid lists (WebKit).** WebKit cannot break a page inside a flex or grid item: an ordered list (a flex column on screen) and a task item (a grid) spilled a page each. Both print as blocks. A task item becomes a self-contained block with the checkbox floated to the inline start: the same geometry, since its list is a plain block either way. An ordered list's items would collapse their margins in block flow, while the flex column adds them, so print folds each gap onto the lower item as the sum of the live computed margins. Not mirrored: a margin on an item's first or last child would collapse through the item in print; list spacing lives on the item (`PARAGRAPH_SPACING.md`), so this needs an interior value the UI cannot set.
 - **Display-only decorations.** List-marker font (`applyMarkerFonts` already mirrors it in print), comment highlights, search, carets: none may change layout on screen in Pages mode, or print will differ.
 
 ## 5. Fixtures
@@ -126,7 +128,7 @@ Fixtures 01 and 04 also run landscape.
 
 A "Pages" section in the demo's styling panel: mode, paper, fixture picker, a predicted-breaks list (page → first 40 characters), and a Print button calling `printCurrentTab()`. `window.__ddocPages` (demo only) exposes `{ breaks, pageStarts, pageCount }` for the checker.
 
-**Self-describing PDFs.** With a demo-only `debugMarkers` print option, every predicted page start gets an absolutely positioned (layout-neutral) tiny text marker `§P<n>§`, page 1 included. A PDF then states its own prediction: the checker needs no side file, and a PDF printed by hand in Safari or Firefox is checked the same way.
+**Self-describing PDFs.** With a demo-only `debugMarkers` print option, every predicted page start gets an absolutely positioned (layout-neutral) tiny text marker `§P<n>§`, page 1 included. Its block is made `position: relative`: Gecko places an absolute box against its containing block's unbroken layout, so a marker anchored on the print root lands a page early. It sits 4px below its block's top: WebKit paints a glyph that crosses a page edge on both pages. An extra in-flow anchor element is not an option: in a columns block it becomes a flex item. A PDF then states its own prediction: the checker needs no side file, and a PDF printed by hand in Safari or Firefox is checked the same way.
 
 ### 6.2 Height parity (screen vs print DOM, no PDF)
 
@@ -165,9 +167,24 @@ Print → Save as PDF from the demo, `debugMarkers` on, into a folder; `node scr
 - Zoom 1.5, Fit and 0.75 give the same breaks as 100%.
 - Per-browser facts, Chrome: `@page @bottom-right` page numbers render; `thead` repeats; `break-before` inside `pre` honoured; `break-before` on a repeated `thead` row ignored (worked around, §4.3).
 
-**Safari, Firefox, iPad Safari:** pending the manual round (§6.4).
+After the Safari fixes below, the Chrome matrix was rerun: 40/48, the same 8 image parity cases, every break matching.
 
-**Verdict so far:** Chrome passes: zero mismatched breaks across the matrix. The gate is not called until Safari is in.
+**Firefox** (manual round, all fixtures, A4, v2). Every page broke where predicted; the markers did not. An absolutely positioned marker anchored on the print root was placed against the root's unbroken layout, one page early (fixed, §6.1). Reproduced and rechecked in headless Firefox over WebDriver BiDi (`browsingContext.print`), whose PDFs matched the manual ones marker for marker: **10/10** after the fix.
+
+**Safari** (manual round, all fixtures, A4, v2). Two artefacts and two engine limits (class c):
+
+- Every forced break also printed its marker on the previous page: WebKit paints a glyph that crosses a page edge on both pages. Not a layout fault (fixed, §6.1).
+- **Lists** (03, and 10's lists): no break inside a flex or grid item. Fixed by printing lists as blocks (§4.4).
+- **Table rows** (04, 10): `break-before` on a row is ignored. Fixed by splitting tables at row breaks (§4.3).
+
+Reproduced with a WKWebView print harness (`NSPrintOperation`, the engine Safari prints with), whose PDFs matched the manual ones page for page. After the fixes: **10/10 on v2 A4, v2 Letter and v1 A4**, with the height parity check also passing in WebKit (05 and 10 apart: the image chrome). A manual Safari reprint confirms the harness.
+
+- Per-browser facts. Safari and Firefox: no `@page` margin-box page numbers; `thead` repeats; `break-before` inside `pre` honoured. Safari: `break-before` ignored on table rows and row groups, and inside flex and grid items.
+- The demo's v1 fixture loader sometimes appends to the doc instead of replacing it, so some v1 cases print several fixtures at once (both the prediction and the print come from the same doc, so the check stays valid).
+
+**iPad Safari:** pending (§6.4).
+
+**Verdict so far:** Chrome passes; Safari passes in the WebKit harness across its matrix. The gate is called after a manual Safari reprint and the iPad Safari round.
 
 ## 8. Tests
 

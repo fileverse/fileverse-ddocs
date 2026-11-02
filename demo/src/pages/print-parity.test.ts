@@ -54,6 +54,24 @@ describe('measurePrintParity', () => {
     ]);
   });
 
+  // Print splits a table at a row break; the pieces are one block on screen,
+  // and each piece after the first repeats the header the screen shows once.
+  it('measures the pieces of a split table as one block', () => {
+    tallerInPrint = 'none';
+    editor.commands.setContent(
+      '<p>alpha</p><table><tbody><tr><td><p>x</p></td></tr></tbody></table>',
+    );
+    const html =
+      '<p>alpha</p><div class="tableWrapper" data-print-split><table><tbody><tr><td><p>x</p></td></tr></tbody></table></div>' +
+      '<div class="tableWrapper" data-print-continued><table><thead><tr><th><p>h</p></th></tr></thead><tbody><tr><td><p>y</p></td></tr></tbody></table></div>' +
+      '<p><br></p>';
+    expect(editor.state.doc.childCount).toBe(3);
+    expect(measurePrintParity(editor.view, html, OPTIONS)).toEqual({
+      ok: true,
+      mismatches: [],
+    });
+  });
+
   it('leaves nothing mounted', () => {
     measurePrintParity(editor.view, editor.getHTML(), OPTIONS);
     expect(document.querySelector('[data-pages-parity]')).toBeNull();

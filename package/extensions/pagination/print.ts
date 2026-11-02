@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { DdocProps, PageSetup } from '../../types';
 import { getTemporaryEditor } from '../../utils/helpers';
+import { getZoomScale } from '../../utils/zoom';
 import type { ContentPrintOptions } from '../../utils/handle-print';
 import { renderMermaidBlocks } from '../code-block/render-mermaid-html';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-handler';
@@ -53,16 +54,90 @@ const addDebugMarkers = (html: string) => {
   root.querySelectorAll('[data-print-page-start]').forEach((el) => {
     const marker = document.createElement('span');
     marker.className = 'ddoc-print-marker';
+    // Below the page edge: WebKit paints a glyph crossing it on both pages.
     marker.setAttribute(
       'style',
-      'position:absolute;font-size:4px;line-height:1;color:#fff',
+      'position:absolute;top:4px;font-size:4px;line-height:1;color:#fff',
     );
     marker.textContent = `§P${el.getAttribute('data-print-page-start')}§`;
     // A span directly in a <tr> would be moved out of the table on parse.
     const host = el.tagName === 'TR' ? (el.querySelector('td, th') ?? el) : el;
+    // Gecko places an absolute box against its containing block's unbroken
+    // layout: the host itself must be that block, on the marker's page.
+    if (host instanceof HTMLElement) host.style.position = 'relative';
     host.insertBefore(marker, host.firstChild);
   });
   return root.innerHTML;
+};
+
+type BlockAttrs = { pos: number; attrs: Record<string, string> }[];
+
+// Ordered lists print as blocks (WebKit cannot break inside a flex item),
+// where adjacent item margins collapse; in the screen's flex column they add
+// up, so each gap moves onto the lower item as that sum.
+const orderedListMargins = (editor: Editor): BlockAttrs => {
+  const out: BlockAttrs = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'orderedList') return true;
+    const items: { pos: number; top: number; bottom: number }[] = [];
+    node.forEach((_item, offset) => {
+      const el = editor.view.nodeDOM(pos + 1 + offset);
+      if (!(el instanceof HTMLElement)) return;
+      const style = getComputedStyle(el);
+      items.push({
+        pos: pos + 1 + offset,
+        top: parseFloat(style.marginTop) || 0,
+        bottom: parseFloat(style.marginBottom) || 0,
+      });
+    });
+    items.forEach((item, i) => {
+      const top = item.top + (i > 0 ? items[i - 1].bottom : 0);
+      const bottom = i < items.length - 1 ? 0 : item.bottom;
+      out.push({
+        pos: item.pos,
+        attrs: { style: `margin-top: ${top}px; margin-bottom: ${bottom}px` },
+      });
+    });
+    return true;
+  });
+  return out;
+};
+
+// Column widths of each table that print splits at a row break, from a row
+// without merged cells; automatic layout would size every piece anew.
+const splitTableWidths = (editor: Editor, placement: Placement): BlockAttrs => {
+  const { doc } = editor.state;
+  const scale = getZoomScale(editor.view.dom);
+  const tables = new Set<number>();
+  placement.breaks.forEach((b) => {
+    if (b.kind !== 'before' || doc.nodeAt(b.pos)?.type.name !== 'tableRow') {
+      return;
+    }
+    const $row = doc.resolve(b.pos);
+    if ($row.index() > 0) tables.add($row.before());
+  });
+  const out: BlockAttrs = [];
+  tables.forEach((pos) => {
+    const dom = editor.view.nodeDOM(pos);
+    const table =
+      dom instanceof HTMLTableElement
+        ? dom
+        : dom instanceof HTMLElement
+          ? dom.querySelector('table')
+          : null;
+    const columns = table?.querySelectorAll('col').length ?? 0;
+    const row = [...(table?.rows ?? [])].find(
+      (r) =>
+        r.cells.length === columns &&
+        [...r.cells].every((cell) => cell.colSpan === 1),
+    );
+    if (!row) return;
+    const widths = [...row.cells].map(
+      (cell) => cell.getBoundingClientRect().width / scale,
+    );
+    out.push({ pos, attrs: { 'data-print-col-widths': widths.join(',') } });
+  });
+  return out;
 };
 
 // Mermaid blocks the live editor shows as source: Pages prints a diagram in
@@ -130,7 +205,13 @@ export async function buildPrintHtml(args: {
       buildPrintSchema(editor.schema),
       placement?.breaks ?? [],
       placement?.pageStarts ?? [],
-      sameStructure ? mermaidSourceBlocks(editor) : [],
+      sameStructure
+        ? [
+            ...mermaidSourceBlocks(editor),
+            ...orderedListMargins(editor),
+            ...(placement ? splitTableWidths(editor, placement) : []),
+          ]
+        : [],
     );
   } else {
     const temporaryEditor = getTemporaryEditor(

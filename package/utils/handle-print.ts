@@ -1014,6 +1014,15 @@ const buildPagesPrintStyles = (
   .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
   .${PRINT_HOST_CLASS} thead { display: table-header-group; }
+  /* A table split at a row break: margins only around the whole table. */
+  .${PRINT_HOST_CLASS} [data-print-split] { margin-bottom: 0 !important; }
+  .${PRINT_HOST_CLASS} [data-print-continued] { margin-top: 0 !important; }
+  /* WebKit cannot break a page inside a flex or grid item: lists print as
+     blocks with the screen's geometry (buildPrintHtml folds item margins). */
+  .${PRINT_HOST_CLASS} ol { display: flow-root !important; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] { display: flow-root !important; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] > label { float: inline-start; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] > div { display: flow-root; }
   /* A scroll container cannot break across pages. */
   .${PRINT_HOST_CLASS} .tableWrapper { overflow: visible !important; }
   /* On screen, cell content sits in the React node view's pre-wrap content
