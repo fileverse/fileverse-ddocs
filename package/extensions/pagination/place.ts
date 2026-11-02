@@ -74,6 +74,17 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
   let page = 0;
   let placedOnPage = false;
   let startNextPage = false;
+  // Placed minus rendered shift: each spacer's rounding is carried into the
+  // next one, so the screen never drifts from the placement by more than 0.5px.
+  let drift = 0;
+  let followDrift = 0;
+
+  const pixels = (displacement: number, collapse = 0) => {
+    const height = Math.max(0, Math.round(displacement - collapse + drift));
+    // A 0px spacer is not emitted, so its margins still collapse.
+    drift += height ? displacement - collapse - height : displacement;
+    return height;
+  };
 
   const bottomOfPage = () => grid.contentBottomOf(page);
   const fits = (leaf: FlowLeaf) => leaf.bottom + shift <= bottomOfPage();
@@ -90,11 +101,12 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       height += followDelta;
       spacers.splice(followIdx, 1);
       followIdx = -1;
+      drift = followDrift;
     }
     spacers.push({
       kind: 'block',
       pos: leaf.spacerPos,
-      height: Math.max(0, Math.round(height - leaf.spacerCollapse)),
+      height: pixels(height, leaf.spacerCollapse),
       page: page + 1,
       print: true,
     });
@@ -146,11 +158,12 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     if (carry > 0) {
       followIdx = spacers.length;
       followDelta = carry;
+      followDrift = drift;
       carry = 0;
       spacers.push({
         kind: 'block',
         pos: leaf.spacerPos,
-        height: Math.max(0, Math.round(followDelta - leaf.spacerCollapse)),
+        height: pixels(followDelta, leaf.spacerCollapse),
         page: page + 1,
         print: false,
       });
@@ -230,7 +243,7 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       spacers.push({
         kind: 'inText',
         pos: line.startPos,
-        height: Math.round(delta),
+        height: pixels(delta),
         page: page + 1,
         print: true,
       });

@@ -345,6 +345,28 @@ describe('place spacers', () => {
     expect(r.spacers[0].height).toBe(0);
   });
 
+  it('carries the rounding of spacer heights instead of letting it add up', () => {
+    // Each push moves its leaf by x.7px; rounded one by one, the screen would
+    // drift 0.3px further from the placement at every page.
+    const leaves = [
+      atom(0, 96, 900),
+      atom(10, 1000.3, 900),
+      atom(20, 1900.6, 900),
+      atom(30, 2800.9, 900),
+    ];
+    const r = place(leaves, a4);
+    expect(r.spacers.map((s) => s.pos)).toEqual([10, 20, 30]);
+    let rendered = 0;
+    r.spacers.forEach((s, i) => {
+      rendered += s.height;
+      const leaf = leaves[i + 1] as Extract<Leaf, { kind: 'atomic' }>;
+      const top = leaf.top + rendered;
+      expect(Math.abs(top - a4.contentTopOf(s.page - 1))).toBeLessThanOrEqual(
+        0.5,
+      );
+    });
+  });
+
   it('without forced breaks, printing spacers correspond one-to-one with breaks', () => {
     const leaves = [
       para(0, 96, 1),
