@@ -676,6 +676,16 @@
   overflow: visible;
 }
 
+/* Pages mode shows collapsed sections expanded, so the collapse toggles go
+   (preview chevron in both schemas, floating drag-handle cluster). Copy-link
+   stays. */
+[data-page-mode='pages']
+  .ProseMirror
+  .d-block-preview-button:not(.d-block-preview-copy-link),
+[data-page-mode='pages'] .drag-handle [data-test='collapse-button'] {
+  display: none;
+}
+
 /* Read-only-preview heading chrome (collapse chevron + copy link), rendered
    by the dBlock node view INSIDE the editor DOM — the floating drag-handle
    cluster can never appear in preview because the upstream plugin hides its

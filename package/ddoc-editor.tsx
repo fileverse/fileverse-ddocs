@@ -922,7 +922,7 @@ const DdocEditor = forwardRef(
         pagesPaper ? new PageGrid(pagesPaper, pagesOrientation) : undefined,
       [pagesPaper, pagesOrientation],
     );
-    useEffect(() => {
+    useLayoutEffect(() => {
       if (!editor || editor.isDestroyed) return;
       // Pageless never touches the extension (already inert).
       if (!isPagesMode && !editor.storage.pagination?.enabled) return;
@@ -935,7 +935,7 @@ const DdocEditor = forwardRef(
       });
     }, [editor, isPagesMode, pagesSetup, pagesOrientation, zoom]);
     // Leaving the active tab (or unmounting): stop passes, keep the spacers.
-    useEffect(() => {
+    useLayoutEffect(() => {
       if (!editor) return;
       return () => {
         const s = editor.storage.pagination;

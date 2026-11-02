@@ -11,6 +11,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { headingToSlug } from '../../utils/heading-to-slug';
 import { CHEVRON_SVG, LINK_SVG } from './heading-chrome-icons';
 import { HEADING_COLLAPSE_TOGGLE_META } from '../suggestion/suggestion-tracking-extension';
+import { PAGINATION_META } from '../pagination';
 
 export const DBLOCK_HIDDEN_CLASS = 'd-block-hidden';
 const DBLOCK_COLLAPSE_META = 'dblock-collapse';
@@ -36,6 +37,7 @@ export interface DBlockRenderMeta {
 interface DBlockCollapsePluginState {
   decorations: DecorationSet;
   structureSignature: string;
+  expandAll: boolean;
 }
 
 const getFirstChild = (node: ProseMirrorNode) => node.content.firstChild;
@@ -636,6 +638,7 @@ const buildHeadingPreviewControls = (
 const buildHiddenDecorationSet = (
   doc: ProseMirrorNode,
   onCopyHeadingLink?: (link: string) => void,
+  expandAll = false,
 ) => {
   const decorations: Decoration[] = [];
   const headingStack: Array<{ level: number; isCollapsed: boolean }> = [];
@@ -664,7 +667,7 @@ const buildHiddenDecorationSet = (
       }
     }
 
-    if (collapsedHeadingDepth > 0) {
+    if (!expandAll && collapsedHeadingDepth > 0) {
       decorations.push(
         Decoration.node(position, position + node.nodeSize, {
           class: DBLOCK_HIDDEN_CLASS,
@@ -783,9 +786,11 @@ const transactionTouchesTopLevelStructure = (tr: Transaction) => {
 const buildCollapsePluginState = (
   doc: ProseMirrorNode,
   onCopyHeadingLink?: (link: string) => void,
+  expandAll = false,
 ): DBlockCollapsePluginState => ({
-  decorations: buildHiddenDecorationSet(doc, onCopyHeadingLink),
+  decorations: buildHiddenDecorationSet(doc, onCopyHeadingLink, expandAll),
   structureSignature: getDBlockCollapseStructureSignature(doc),
+  expandAll,
 });
 
 export const dBlockCollapsePluginKey = new PluginKey<DBlockCollapsePluginState>(
@@ -820,6 +825,20 @@ export const createDBlockCollapsePlugin = (
       init: (_config, state) =>
         buildCollapsePluginState(state.doc, onCopyHeadingLink),
       apply: (tr, previousState) => {
+        // Pages mode shows collapsed content; pass metas carry `spacers` only.
+        const paginationMeta = tr.getMeta(PAGINATION_META);
+        if (
+          paginationMeta &&
+          typeof paginationMeta.enabled === 'boolean' &&
+          paginationMeta.enabled !== previousState.expandAll
+        ) {
+          return buildCollapsePluginState(
+            tr.doc,
+            onCopyHeadingLink,
+            paginationMeta.enabled,
+          );
+        }
+
         if (!tr.docChanged) {
           return {
             ...previousState,
@@ -835,14 +854,20 @@ export const createDBlockCollapsePlugin = (
           transactionTouchesTopLevelStructure(tr)
         ) {
           return {
-            decorations: buildHiddenDecorationSet(tr.doc, onCopyHeadingLink),
+            decorations: buildHiddenDecorationSet(
+              tr.doc,
+              onCopyHeadingLink,
+              previousState.expandAll,
+            ),
             structureSignature,
+            expandAll: previousState.expandAll,
           };
         }
 
         return {
           structureSignature: previousState.structureSignature,
           decorations: previousState.decorations.map(tr.mapping, tr.doc),
+          expandAll: previousState.expandAll,
         };
       },
     },
