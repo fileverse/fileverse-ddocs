@@ -33,6 +33,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react';
 import cn from 'classnames';
 import {
@@ -315,8 +316,8 @@ const DdocEditor = forwardRef(
         return { canvas: undefined, background: undefined };
       }
 
-      const canvas: React.CSSProperties = {};
-      const background: React.CSSProperties = {};
+      const canvas: CSSProperties = {};
+      const background: CSSProperties = {};
       const currentTheme = theme ?? 'light';
 
       // Apply custom document styling
