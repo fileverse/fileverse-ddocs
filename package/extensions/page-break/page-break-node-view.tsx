@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { NodeViewWrapper, NodeViewProps } from '@tiptap/react';
 import cn from 'classnames';
 import { LucideIcon, Tooltip } from '@fileverse/ui';
@@ -6,11 +6,18 @@ import { useEditingContext } from '../../hooks/use-editing-context';
 import { useEditorContext } from '../../context/editor-context';
 import { getThemeStyle } from '../../utils/document-styling';
 
+const noSubscribe = () => () => {};
+
 export const PageBreakNodeView: React.FC<NodeViewProps> = ({
   editor,
   deleteNode,
 }) => {
   const { isPreviewMode } = useEditingContext();
+  const store = editor.storage.pagination?.store;
+  const isPages = useSyncExternalStore(
+    store?.subscribe ?? noSubscribe,
+    () => store?.get().enabled ?? false,
+  );
   const { documentStyling, theme, isFocusMode } = useEditorContext();
   const handleDeleteNode = () => {
     editor.commands.unsetPageBreak();
@@ -28,6 +35,37 @@ export const PageBreakNodeView: React.FC<NodeViewProps> = ({
       background: themeBackgroundStyle,
     }),
   };
+
+  if (isPages) {
+    return (
+      <NodeViewWrapper
+        data-page-break-marker=""
+        className="group relative flex h-6 items-center justify-center"
+      >
+        <br
+          data-type="page-break"
+          data-page-break="true"
+          style={{ pageBreakAfter: 'always' }}
+        />
+        <div className="absolute left-0 right-0 top-1/2 h-px color-bg-tertiary" />
+        {!isPreviewMode && (
+          <div className="relative px-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 color-bg-default">
+            <Tooltip
+              sideOffset={5}
+              position="bottom"
+              text="Remove page breaker"
+            >
+              <LucideIcon
+                name="PageBreakRemove"
+                onClick={handleDeleteNode}
+                className="color-text-secondary cursor-pointer"
+              />
+            </Tooltip>
+          </div>
+        )}
+      </NodeViewWrapper>
+    );
+  }
 
   return (
     <NodeViewWrapper
