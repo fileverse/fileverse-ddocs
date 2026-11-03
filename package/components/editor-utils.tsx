@@ -156,9 +156,8 @@ export function shortcutAction(
   const { key, metaKey, ctrlKey, altKey, shiftKey } = event;
   const primary = isMac ? metaKey && !ctrlKey : ctrlKey && !metaKey;
   if (key === 'Enter' && primary && !altKey && !shiftKey) return 'pageBreak';
-  if (key.toLowerCase() === 'k' && primary && !altKey && !shiftKey) {
-    return 'link';
-  }
+  // ⌘/Ctrl+K is not handled here: MobileToolbar's document listener (mounted
+  // at every width) toggles the link modal.
   if (altKey && key === 'Enter') return 'link';
   return null;
 }

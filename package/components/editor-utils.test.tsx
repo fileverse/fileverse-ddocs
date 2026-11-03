@@ -344,8 +344,8 @@ describe('shortcutAction', () => {
     [{ key: 'Enter', ctrlKey: true }, false, 'pageBreak'],
     [{ key: 'Enter', ctrlKey: true }, true, null],
     [{ key: 'Enter', metaKey: true, shiftKey: true }, true, null],
-    [{ key: 'k', metaKey: true }, true, 'link'],
-    [{ key: 'K', ctrlKey: true }, false, 'link'],
+    [{ key: 'k', metaKey: true }, true, null],
+    [{ key: 'K', ctrlKey: true }, false, null],
     [{ key: 'Enter', altKey: true }, true, 'link'],
   ])('shortcutAction(%o, mac=%s) is %s', (event, isMac, expected) => {
     expect(
@@ -470,13 +470,12 @@ describe('page-break and link shortcuts through handleKeyDown', () => {
     expect(json).toContain('two');
   });
 
-  it('with two useEditorToolbar instances, ⌘+K leaves the link popup open', () => {
+  it('⌘+K is left to the toolbar link modal listener', () => {
     mockMac();
     editor = makeEditor('<p>hello</p>');
-    mount();
-    const second = mount();
+    const { result } = mount();
     const { event } = press({ key: 'k', metaKey: true });
-    expect(event.defaultPrevented).toBe(true);
-    expect(second.result.current.toolVisibility).toBe(IEditorTool.LINK_POPUP);
+    expect(event.defaultPrevented).toBe(false);
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
   });
 });

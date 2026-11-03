@@ -445,7 +445,7 @@ Decision (user, 2026-11-03):
 | -- | -- | -- |
 | ⌘+Enter (Mac) | link popup (`components/editor-utils.tsx`, `handleKeyDown`) | page break |
 | Ctrl+Enter (Windows, Linux) | Tiptap default: hard break (exit code block inside one) | page break |
-| ⌘/Ctrl+K | nothing on desktop; link popup in the mobile toolbar (`mobile-toolbar.tsx`) | link popup, toggling as on mobile |
+| ⌘/Ctrl+K | the link modal at every width: `MobileToolbar` is mounted on desktop too (hidden by CSS) and binds it on `document` | unchanged (2026-11-03: M2 first also bound it in `useEditorToolbar`, whose popup state lives in whichever instance registers last, so nothing opened; reverted) |
 | Alt/Option+Enter | link popup | unchanged (my call: only ⌘+Enter was asked to move) |
 | Shift+Enter | hard break | unchanged |
 
@@ -460,7 +460,7 @@ Decision (user, 2026-11-03):
 - **Both modes** (decision, user, 2026-11-03): the shortcut inserts a page break in Pageless too, like Google Docs; a page break already exists and prints in Pageless. The product spec says Pages mode only.
 - Any tooltip, shortcut list or help text that names ⌘+Enter for links is updated.
 - Node views with their own Ctrl/⌘+Enter (`ai-writer-node-view.tsx`, comment cards) handle it in their own inputs, outside the editor's `handleKeyDown`; the builder checks they still submit.
-- The desktop link handler lives in `useEditorToolbar`, installed by whichever toolbar instance registers last; the mobile toolbar binds ⌘/Ctrl+K on `document`. The two must not both toggle on one keypress. ddocs.new's e2e tests already expect Mod+K to open the link dialog; its shortcut popup lists ⌥+Enter, which stays.
+- ⌘/Ctrl+K stays with `MobileToolbar`'s `document` listener (the link modal); `useEditorToolbar`'s `handleKeyDown` must not handle it, or it calls `preventDefault` and sets popup state in an instance that may render nothing. ddocs.new's e2e tests expect Mod+K to open the link dialog; its shortcut popup lists ⌥+Enter, which stays.
 
 ### 13.4 Carry-overs from M1 (§12.13 Known limits)
 
@@ -591,6 +591,6 @@ Run on 2026-11-03 at the M2 head (`b4b7191f`), demo on 5174, headless Chrome 156
 - Media: a caption longer than one line makes the block taller than its cap (§13.5); the caption allowance is in px and drifts if the root font size is not 16px. Tall Mermaid: the screen crops it, print scales the `svg` to the clip (same height, different look).
 - Clipped wrappers (`overflow: hidden` on AI writer and action button) would clip a future popover drawn inside them.
 - Mask: `.selectedCell:after` tints over it in a split row; a `url()` desk is stretched to the canvas size; the host's `editorCanvasClassNames` background is not mirrored into the gap; the columns menu stacks above host chrome in Pages (the reverse of Pageless).
-- Shortcuts: ⌘/Ctrl+Enter with everything selected or a gap cursor at the top level does nothing (the key is swallowed; a selected block gets the break after it, §13.3); with the editor focused and the link popup open, ⌘/Ctrl+K no longer closes it.
+- Shortcuts: ⌘/Ctrl+Enter with everything selected or a gap cursor at the top level does nothing (the key is swallowed; a selected block gets the break after it, §13.3).
 - Print: Pageless Cmd/Ctrl+P runs one microtask later than before; toolbar Print shows no loader while Pages embeds images; all-tabs export finds the active tab through the collaboration extension's `field`.
 - Stays from §13.4: the first exact page count dropped when the active-editor ref lags (practically unreachable).
