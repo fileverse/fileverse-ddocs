@@ -175,6 +175,21 @@ describe.each([1, 2])('row spacers, schema v%i', (schemaVersion) => {
     }
   });
 
+  it('a header height off by measurement noise matches the same spacers', () => {
+    setup();
+    const list = [
+      sp({ pos: rowPos(2), height: 300, header: 29.078125, page: 2 }),
+    ];
+    const set = show(list);
+    expect(
+      spacersMatch(
+        set,
+        [{ ...list[0], header: 29.07815967 }],
+        editor.state.doc,
+      ),
+    ).toBe(true);
+  });
+
   it('editing the header changes the clone key', () => {
     setup();
     const list = [sp({ pos: rowPos(2), height: 300, header: 40, page: 2 })];

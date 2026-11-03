@@ -115,6 +115,10 @@ type Widget = {
   toDOM: (view: EditorView) => HTMLElement;
 };
 
+// The header height is measured (and divided by the zoom scale): whole pixels
+// in the keys, or float noise at another zoom re-dispatches the same spacers.
+const headerKey = (s: Spacer) => Math.round(s.header ?? 0);
+
 // A spacer between table rows is a spacer row and, when the header repeats,
 // a clone of the header row (docs/PAGES_MODE.md §13.6).
 function widgetsOf(doc: PMNode, s: Spacer): Widget[] {
@@ -137,7 +141,7 @@ function widgetsOf(doc: PMNode, s: Spacer): Widget[] {
   const out: Widget[] = [
     {
       pos: s.pos,
-      key: `row:${s.height}:${s.header ?? 0}:${s.page}`,
+      key: `row:${s.height}:${headerKey(s)}:${s.page}`,
       side: -2,
       toDOM: () => createSpacerRow(s, Math.max(1, columns)),
     },
@@ -147,7 +151,7 @@ function widgetsOf(doc: PMNode, s: Spacer): Widget[] {
     const tableStart = $pos.start();
     out.push({
       pos: s.pos,
-      key: `header:${hash(JSON.stringify(header.toJSON()))}:${s.header}:${s.page}`,
+      key: `header:${hash(JSON.stringify(header.toJSON()))}:${headerKey(s)}:${s.page}`,
       side: -1,
       toDOM: (view) => createHeaderClone(view, tableStart, header),
     });
