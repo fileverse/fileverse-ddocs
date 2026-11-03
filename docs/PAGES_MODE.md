@@ -528,7 +528,7 @@ M2 is done when all of these hold (`scripts/pages-print-check.cjs` and `scripts/
 4. **Print paths**: a unit test per path in §13.2 (Pages mode reaches the pipeline with the live placement; Pageless makes today's exact call). Manual, in the demo: File ▸ Print and Cmd+P in Pages mode show the 1 inch sheet in Chrome's print dialog.
 5. **Shortcuts**: unit tests, v1 and v2: ⌘+Enter (Mac) and Ctrl+Enter (Windows) insert a page break where the menu item does; inside a code block they exit it; ⌘/Ctrl+K opens the link popup; Alt+Enter still does; ⌘+Enter no longer does.
 6. **Unit tests** for every new rule: row placement and header repeat, in-cell split positions, the max wait, the tall-block quiet rule, `onPagesError` called once, the wiring and listener tests (§13.4). `npm test`, `npx tsc` clean, `eslint --no-fix` on touched files with no new problems.
-7. **Manual spot checks** (the user): Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks), and a print of 12 at A4 v2 (a row split inside its cells: WebKit was not probed, §13.6); live Chrome: the media toolbar overlay, the page-break marker, the mask at a split code block in light and dark mode.
+7. **Manual spot checks** (the user): Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks), and a print of 12 at A4 v2 (a row split inside its cells and a columns block split inside its columns: WebKit was not probed, §13.6; it cannot break inside grid items either, §13.5 records the columns case as not gated); live Chrome: the media toolbar overlay, the page-break marker, the mask at a split code block in light and dark mode.
 
 ### 13.11 Left to the builder
 
@@ -536,7 +536,7 @@ Internal names and module boundaries, how Cmd/Ctrl+P reaches the pipeline (§13.
 
 ### 13.12 Results
 
-Run on 2026-11-03 at the M2 head (`50ccdbcb`), demo on 5174, headless Chrome 156 over CDP (`scripts/pages-print-check.cjs`, `scripts/pages-perf-check.cjs`). Unit tests: `npm test` 195 files, 2498 passed, 3 skipped; `npx tsc` clean; `npx eslint --no-fix` on the 51 code files M2 touched: 10 problems, all present before M2 (3 prettier errors in `action-button-node-view.tsx`, 7 hook warnings in `use-tab-editor.tsx` and `editor-utils.tsx`), none new.
+Run on 2026-11-03 at the M2 head (`b4b7191f`), demo on 5174, headless Chrome 156 over CDP (`scripts/pages-print-check.cjs`, `scripts/pages-perf-check.cjs`). Unit tests: `npm test` 195 files, 2540 passed, 3 skipped; `npx tsc` clean; `npx eslint --no-fix` on the 51 code files M2 touched: 10 problems, all present before M2 (3 prettier errors in `action-button-node-view.tsx`, 7 hook warnings in `use-tab-editor.tsx` and `editor-utils.tsx`), none new.
 
 **Chrome matrix** (§13.10 item 1; 56 cases: fixtures 01–10, 02c and 12 × v1/v2 × A4/Letter, plus 01 and 04 landscape). **56/56 pass** after the columns split (§13.5; rerun 2026-11-03, `npm test` 195 files, 2540 passed, 3 skipped): 55 in one run, and 06 v2 Letter, which hit a harness error in it (`pass()` returned no store), passed on a rerun with a fresh profile. The first run, before the split, had 54/56: fixture 12 v2's tall columns block printed a page longer than the screen. Pages are store/PDF.
 
@@ -563,7 +563,7 @@ Run on 2026-11-03 at the M2 head (`50ccdbcb`), demo on 5174, headless Chrome 156
 | I2, undo | 6 undo steps in Pages and in Pageless, across a pass that dispatched | same |
 | Enter at the end (held) | 15 → 18 pages, caret always on a sheet, sheets ok | same |
 
-**Performance** (§13.10 item 3; fixture 11, A4, 179 pages, max wait on: the 200-key script types for ~10 s, so passes run every ~1 s while typing). Two runs per schema; the spread is run-to-run noise.
+**Performance** (§13.10 item 3; run on the Task 14 code, before the columns split: Task 15 changed only the scheduler's quiet-path exception and columns collection, and fixture 11 has no columns block; fixture 11, A4, 179 pages, max wait on: the 200-key script types for ~10 s, so passes run every ~1 s while typing). Two runs per schema; the spread is run-to-run noise.
 
 | Budget | v2 | v1 | Result |
 | -- | -- | -- | -- |
@@ -582,7 +582,7 @@ Run on 2026-11-03 at the M2 head (`50ccdbcb`), demo on 5174, headless Chrome 156
 **Pending, manual** (the user runs these; not yet done):
 
 - §13.10 item 4: in the demo, File ▸ Print and Cmd+P in Pages mode show the 1 inch sheet in Chrome's print dialog.
-- §13.10 item 7: Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks) and a print of 12 at A4 v2 (a row split inside its cells; expected to fail in WebKit, which then records it as a Safari gap); live Chrome: the media toolbar overlay (hover, selection), the page-break marker (hover label, remove, preview mode without remove), the mask at a split code block, callout, blockquote and list in light and dark mode, and at a custom `canvasBackground`.
+- §13.10 item 7: Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks) and a print of 12 at A4 v2 (a row split inside its cells and a columns block split inside its columns; expected to fail in WebKit, which then records it as a Safari gap); live Chrome: the media toolbar overlay (hover, selection), the page-break marker (hover label, remove, preview mode without remove), the mask at a split code block, callout, blockquote and list in light and dark mode, and at a custom `canvasBackground`.
 - M1's checklist (§12.13) still stands.
 
 **Known limits** (M1's in §12.13 stand, except those M2 closed: the max wait, quiet passes in tall blocks, `packRows`):
