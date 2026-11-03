@@ -203,3 +203,57 @@ describe.each([
     expect(editor.getJSON()).toEqual(before);
   });
 });
+
+const pressBackspace = (editor: Editor) =>
+  editor.view.someProp('handleKeyDown', (f) =>
+    f(editor.view, new KeyboardEvent('keydown', { key: 'Backspace' })),
+  );
+
+const placeCaretAtStart = (editor: Editor, text: string) => {
+  let at: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (at === null && node.isText && node.text === text) at = pos;
+  });
+  if (at === null) throw new Error(`"${text}" not found`);
+  editor.chain().focus().setTextSelection(at).run();
+};
+
+describe.each([
+  ['v1', 1],
+  ['v2', 2],
+])('Backspace after a page break — %s', (_label, schemaVersion) => {
+  let editor: Editor;
+  afterEach(() => editor?.destroy());
+
+  const setup = (pages: boolean, html: string) => {
+    editor = makeEditor(schemaVersion);
+    (editor.storage as unknown as Record<string, unknown>).pagination = {
+      store: { get: () => ({ enabled: pages }) },
+    };
+    editor.commands.setContent(html);
+  };
+
+  it('Pages: one press at the start of the next block deletes the break', () => {
+    setup(true, '<p>one</p><div data-type="page-break"></div><p>two</p>');
+    placeCaretAtStart(editor, 'two');
+    pressBackspace(editor);
+    expect(countNodes(editor, 'pageBreak')).toBe(0);
+    expect(topLevelTypes(editor)).toEqual(['paragraph', 'paragraph']);
+    expect(editor.state.selection.$from.parent.textContent).toBe('two');
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+  });
+
+  it('Pageless keeps the default (v1 selects the break first)', () => {
+    setup(false, '<p>one</p><div data-type="page-break"></div><p>two</p>');
+    placeCaretAtStart(editor, 'two');
+    pressBackspace(editor);
+    expect(countNodes(editor, 'pageBreak')).toBe(schemaVersion === 1 ? 1 : 0);
+  });
+
+  it('Pages: mid-text Backspace leaves the break alone', () => {
+    setup(true, '<p>one</p><div data-type="page-break"></div><p>two</p>');
+    placeCaretAtEnd(editor, 'two');
+    pressBackspace(editor);
+    expect(countNodes(editor, 'pageBreak')).toBe(1);
+  });
+});

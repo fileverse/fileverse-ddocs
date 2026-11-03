@@ -142,6 +142,38 @@ export const PageBreak = Node.create<PageBreakRuleOptions>({
     };
   },
 
+  addKeyboardShortcuts() {
+    return {
+      // Pages draws no break, so Backspace at the start of the top-level
+      // block after one deletes it instead of selecting it first.
+      Backspace: ({ editor }) => {
+        if (!editor.storage.pagination?.store?.get().enabled) return false;
+        const { selection } = editor.state;
+        const { $from } = selection;
+        const topDepth = editor.schema.nodes.dBlock ? 2 : 1;
+        if (
+          !selection.empty ||
+          $from.depth !== topDepth ||
+          $from.parentOffset !== 0 ||
+          (topDepth === 2 && $from.index(1) !== 0)
+        ) {
+          return false;
+        }
+        const start = $from.before(1);
+        const prev = editor.state.doc.resolve(start).nodeBefore;
+        const isBreak =
+          prev?.type.name === this.name ||
+          (prev?.type.name === 'dBlock' &&
+            prev.firstChild?.type.name === this.name);
+        if (!prev || !isBreak) return false;
+        editor.view.dispatch(
+          editor.state.tr.delete(start - prev.nodeSize, start).scrollIntoView(),
+        );
+        return true;
+      },
+    };
+  },
+
   addProseMirrorPlugins() {
     return [
       new Plugin({

@@ -509,7 +509,7 @@ M1 accepted that a code block, callout, blockquote or list split by a spacer dra
 
 ### 13.8 The page-break block in Pages mode
 
-Today the page-break node view is a full-bleed grey strip (`color-bg-secondary`) with a hover "Remove page breaker" button (`page-break-node-view.tsx`). In Pages mode the jump to the next sheet already shows the break, so the break is invisible (user decision, 2026-11-03, replacing the thin marker first built): the node view is an empty zero-height wrapper, and the Pageless `.node-pageBreak` height, margins and fill are zeroed under `[data-page-mode='pages']`. Placement is unchanged, since a forced leaf has no geometry. It is removed like any atom: Backspace at the start of the next block selects it, a second Backspace deletes it. Pageless keeps today's views, focus and preview mode included.
+Today the page-break node view is a full-bleed grey strip (`color-bg-secondary`) with a hover "Remove page breaker" button (`page-break-node-view.tsx`). In Pages mode the jump to the next sheet already shows the break, so the break is invisible (user decision, 2026-11-03, replacing the thin marker first built): the node view is an empty zero-height wrapper, and the Pageless `.node-pageBreak` height, margins and fill are zeroed under `[data-page-mode='pages']`. Placement is unchanged, since a forced leaf has no geometry. Backspace at the start of the top-level block after it deletes it in one press (v1 would otherwise select it first; `PageBreak`'s keymap, Pages only). Pageless keeps today's views, focus and preview mode included.
 
 ### 13.9 Decided after the builder check
 
@@ -582,7 +582,7 @@ Run on 2026-11-03 at the M2 head (`b4b7191f`), demo on 5174, headless Chrome 156
 **Pending, manual** (the user runs these; not yet done):
 
 - §13.10 item 4: in the demo, File ▸ Print and Cmd+P in Pages mode show the 1 inch sheet in Chrome's print dialog.
-- §13.10 item 7: Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks) and a print of 12 at A4 v2 (a row split inside its cells and a columns block split inside its columns; expected to fail in WebKit, which then records it as a Safari gap); live Chrome: the media toolbar overlay (hover, selection), the invisible page break (no gap or strip, removed with two Backspaces), the mask at a split code block, callout, blockquote and list in light and dark mode, and at a custom `canvasBackground`.
+- §13.10 item 7: Safari, on-screen sheets for 04 and 10, a print of 04 at A4 v2 (row breaks) and a print of 12 at A4 v2 (a row split inside its cells and a columns block split inside its columns; expected to fail in WebKit, which then records it as a Safari gap); live Chrome: the media toolbar overlay (hover, selection), the invisible page break (no gap or strip, one Backspace removes it), the mask at a split code block, callout, blockquote and list in light and dark mode, and at a custom `canvasBackground`.
 - M1's checklist (§12.13) still stands.
 
 **Known limits** (M1's in §12.13 stand, except those M2 closed: the max wait, quiet passes in tall blocks, `packRows`):
