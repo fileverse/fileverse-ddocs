@@ -356,6 +356,10 @@ export class PaginationView {
     } catch {
       // The view is gone.
     }
-    this.storage.onError?.(error);
+    try {
+      this.storage.onError?.(error);
+    } catch (e) {
+      console.error('ddoc pagination: onPagesError threw', e);
+    }
   }
 }

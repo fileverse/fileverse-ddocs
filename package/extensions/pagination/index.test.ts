@@ -378,6 +378,23 @@ describe.each([
     expect(onError).toHaveBeenCalledWith(boom);
   });
 
+  it('a throwing onError is contained: fail completes and nothing escapes', () => {
+    storage().onError = () => {
+      throw new Error('host');
+    };
+    enableAndSettle();
+    collect.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    expect(() => {
+      enable({ zoom: 2 });
+      vi.advanceTimersByTime(FRAME);
+    }).not.toThrow();
+    expect(storage().failed).toBe(true);
+    expect(decorations()).toEqual([]);
+    expect(() => typeAt(paragraphAt('one') + 1, 'x')).not.toThrow();
+  });
+
   it('start adds fonts and compositionend listeners; running:false and destroy remove them', () => {
     const fonts = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
     Object.defineProperty(document, 'fonts', {
