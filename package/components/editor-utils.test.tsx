@@ -310,4 +310,28 @@ describe('Print and PDF export in Pages mode', () => {
     expect(showLoader).toHaveBeenCalledTimes(1);
     expect(removeLoader).toHaveBeenCalledWith('loader');
   });
+
+  it('Export PDF falls back, logs and removes the loader when Pages print rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    const result = render();
+    const pdf = result.current.exportOptions.find(
+      (item) => item?.title === 'PDF document (.pdf)',
+    );
+    await run(() => pdf!.onClick());
+    expect(err).toHaveBeenCalled();
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(removeLoader).toHaveBeenCalledWith('loader');
+    err.mockRestore();
+  });
+
+  it('toolbar Print falls back and logs when Pages print rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(err).toHaveBeenCalled();
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
 });

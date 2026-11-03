@@ -692,7 +692,13 @@ export const useEditorToolbar = ({
             );
 
             const loader = showLoader();
-            if (await printPagesTab(editor)) {
+            let printed = false;
+            try {
+              printed = await printPagesTab(editor);
+            } catch (error) {
+              console.error('Pages print failed, using the plain path', error);
+            }
+            if (printed) {
               removeLoader(loader);
               return;
             }
@@ -875,7 +881,11 @@ export const useEditorToolbar = ({
   const printHandler = () => {
     if (editor) {
       const closeAndPrint = async () => {
-        if (await printPagesTab(editor)) return;
+        try {
+          if (await printPagesTab(editor)) return;
+        } catch (error) {
+          console.error('Pages print failed, using the plain path', error);
+        }
         const originalDoc = editor.state.doc;
         const docWithEmbedImageContent =
           await searchForSecureImageNodeAndEmbedImageContent(

@@ -125,6 +125,22 @@ export function subscribePagesCount(
 // `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
 // key in the same object literal overwrites the earlier one from
 // `...DdocEditorProps`, rather than merging).
+export const printTab = (
+  editor: Editor,
+  isPresentationMode: boolean | undefined,
+  slides: string[],
+) => {
+  if (isPresentationMode) return handlePrint(slides);
+  return printPagesTab(editor)
+    .then((done) => {
+      if (!done) handleContentPrint(editor.getHTML());
+    })
+    .catch((error) => {
+      console.error('Pages print failed, using the plain path', error);
+      handleContentPrint(editor.getHTML());
+    });
+};
+
 export const TAB_EDITOR_ATTRIBUTES: Record<string, string> = {
   ...(DdocEditorProps.attributes as Record<string, string>),
 };
@@ -1288,12 +1304,7 @@ export const useTabEditor = ({
       if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
         event.preventDefault();
         if (editor) {
-          if (isPresentationMode) handlePrint(slides);
-          else {
-            printPagesTab(editor).then((done) => {
-              if (!done) handleContentPrint(editor.getHTML());
-            });
-          }
+          printTab(editor, isPresentationMode, slides);
         }
       }
     };
