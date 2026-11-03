@@ -61,9 +61,26 @@ function inRepeatedHeader($pos: ResolvedPos, spacers: Spacer[]): boolean {
   return false;
 }
 
+// In a table row split inside its cells: the cells sit side by side, so an
+// edit in any of them can move another's lines around a spacer (§13.6).
+function inSplitRow($pos: ResolvedPos, spacers: Spacer[]): boolean {
+  for (let d = $pos.depth; d > 0; d--) {
+    if ($pos.node(d).type.name !== 'tableRow') continue;
+    const start = $pos.start(d);
+    const end = $pos.end(d);
+    if (
+      spacers.some((s) => s.kind === 'inText' && s.pos > start && s.pos < end)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * True when every step is an inline edit inside one and the same textblock
- * that holds no inText spacer and is not a repeated table header. Spacer
+ * that holds no inText spacer, is not a repeated table header and is not in
+ * a row split inside its cells. Spacer
  * positions refer to the doc before `trs`.
  * Transactions without steps are ignored; no doc changes at all returns true.
  */
@@ -89,7 +106,8 @@ export function editStaysInOneTextblock(
           spacers.some(
             (s) => s.kind === 'inText' && s.pos >= start && s.pos <= end,
           ) ||
-          inRepeatedHeader($from, spacers)
+          inRepeatedHeader($from, spacers) ||
+          inSplitRow($from, spacers)
         ) {
           return false;
         }

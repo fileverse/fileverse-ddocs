@@ -298,6 +298,56 @@ describe('editStaysInOneTextblock', () => {
   });
 });
 
+// A split row's cells sit side by side: an edit in one cell moves the lines
+// above another cell's spacer, or this cell's own (docs/PAGES_MODE.md §13.6).
+describe.each([1, 2])('editStaysInOneTextblock in a split row, v%i', (v) => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = new Editor({
+      extensions: getHeadlessExtensions({ schemaVersion: v }),
+    });
+    editor.commands.setContent(
+      '<table><tbody><tr><td><p>a1</p><p>a2</p></td><td><p>b1</p></td></tr><tr><td><p>c</p></td><td><p>d</p></td></tr></tbody></table><p>after</p>',
+    );
+  });
+  afterEach(() => editor.destroy());
+
+  const textAt = (text: string) => {
+    let at = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.isText && n.text === text) at = pos;
+    });
+    return at;
+  };
+  const typeAt = (pos: number) => {
+    const trs: Transaction[] = [];
+    editor.on('transaction', ({ transaction }) => trs.push(transaction));
+    editor.view.dispatch(editor.state.tr.insertText('x', pos));
+    editor.off('transaction');
+    return trs.filter((t) => t.docChanged);
+  };
+  const inText = (pos: number): Spacer => ({
+    kind: 'inText',
+    pos,
+    height: 10,
+    page: 2,
+    print: true,
+  });
+
+  it('typing anywhere in a row holding an inText spacer is false', () => {
+    const spacers = [inText(textAt('b1') + 1)];
+    expect(editStaysInOneTextblock(typeAt(textAt('a1') + 1), spacers)).toBe(
+      false,
+    );
+    expect(editStaysInOneTextblock(typeAt(textAt('c') + 1), spacers)).toBe(
+      true,
+    );
+    expect(editStaysInOneTextblock(typeAt(textAt('after') + 1), spacers)).toBe(
+      true,
+    );
+  });
+});
+
 describe('caretInTallLeaf', () => {
   let editor: Editor;
   beforeEach(() => {
