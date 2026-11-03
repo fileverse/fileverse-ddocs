@@ -29,7 +29,7 @@ export function DemoFooter({
         <div className="flex gap-1 items-center">
           <p>Pages:</p>
           <span className="tabular-nums">
-            {pageCount <= 1 ? pageCount : `~${pageCount}`}
+            {isPagesMode || pageCount <= 1 ? pageCount : `~${pageCount}`}
           </span>
         </div>
         <IconButton
