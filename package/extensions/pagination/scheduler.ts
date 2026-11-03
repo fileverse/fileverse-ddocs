@@ -5,8 +5,8 @@ import {
   ReplaceStep,
   type Step,
 } from '@tiptap/pm/transform';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import type { Spacer } from './place';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { Placement, Spacer } from './place';
 
 const DEBOUNCE_MS = 300;
 export const MAX_WAIT_MS = 1000;
@@ -184,4 +184,23 @@ export class PassScheduler {
     if (this.frame !== null) this.cancelRaf(this.frame);
     this.frame = null;
   }
+}
+
+// A leaf the placement spilled over pages resizes on every keystroke, so a
+// frame pass per key would never settle; the debounced pass covers it.
+export function caretInTallLeaf(
+  $head: ResolvedPos,
+  placement: Placement | null,
+): boolean {
+  if (!placement) return false;
+  const tall = new Set(
+    placement.pageStarts
+      .filter((s) => s.kind === 'continued')
+      .map((s) => s.pos),
+  );
+  if (!tall.size) return false;
+  for (let d = $head.depth; d >= 1; d--) {
+    if (tall.has($head.before(d))) return true;
+  }
+  return false;
 }

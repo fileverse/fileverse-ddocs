@@ -474,6 +474,26 @@ describe.each([
     expect(collect).toHaveBeenCalledTimes(1);
   });
 
+  it('typing inside a tall block runs no frame pass', () => {
+    enableAndSettle();
+    const at = paragraphAt('two');
+    const placement = storage().store.get().placement!;
+    storage().store.set({
+      placement: {
+        ...placement,
+        pageStarts: [...placement.pageStarts, { kind: 'continued', pos: at }],
+      },
+    });
+    collect.mockClear();
+    const el = editor.view.nodeDOM(at) as HTMLElement;
+    el.getBoundingClientRect = () =>
+      ({ top: 1000, bottom: 1050, height: 50 }) as DOMRect;
+    editor.commands.setTextSelection(at + 4);
+    typeAt(at + 4, 'x');
+    vi.advanceTimersByTime(FRAME);
+    expect(collect).not.toHaveBeenCalled();
+  });
+
   it('waits for compositionend while composing', () => {
     enableAndSettle();
     collect.mockClear();

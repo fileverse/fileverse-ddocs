@@ -1,10 +1,11 @@
 import { Editor } from '@tiptap/react';
 import type { Transaction } from '@tiptap/pm/state';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
-import type { Spacer } from './place';
+import type { Placement, Spacer } from './place';
 import {
   PassScheduler,
   createSettleGuard,
+  caretInTallLeaf,
   editStaysInOneTextblock,
 } from './scheduler';
 
@@ -267,5 +268,47 @@ describe('editStaysInOneTextblock', () => {
   it('no steps or an empty list is true', () => {
     expect(editStaysInOneTextblock([], [])).toBe(true);
     expect(editStaysInOneTextblock([editor.state.tr], [])).toBe(true);
+  });
+});
+
+describe('caretInTallLeaf', () => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = new Editor({ extensions: getHeadlessExtensions() });
+    editor.commands.setContent('<p>hello</p><p>world</p>');
+  });
+  afterEach(() => editor.destroy());
+
+  const textblockPos = (text: string) => {
+    let at = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.isTextblock && n.textContent === text) at = pos;
+    });
+    return at;
+  };
+  const withStarts = (...starts: Placement['pageStarts']): Placement => ({
+    breaks: [],
+    pageStarts: starts,
+    pageCount: starts.length + 1,
+    spacers: [],
+  });
+  const head = (text: string) =>
+    editor.state.doc.resolve(textblockPos(text) + 2);
+
+  it('true inside a node that continues onto the next page', () => {
+    const placement = withStarts({
+      kind: 'continued',
+      pos: textblockPos('hello'),
+    });
+    expect(caretInTallLeaf(head('hello'), placement)).toBe(true);
+  });
+
+  it('false in an ordinary paragraph, and with no placement', () => {
+    const placement = withStarts(
+      { kind: 'continued', pos: textblockPos('hello') },
+      { kind: 'before', pos: textblockPos('world') },
+    );
+    expect(caretInTallLeaf(head('world'), placement)).toBe(false);
+    expect(caretInTallLeaf(head('hello'), null)).toBe(false);
   });
 });

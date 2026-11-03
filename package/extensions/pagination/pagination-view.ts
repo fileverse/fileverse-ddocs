@@ -8,6 +8,7 @@ import { PAGE_GAP, PageGrid, type Orientation } from './page-grid';
 import type { createPageStore } from './page-store';
 import { place, type Placement, type Spacer } from './place';
 import {
+  caretInTallLeaf,
   createSettleGuard,
   editStaysInOneTextblock,
   PassScheduler,
@@ -224,6 +225,8 @@ export class PaginationView {
     const { pageSetup, orientation } = this.storage;
     const { $head } = this.view.state.selection;
     if (!pageSetup || !$head.depth || !$head.parent.isTextblock) return false;
+    if (caretInTallLeaf($head, this.storage.store.get().placement))
+      return false;
     const el = this.view.nodeDOM($head.before());
     if (!(el instanceof HTMLElement)) return false;
     const rect = el.getBoundingClientRect();
