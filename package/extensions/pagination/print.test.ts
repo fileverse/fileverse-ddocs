@@ -1,5 +1,6 @@
 import { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import * as Y from 'yjs';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-handler';
 import {
@@ -274,6 +275,55 @@ describe('buildPrintHtml', () => {
       expect(tables).toHaveLength(2);
       expect(tables[1].querySelector('thead')?.textContent).toBe(thead);
       expect(div.querySelector('[data-print-repeat-header]')).toBeNull();
+    },
+  );
+
+  // An iframe renders no children, so a marker inside it never prints.
+  it.each([1, 2] as const)(
+    'v%i: wraps an iframe page start in a block that holds the marker',
+    async (schemaVersion) => {
+      const local = new Editor({
+        extensions: getHeadlessExtensions({ ydoc: new Y.Doc(), schemaVersion }),
+      });
+      local.commands.setContent(
+        '<p>a</p><iframe src="https://www.youtube-nocookie.com/embed/x" width="602" height="400"></iframe><p>b</p>',
+      );
+      let framePos = -1;
+      local.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'iframe') framePos = pos;
+      });
+      expect(framePos).toBeGreaterThan(0);
+      const { html } = await buildPrintHtml({
+        editor: local,
+        pageSetup: pages,
+        isPagesActive: true,
+        placement: {
+          breaks: [{ kind: 'before', pos: framePos }],
+          pageStarts: [
+            { kind: 'before', pos: 0 },
+            { kind: 'before', pos: framePos },
+          ],
+          pageCount: 2,
+          spacers: [],
+        },
+        debugMarkers: true,
+      });
+      local.destroy();
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      const marker = [...div.querySelectorAll('.ddoc-print-marker')].find(
+        (m) => m.textContent === '§P2§',
+      )!;
+      const host = marker.parentElement!;
+      expect(host.tagName).toBe('DIV');
+      expect(host.getAttribute('data-print-page-start')).toBe('2');
+      expect(host.hasAttribute('data-print-break-before')).toBe(true);
+      expect(host.style.position).toBe('relative');
+      const frame = host.querySelector('iframe')!;
+      expect(frame.parentElement).toBe(host);
+      expect(frame.hasAttribute('data-print-page-start')).toBe(false);
+      expect(frame.hasAttribute('data-print-break-before')).toBe(false);
+      expect(frame.childNodes).toHaveLength(0);
     },
   );
 

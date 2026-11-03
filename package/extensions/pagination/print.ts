@@ -54,6 +54,16 @@ const readRootStyle = (dom: HTMLElement) => {
   return style;
 };
 
+const NO_CHILD_RENDER = new Set([
+  'IFRAME',
+  'IMG',
+  'VIDEO',
+  'AUDIO',
+  'CANVAS',
+  'EMBED',
+  'OBJECT',
+]);
+
 // Layout-neutral page labels the M0 checker reads back out of a PDF.
 const addDebugMarkers = (html: string) => {
   const root = document.createElement('div');
@@ -68,7 +78,19 @@ const addDebugMarkers = (html: string) => {
     );
     marker.textContent = `§P${el.getAttribute('data-print-page-start')}§`;
     // A span directly in a <tr> would be moved out of the table on parse.
-    const host = el.tagName === 'TR' ? (el.querySelector('td, th') ?? el) : el;
+    let host = el.tagName === 'TR' ? (el.querySelector('td, th') ?? el) : el;
+    // An iframe or other replaced element renders no children: wrap it in a
+    // block that takes over its break and page start, and hold the marker there.
+    if (NO_CHILD_RENDER.has(el.tagName) && el.parentNode) {
+      host = document.createElement('div');
+      ['data-print-break-before', 'data-print-page-start'].forEach((name) => {
+        if (!el.hasAttribute(name)) return;
+        host.setAttribute(name, el.getAttribute(name) ?? '');
+        el.removeAttribute(name);
+      });
+      el.parentNode.insertBefore(host, el);
+      host.appendChild(el);
+    }
     // Gecko places an absolute box against its containing block's unbroken
     // layout: the host itself must be that block, on the marker's page.
     if (host instanceof HTMLElement) host.style.position = 'relative';
