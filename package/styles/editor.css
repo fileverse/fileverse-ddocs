@@ -676,6 +676,47 @@
   line-height: 1;
 }
 
+/* Masks (§13.7) cut a split box at the text bottom. They sit in view.dom's
+   parent, above the content and below the chrome stacked there (z-index 2+). */
+.ddoc-page-masks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ddoc-page-mask {
+  position: absolute;
+}
+
+.ddoc-page-mask-bottom,
+.ddoc-page-mask-top {
+  box-sizing: border-box;
+  border: 0 solid hsla(var(--color-border-default));
+  border-left-width: 1px;
+  border-right-width: 1px;
+}
+
+.ddoc-page-mask-bottom {
+  border-bottom-width: 1px;
+}
+
+.ddoc-page-mask-top {
+  border-top-width: 1px;
+}
+
+/* Chrome the masks must not cover; the rest already stacks at 5 or more. */
+[data-page-mode='pages'] .ddoc-floating-menu,
+[data-page-mode='pages'] .ProseMirror .collaboration-cursor__caret,
+[data-page-mode='pages'] .ProseMirror .custom-cursor__caret,
+[data-page-mode='pages'] .ProseMirror .trigger-button {
+  z-index: 2;
+}
+
 /* Paper cannot scroll: Pages shows every line of a long code block. */
 [data-page-mode='pages'] .ProseMirror [data-code-body] {
   max-height: none;

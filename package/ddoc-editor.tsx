@@ -1357,6 +1357,9 @@ const DdocEditor = forwardRef(
                               canvasStyle={
                                 !isFocusMode ? getCanvasStyle() : undefined
                               }
+                              deskStyle={
+                                !isFocusMode ? getBackgroundStyle() : undefined
+                              }
                             />
                           )}
                           <div>

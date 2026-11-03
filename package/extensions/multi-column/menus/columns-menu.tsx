@@ -10,6 +10,10 @@ import { useEditingContext } from '../../../hooks/use-editing-context';
 import { useZoom } from '../../../hooks/use-zoom';
 import { counterScaleStyle } from '../../../utils/zoom';
 
+// Pages mode stacks it above the sheet-edge masks (editor.css).
+const markFloatingMenu = (node: HTMLDivElement | null) =>
+  node?.classList.add('ddoc-floating-menu');
+
 export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
   const { isSuggestionMode } = useEditingContext();
   // Mounted inside the scaled page (appendTo is the zoom layer).
@@ -44,6 +48,7 @@ export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
 
   return (
     <BaseBubbleMenu
+      ref={markFloatingMenu}
       editor={editor}
       pluginKey={`columnsMenu-${uuid()}`}
       shouldShow={shouldShow}
