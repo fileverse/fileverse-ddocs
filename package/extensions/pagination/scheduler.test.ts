@@ -83,6 +83,51 @@ describe('PassScheduler', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it('continuous edits run a pass by the max wait', () => {
+    const start = Date.now();
+    let firstRunAt = -1;
+    run.mockImplementation(() => {
+      if (firstRunAt < 0) firstRunAt = Date.now() - start;
+    });
+    for (let t = 0; t < 1500; t += 100) {
+      s.onEdit([]);
+      vi.advanceTimersByTime(100);
+    }
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(firstRunAt).toBe(1000);
+  });
+
+  it('a quiet gap still runs after 300 ms', () => {
+    const start = Date.now();
+    let at = -1;
+    run.mockImplementation(() => {
+      at = Date.now() - start;
+    });
+    s.onEdit([]);
+    vi.advanceTimersByTime(300);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(at).toBe(300);
+  });
+
+  it('a frame trigger clears the deadline', () => {
+    s.onEdit([]);
+    s.now();
+    flushFrames();
+    expect(run).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(500);
+    const start = Date.now();
+    let at = -1;
+    run.mockImplementation(() => {
+      if (at < 0) at = Date.now() - start;
+    });
+    for (let t = 0; t < 1500; t += 100) {
+      s.onEdit([]);
+      vi.advanceTimersByTime(100);
+    }
+    expect(at).toBe(1000);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
   it('now() runs on the next frame, once, and cancels a pending debounce', () => {
     s.onEdit([]);
     s.now();

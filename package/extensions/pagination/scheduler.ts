@@ -9,6 +9,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Spacer } from './place';
 
 const DEBOUNCE_MS = 300;
+export const MAX_WAIT_MS = 1000;
 export const SETTLE_CAP = 4;
 
 export function createSettleGuard(cap = SETTLE_CAP) {
@@ -97,6 +98,7 @@ export class PassScheduler {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private frame: number | null = null;
   private deferred = false;
+  private deadline: number | null = null;
   private destroyed = false;
   private raf: (cb: () => void) => number;
   private cancelRaf: (id: number) => void;
@@ -115,10 +117,13 @@ export class PassScheduler {
       return;
     }
     this.clearTimer();
+    const now = Date.now();
+    if (this.deadline === null) this.deadline = now + MAX_WAIT_MS;
+    const wait = Math.max(0, Math.min(DEBOUNCE_MS, this.deadline - now));
     this.timer = setTimeout(() => {
       this.timer = null;
       this.fire();
-    }, DEBOUNCE_MS);
+    }, wait);
   }
 
   now(): void {
@@ -161,6 +166,7 @@ export class PassScheduler {
   }
 
   private fire() {
+    this.deadline = null;
     if (this.destroyed) return;
     if (this.deps.isComposing()) {
       this.deferred = true;
