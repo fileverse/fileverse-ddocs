@@ -31,6 +31,7 @@ export type PaginationStorage = {
   enabled: boolean;
   running: boolean;
   failed: boolean;
+  onError?: (error: unknown) => void;
   store: ReturnType<typeof createPageStore>;
   flush(): Placement | null;
   lastPass: PassInfo | null;
@@ -355,5 +356,6 @@ export class PaginationView {
     } catch {
       // The view is gone.
     }
+    this.storage.onError?.(error);
   }
 }

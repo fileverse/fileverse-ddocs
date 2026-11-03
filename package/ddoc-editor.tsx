@@ -90,6 +90,7 @@ import { useControllableState } from './hooks/use-controllable-state';
 import { useCanvasMetrics } from './hooks/use-canvas-metrics';
 import { ZoomProvider } from './hooks/use-zoom';
 import { useZoomedPage } from './hooks/use-zoomed-page';
+import { usePaginationSync } from './hooks/use-pagination-sync';
 import { useZoomShortcuts } from './hooks/use-zoom-shortcuts';
 import {
   canChangeZoom,
@@ -110,7 +111,6 @@ import { PageSheets } from './components/page-sheets';
 import {
   buildPrintHtml,
   resolvePrintPlacement,
-  setPrintInputs,
 } from './extensions/pagination/print';
 import { handleContentPrint } from './utils/handle-print';
 import {
@@ -150,6 +150,7 @@ const DdocEditor = forwardRef(
       disableBottomToolbar,
       enableFanficTemplate = false,
       onError,
+      onPagesError,
       setCharacterCount,
       setWordCount,
       setSelectedWordCount,
@@ -933,38 +934,14 @@ const DdocEditor = forwardRef(
         pagesPaper ? new PageGrid(pagesPaper, pagesOrientation) : undefined,
       [pagesPaper, pagesOrientation],
     );
-    useLayoutEffect(() => {
-      if (!editor || editor.isDestroyed) return;
-      setPrintInputs(editor, () => printInputsRef.current);
-      return () => setPrintInputs(editor, null);
-    }, [editor]);
-    useLayoutEffect(() => {
-      if (!editor || editor.isDestroyed) return;
-      // Pageless never touches the extension (already inert).
-      if (!isPagesMode && !editor.storage.pagination?.enabled) return;
-      editor.commands.setPagination({
-        pageSetup: pagesSetup,
-        orientation: pagesOrientation,
-        zoom,
-        enabled: isPagesMode,
-        running: isPagesMode,
-      });
-    }, [editor, isPagesMode, pagesSetup, pagesOrientation, zoom]);
-    // Leaving the active tab (or unmounting): stop passes, keep the spacers.
-    useLayoutEffect(() => {
-      if (!editor) return;
-      return () => {
-        const s = editor.storage.pagination;
-        if (editor.isDestroyed || !s?.running) return;
-        editor.commands.setPagination({
-          pageSetup: s.pageSetup,
-          orientation: s.orientation,
-          zoom: s.zoom,
-          enabled: s.enabled,
-          running: false,
-        });
-      };
-    }, [editor]);
+    usePaginationSync(editor, {
+      pageSetup: pagesSetup,
+      orientation: pagesOrientation,
+      zoom,
+      isPagesMode,
+      onPagesError,
+      printInputs: () => printInputsRef.current,
+    });
     // Pages mode: the sheets take the canvas fill; the rest shows the desk.
     const contentCanvasStyle = (() => {
       const style = getCanvasStyle();

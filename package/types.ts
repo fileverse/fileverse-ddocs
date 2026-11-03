@@ -366,6 +366,8 @@ export interface DdocProps extends CommentAccountProps {
    */
   enableFanficTemplate?: boolean;
   onError?: (error: string) => void;
+  /** Pages mode pagination failed; the editor renders as one column. */
+  onPagesError?: (error: unknown) => void;
   /** Active-tab stats. Fires with all four fields whenever one changes. */
   onStatsChange?: (stats: DdocStats) => void;
   /** @deprecated Use onStatsChange. */

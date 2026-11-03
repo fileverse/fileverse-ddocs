@@ -361,6 +361,59 @@ describe.each([
     expect(collect).not.toHaveBeenCalled();
   });
 
+  it('a failing pass calls storage.onError once with the error', () => {
+    const onError = vi.fn();
+    storage().onError = onError;
+    enableAndSettle();
+    const boom = new Error('boom');
+    collect.mockImplementation(() => {
+      throw boom;
+    });
+    enable({ zoom: 2 });
+    vi.advanceTimersByTime(FRAME);
+    enable({ zoom: 3 });
+    typeAt(paragraphAt('one') + 1, 'x');
+    vi.advanceTimersByTime(1000);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(boom);
+  });
+
+  it('start adds fonts and compositionend listeners; running:false and destroy remove them', () => {
+    const fonts = { addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    Object.defineProperty(document, 'fonts', {
+      value: fonts,
+      configurable: true,
+    });
+    const dom = editor.view.dom;
+    const add = vi.spyOn(dom, 'addEventListener');
+    const remove = vi.spyOn(dom, 'removeEventListener');
+    try {
+      enable();
+      expect(fonts.addEventListener).toHaveBeenCalledWith(
+        'loadingdone',
+        expect.any(Function),
+      );
+      expect(add).toHaveBeenCalledWith('compositionend', expect.any(Function));
+      enable({ running: false });
+      expect(fonts.removeEventListener).toHaveBeenCalledTimes(1);
+      expect(remove).toHaveBeenCalledWith(
+        'compositionend',
+        expect.any(Function),
+      );
+      fonts.removeEventListener.mockClear();
+      remove.mockClear();
+      enable();
+      editor.destroy();
+      expect(fonts.removeEventListener).toHaveBeenCalledTimes(1);
+      expect(remove).toHaveBeenCalledWith(
+        'compositionend',
+        expect.any(Function),
+      );
+    } finally {
+      Reflect.deleteProperty(document, 'fonts');
+    }
+  });
+
   it('store gets pageCount and placement after a pass', () => {
     enableAndSettle();
     const want = expected();
