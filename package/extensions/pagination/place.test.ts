@@ -709,3 +709,75 @@ describe('place table rows', () => {
     expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
   });
 });
+
+// A columns block taller than a page splits in its columns like a row in its
+// cells (§13.5): same lanes, no table, no header.
+describe('place a tall columns block', () => {
+  const a4 = new PageGrid('a4');
+  const lane = (from: number, top: number, count: number, lineH: number) => {
+    const lines = Array.from({ length: count }, (_, i) => ({
+      top: top + i * lineH,
+      bottom: top + (i + 1) * lineH,
+      startPos: from + i * 10,
+    }));
+    return { lines, bottom: top + count * lineH };
+  };
+  const columns = (
+    pos: number,
+    top: number,
+    cells: { lines: unknown[]; bottom: number }[],
+  ) =>
+    atom(pos, top, Math.max(...cells.map((c) => c.bottom)) - top, {
+      cells: cells as Extract<Leaf, { kind: 'atomic' }>['cells'],
+    });
+
+  it('a tall columns block splits each crossing column at its first non-fitting line', () => {
+    // A: 30px lines, line 30 (1000..1030) crosses 1027; B: 25px, line 37.
+    const a = lane(1000, 100, 50, 30);
+    const b = lane(2000, 100, 50, 25);
+    const p = place([columns(1, 100, [a, b])], a4);
+    expect(p.breaks).toEqual([
+      { kind: 'inText', pos: a.lines[30].startPos },
+      { kind: 'inText', pos: b.lines[37].startPos },
+    ]);
+    expect(p.spacers.map((s) => [s.kind, s.height, s.page])).toEqual([
+      ['inText', 1235 - 1000, 2],
+      ['inText', 1235 - 1025, 2],
+    ]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'inText']);
+  });
+
+  it('a column whose content ends above the bottom gets no spacer', () => {
+    const a = lane(1000, 100, 50, 30);
+    const b = lane(2000, 100, 10, 30);
+    const p = place([columns(1, 100, [a, b])], a4);
+    expect(p.spacers.map((s) => s.pos)).toEqual([a.lines[30].startPos]);
+  });
+
+  it('the block ends where its lowest column ends', () => {
+    // A ends lowest (1600 + 235); B moves 255 but ends at 1200 + 255.
+    const a = lane(1000, 100, 50, 30);
+    const b = lane(2000, 100, 20, 55);
+    const cols = columns(1, 100, [a, b]);
+    const after = para(3000, cols.bottom, 40);
+    const p = place([cols, after], a4);
+    const cut = after.lines.findIndex((l) => l.bottom + 235 > 2166);
+    expect(p.breaks).toContainEqual({
+      kind: 'inText',
+      pos: after.lines[cut].startPos,
+    });
+  });
+
+  it('a column with an atom straddling the bottom refuses the split (spill)', () => {
+    const above = lane(1000, 100, 20, 30);
+    const b = {
+      lines: [...above.lines, ...lane(1500, 1200, 10, 30).lines],
+      bottom: 1500,
+      atoms: [{ top: 700, bottom: 1200 }],
+    };
+    const p = place([columns(1, 100, [lane(5000, 100, 50, 30), b])], a4);
+    expect(p.breaks).toEqual([]);
+    expect(p.spacers.filter((s) => s.kind === 'inText')).toEqual([]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
+  });
+});

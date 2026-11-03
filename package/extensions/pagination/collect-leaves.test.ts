@@ -425,6 +425,137 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     });
   });
 
+  // A columns block is a one-row grid: each column is a lane, like a cell.
+  describe('columns taller than a page', () => {
+    const a4 = new PageGrid('a4');
+    const COLS_HTML =
+      '<div data-type="columns"><div data-type="column"><p>a1</p><p>a2</p><p>a3</p></div><div data-type="column"><p>b1</p><p>b2</p></div><div data-type="column"><p>c1</p></div></div><p>after</p>';
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height, left: 0, right: 100 }) as DOMRect;
+    };
+    const para = (text: string) =>
+      [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === text,
+      )!;
+    // The paragraph and, in v1, the dBlock that wraps it in its column.
+    const placePara = (text: string, top: number, height = 10) => {
+      const p = para(text);
+      rectOf(p, top, height);
+      const block = p.closest('[data-type="d-block"]');
+      if (block) rectOf(block, top, height);
+    };
+    const textPos = (text: string) => {
+      let at = -1;
+      editor.state.doc.descendants((n, pos) => {
+        if (at < 0 && n.isText && n.text === text) at = pos;
+      });
+      return at;
+    };
+    const spacerIn = (p: Element, top: number, height: number) => {
+      const el = document.createElement('div');
+      el.className = SPACER_CLASS;
+      el.contentEditable = 'false';
+      rectOf(el, top, height);
+      p.prepend(el);
+    };
+    let tops: Record<string, number> = {};
+    // Natural layout: a3 (1020..1030) and b2 (1022..1032) cross A4's page 0
+    // text bottom (1027); column C ends at 120.
+    const layout = (colTops = [100, 100, 100]) => {
+      tops = { a1: 110, a2: 600, a3: 1020, b1: 110, b2: 1022, c1: 110 };
+      rectOf(editor.view.dom.querySelector('[data-type="columns"]')!, 100, 940);
+      editor.view.dom
+        .querySelectorAll('[data-type="column"]')
+        .forEach((col, i) => rectOf(col, colTops[i], 940));
+      Object.entries(tops).forEach(([text, top]) => placePara(text, top));
+      placePara('after', 1050);
+    };
+    beforeEach(() => {
+      editor.commands.setContent(COLS_HTML);
+      document.elementFromPoint = () => null;
+      Range.prototype.getClientRects = function (this: Range) {
+        const top = tops[this.startContainer.textContent ?? ''] ?? 0;
+        return [lineAt(top)] as unknown as DOMRectList;
+      };
+    });
+    afterEach(() => {
+      Range.prototype.getClientRects = function () {
+        return lineRects as unknown as DOMRectList;
+      };
+      tops = {};
+    });
+    const columnsLeaf = (leaves: ReturnType<typeof collectLeaves>) => {
+      const leaf = leaves.find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.type.name === 'columns',
+      );
+      if (leaf?.kind !== 'atomic') throw new Error('expected a columns leaf');
+      return leaf;
+    };
+
+    it('a tall columns block splits each crossing column at its first non-fitting line', () => {
+      layout();
+      const p = place(collectLeaves(editor.view, a4.textHeight), a4);
+      expect(p.breaks).toEqual([
+        { kind: 'inText', pos: textPos('a3') },
+        { kind: 'inText', pos: textPos('b2') },
+      ]);
+      expect(p.spacers.map((s) => [s.kind, s.pos, s.height])).toEqual([
+        ['inText', textPos('a3'), 1235 - 1020],
+        ['inText', textPos('b2'), 1235 - 1022],
+      ]);
+      expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'inText']);
+    });
+
+    it('a column whose content ends above the bottom gets no spacer', () => {
+      layout();
+      const p = place(collectLeaves(editor.view, a4.textHeight), a4);
+      const c = editor.view.dom.querySelectorAll('[data-type="column"]')[2];
+      const inC = (pos: number) => c.contains(editor.view.domAtPos(pos).node);
+      expect(p.spacers.filter((s) => inC(s.pos))).toEqual([]);
+      expect(p.spacers.filter((s) => s.kind === 'inText')).toHaveLength(2);
+    });
+
+    it('reads in-column spacers back per column; the block grows by its lowest column', () => {
+      // Rendered after the split: a3 and b2 start page 1 (1235).
+      layout();
+      tops = { ...tops, a3: 1235, b2: 1235 };
+      spacerIn(para('a3'), 1020, 215);
+      spacerIn(para('b2'), 1022, 213);
+      placePara('a3', 1020, 225);
+      placePara('b2', 1022, 223);
+      rectOf(
+        editor.view.dom.querySelector('[data-type="columns"]')!,
+        100,
+        1153,
+      );
+      placePara('after', 1050 + 213);
+      const leaves = collectLeaves(editor.view, a4.textHeight);
+      const cols = columnsLeaf(leaves);
+      expect(cols.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 600, 1020],
+        [110, 1022],
+        [110],
+      ]);
+      expect(cols.cells?.map((c) => c.bottom)).toEqual([1030, 1032, 120]);
+      expect(cols.bottom).toBe(1040);
+      const after = leaves.find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.textContent === 'after',
+      );
+      expect(after?.kind === 'text' && after.top).toBe(1050);
+    });
+
+    it('a grid that wraps onto a second row refuses the split', () => {
+      layout([100, 100, 400]);
+      const leaves = collectLeaves(editor.view, a4.textHeight);
+      expect(columnsLeaf(leaves).cells).toEqual([]);
+      // The block keeps the tall-leaf rule: no break inside it.
+      const p = place(leaves, a4);
+      expect(p.breaks.filter((b) => b.kind === 'inText')).toEqual([]);
+      expect(p.spacers.filter((s) => s.kind === 'inText')).toEqual([]);
+    });
+  });
+
   it('marks headings and the table header row', () => {
     const leaves = collectLeaves(editor.view, 931);
     expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });

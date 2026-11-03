@@ -322,6 +322,28 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     expect(body(piece)).toEqual(['HG', 'five sixseven']);
   });
 
+  it('print: inText breaks inside column paragraphs are inserted', () => {
+    editor.commands.setContent(
+      '<div data-type="columns"><div data-type="column"><p>one two</p></div><div data-type="column"><p>three four</p></div></div>',
+    );
+    const doc = editor.state.doc;
+    const out = dom(
+      html([
+        { kind: 'inText', pos: textPos(doc, 'two') },
+        { kind: 'inText', pos: textPos(doc, 'four') },
+      ]),
+    );
+    const spans = [...out.querySelectorAll('[data-print-break]')];
+    expect(spans.map((s) => s.nextSibling?.textContent)).toEqual([
+      'two',
+      'four',
+    ]);
+    const columns = [...out.querySelectorAll('[data-type="column"]')];
+    expect(
+      spans.map((s) => columns.indexOf(s.closest('[data-type="column"]')!)),
+    ).toEqual([0, 1]);
+  });
+
   // The dBlock node view marks a table block .is-table; its width cap hangs
   // off that class.
   it.runIf(schemaVersion === 1)('marks a dBlock holding a table', () => {

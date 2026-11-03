@@ -179,12 +179,15 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
             ),
     };
   });
-  // Cells of a row sit side by side: their inText spacers do not add up.
-  // Each counts 0 for what follows, except the row's last one, which carries
-  // how much the row grew: its lowest cell bottom, with and without them.
+  // Cells of a row (columns of a columns block) sit side by side: their
+  // inText spacers do not add up. Each counts 0 for what follows, except the
+  // row's last one, which carries how much the row grew: its lowest cell
+  // bottom, with and without them.
   const inCell = new Map<HTMLElement, typeof spacers>();
   spacers.forEach((s) => {
-    const cell = s.inText ? s.el.closest<HTMLElement>('td, th') : null;
+    const cell = s.inText
+      ? s.el.closest<HTMLElement>('td, th, [data-type="column"]')
+      : null;
     if (!cell || !view.dom.contains(cell)) return;
     inCell.set(cell, [...(inCell.get(cell) ?? []), s]);
   });
@@ -312,8 +315,9 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
 
   type Atomic = Extract<Leaf, { kind: 'atomic' }>;
 
-  // Lines of every textblock and boxes of every other block in each cell of a single row, read back from the
-  // row's spacers before it (base) and the cell's own (§13.6).
+  // Lines of every textblock and boxes of every other block in each cell of a
+  // single row (or column of a columns block), read back from the row's
+  // spacers before it (base) and the cell's own (§13.5, §13.6).
   const cellsOf = (row: PMNode, rowPos: number, base: number) => {
     const out: NonNullable<Atomic['cells']> = [];
     row.forEach((cell, offset) => {
@@ -442,6 +446,26 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
     }
   };
 
+  // A columns block is a one-row grid: its columns split like a row's cells
+  // (§13.5), unless the grid wraps them onto more than one row.
+  const visitColumns = (node: PMNode, pos: number) => {
+    const b = box(pos);
+    if (!b) return;
+    const leaf = flowLeaf('atomic', pos, b, {});
+    const base = sums[b.first];
+    lazy(leaf, 'cells', () => {
+      const tops: number[] = [];
+      node.forEach((_, offset) => {
+        const el = view.nodeDOM(pos + 1 + offset);
+        if (el instanceof HTMLElement)
+          tops.push(el.getBoundingClientRect().top);
+      });
+      const oneRow = tops.every((top) => Math.abs(top - tops[0]) < 0.5);
+      return oneRow ? cellsOf(node, pos, base) : [];
+    });
+    leaves.push(leaf);
+  };
+
   const visit = (node: PMNode, pos: number) => {
     const name = node.type.name;
     if (WALKED.has(name)) return walk(node, pos + 1);
@@ -450,6 +474,7 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       return;
     }
     if (name === 'table') return visitTable(node, pos);
+    if (name === 'columns') return visitColumns(node, pos);
     if (name === 'callout') {
       const b = box(pos);
       if (b && b.bottom - b.top > textHeight) return walk(node, pos + 1);

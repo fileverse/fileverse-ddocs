@@ -389,3 +389,54 @@ describe('caretInTallLeaf', () => {
     expect(caretInTallLeaf(head('hello'), null)).toBe(false);
   });
 });
+
+// A split columns block's columns sit side by side, like a split row's cells.
+describe.each([1, 2])(
+  'editStaysInOneTextblock in a split columns block, v%i',
+  (v) => {
+    let editor: Editor;
+    beforeEach(() => {
+      editor = new Editor({
+        extensions: getHeadlessExtensions({ schemaVersion: v }),
+      });
+      editor.commands.setContent(
+        '<div data-type="columns"><div data-type="column"><p>a1</p><p>a2</p></div><div data-type="column"><p>b1</p></div></div><p>after</p>',
+      );
+    });
+    afterEach(() => editor.destroy());
+
+    const textAt = (text: string) => {
+      let at = -1;
+      editor.state.doc.descendants((n, pos) => {
+        if (at < 0 && n.isText && n.text === text) at = pos;
+      });
+      return at;
+    };
+    const typeAt = (pos: number) => {
+      const trs: Transaction[] = [];
+      editor.on('transaction', ({ transaction }) => trs.push(transaction));
+      editor.view.dispatch(editor.state.tr.insertText('x', pos));
+      editor.off('transaction');
+      return trs.filter((t) => t.docChanged);
+    };
+
+    it('typing in a split columns block takes the full pass', () => {
+      const spacers: Spacer[] = [
+        {
+          kind: 'inText',
+          pos: textAt('b1') + 1,
+          height: 10,
+          page: 2,
+          print: true,
+        },
+      ];
+      expect(editStaysInOneTextblock(typeAt(textAt('a1') + 1), spacers)).toBe(
+        false,
+      );
+      expect(
+        editStaysInOneTextblock(typeAt(textAt('after') + 1), spacers),
+      ).toBe(true);
+      expect(editStaysInOneTextblock(typeAt(textAt('a2') + 1), [])).toBe(true);
+    });
+  },
+);

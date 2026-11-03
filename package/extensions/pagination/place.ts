@@ -32,9 +32,10 @@ export type Leaf =
       spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
-      // A single row's cells: lines of every textblock in each, the boxes
-      // of its non-text blocks (atoms), and where its content ends. Read
-      // only when the row splits (§13.6).
+      // A single row's cells, or a columns block's columns: lines of every
+      // textblock in each, the boxes of its non-text blocks (atoms), and
+      // where its content ends. Read only when the leaf splits (§13.5,
+      // §13.6); empty when it must not (a grid wrapped onto two rows).
       cells?: Cell[];
     }
   | { kind: 'forced'; pos: number };
@@ -159,12 +160,12 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     carry = shift - shiftBefore;
   };
 
-  // A row taller than the room splits inside its cells: each crossing cell
-  // breaks at its first line that does not fit, keeping one line (§13.6).
-  // No header is repeated across it. Returns false, placing nothing, when no
-  // cell can break, or when a split would leave content in the masked band:
-  // an atom the cut does not move ends below the bottom, or the kept line
-  // starts at or below it.
+  // A row (or columns block) taller than the room splits inside its cells:
+  // each crossing cell breaks at its first line that does not fit, keeping
+  // one line (§13.5, §13.6). No header is repeated across it. Returns false,
+  // placing nothing, when no cell can break, or when a split would leave
+  // content in the masked band: an atom the cut does not move ends below the
+  // bottom, or the kept line starts at or below it.
   const splitRow = (cells: Cell[]) => {
     const start = { shift, drift };
     const counts = [breaks.length, spacers.length, pageStarts.length, page];
