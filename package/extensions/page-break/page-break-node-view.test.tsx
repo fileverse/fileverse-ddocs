@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { PageBreakNodeView } from './page-break-node-view';
 
 const ctx = vi.hoisted(() => ({ isPreviewMode: false, isFocusMode: false }));
@@ -55,33 +55,12 @@ describe('PageBreakNodeView', () => {
     ctx.isFocusMode = false;
   });
 
-  it('Pages: renders the thin marker (no grey strip) with the remove control', () => {
+  it('Pages: renders an empty, zero-height marker', () => {
     const { container } = renderView(true);
+    const marker = container.querySelector('[data-page-break-marker]');
+    expect(marker?.classList.contains('h-0')).toBe(true);
+    expect(marker?.childElementCount).toBe(0);
     expect(container.querySelector('.color-bg-secondary')).toBeNull();
-    expect(container.querySelector('[data-page-break-marker]')).not.toBeNull();
-    expect(
-      container.querySelector('[data-tooltip="Remove page breaker"]'),
-    ).not.toBeNull();
-    expect(screen.getByTestId('icon').dataset.name).toBe('PageBreakRemove');
-    expect(
-      container.querySelector('br[data-type="page-break"]'),
-    ).not.toBeNull();
-  });
-
-  it('Pages: clicking remove deletes the node', () => {
-    const { editor, deleteNode } = renderView(true);
-    fireEvent.click(screen.getByTestId('icon'));
-    expect(editor.commands.unsetPageBreak).toHaveBeenCalled();
-    expect(deleteNode).toHaveBeenCalled();
-  });
-
-  it('Pages: preview mode shows no remove control', () => {
-    ctx.isPreviewMode = true;
-    const { container } = renderView(true);
-    expect(screen.queryByTestId('icon')).toBeNull();
-    expect(
-      container.querySelector('br[data-type="page-break"]'),
-    ).not.toBeNull();
   });
 
   it('Pageless keeps today’s strip', () => {

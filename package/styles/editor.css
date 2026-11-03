@@ -643,6 +643,13 @@
   display: none;
 }
 
+/* A page break is invisible in Pages: the jump to the next sheet shows it. */
+[data-page-mode='pages'] .ProseMirror .node-pageBreak {
+  height: 0;
+  margin: 0;
+  background-color: transparent;
+}
+
 /* Sheets (docs/PAGES_MODE.md §12.6) sit behind the content in the zoom layer
    and take the canvas fill; the content itself shows the desk between them. */
 [data-page-mode='pages'] .ProseMirror.main-doc-editor {

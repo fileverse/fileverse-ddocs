@@ -36,35 +36,9 @@ export const PageBreakNodeView: React.FC<NodeViewProps> = ({
     }),
   };
 
+  // The jump to the next sheet already shows the break.
   if (isPages) {
-    return (
-      <NodeViewWrapper
-        data-page-break-marker=""
-        className="group relative flex h-6 items-center justify-center"
-      >
-        <br
-          data-type="page-break"
-          data-page-break="true"
-          style={{ pageBreakAfter: 'always' }}
-        />
-        <div className="absolute left-0 right-0 top-1/2 h-px color-bg-tertiary" />
-        {!isPreviewMode && (
-          <div className="relative px-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 color-bg-default">
-            <Tooltip
-              sideOffset={5}
-              position="bottom"
-              text="Remove page breaker"
-            >
-              <LucideIcon
-                name="PageBreakRemove"
-                onClick={handleDeleteNode}
-                className="color-text-secondary cursor-pointer"
-              />
-            </Tooltip>
-          </div>
-        )}
-      </NodeViewWrapper>
-    );
+    return <NodeViewWrapper data-page-break-marker="" className="h-0" />;
   }
 
   return (
