@@ -1172,6 +1172,11 @@ export const mountContentPrintHost = (
   let pageNumberEl: HTMLStyleElement | null = null;
   let stopMediaRatios: (() => void) | null = null;
   if (isPages) {
+    // renderHTML gives a video an inline full width; on screen it has its
+    // stored width (a CSS !important would drop the width attribute too).
+    contentRoot
+      .querySelectorAll<HTMLElement>("[data-type='resizable-media'] > video")
+      .forEach((video) => video.style.removeProperty('width'));
     stopMediaRatios = publishMediaRatios(contentRoot);
     pageNumberEl = document.createElement('style');
     pageNumberEl.setAttribute('data-ddoc-print', 'page-numbers');

@@ -712,7 +712,8 @@
 /* Media fits one page's text height, caption included, and narrows to keep
    its ratio (--ddoc-media-ratio on the box, media-ratio.ts). The box is what
    narrows: a percentage cap on the media alone leaves the box at the stored
-   width. An image box has a 2px border; a caption is a 22px line 4px below.
+   width. An image box has a 2px border; a caption takes 26px (an 18px line
+   in two nested caption divs, each 4px below what precedes it).
    contain only covers the moment before the ratio is known. Pages print
    restates this. */
 [data-page-mode='pages'] .ProseMirror [data-media-frame] :is(img, video, iframe) {

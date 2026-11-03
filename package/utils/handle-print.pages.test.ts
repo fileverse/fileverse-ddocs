@@ -80,6 +80,19 @@ describe('content print, pages', () => {
     expect(readMounted().style).toMatch(/max-height:\s*931px/);
   });
 
+  // renderHTML gives a print video an inline full width; on screen it has
+  // its stored width (docs/PAGES_MODE.md §13.5).
+  it('prints a video at its stored width', () => {
+    const VIDEO =
+      '<div data-type="resizable-media" media-type="video"><video controls="true" style="width: 100%" width="400" media-type="video"></video></div>';
+    mountContentPrintHost(VIDEO, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const video = document.querySelector<HTMLVideoElement>(
+      '.ddoc-print-host video',
+    )!;
+    expect(video.style.width).toBe('');
+    expect(video.getAttribute('width')).toBe('400');
+  });
+
   it('caps media at the text height of the paper and orientation', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },

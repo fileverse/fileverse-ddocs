@@ -12,7 +12,7 @@ import { SecureImageV2 } from '../../components/secure-image-v2.tsx';
 import { IpfsImageFetchPayload } from '../../types.ts';
 import { toLayoutDelta } from '../../utils/zoom';
 import { getCornerResizeStep } from './corner-resize';
-import { publishMediaRatios } from './media-ratio';
+import { useMediaRatio } from './use-media-ratio';
 interface WidthAndHeight {
   width: number;
   height: number;
@@ -130,10 +130,11 @@ export const getResizableMediaNodeView =
 
     // Pages narrows media taller than a page by its ratio (editor.css).
     const mediaBoxRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-      if (!mediaBoxRef.current) return;
-      return publishMediaRatios(mediaBoxRef.current, mediaBoxRef.current);
-    }, [node.attrs.src, node.attrs.width, node.attrs.height]);
+    useMediaRatio(editor, mediaBoxRef, [
+      node.attrs.src,
+      node.attrs.width,
+      node.attrs.height,
+    ]);
 
     // Converts the legacy `caption` string attribute into an editable
     // `mediaCaption` child node. Called on user interaction (click on the
