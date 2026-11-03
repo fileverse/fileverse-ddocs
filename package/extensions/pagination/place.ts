@@ -124,6 +124,8 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       followIdx = -1;
       drift = followDrift;
     }
+    // The spacer row drops the rounded header; the clone renders the real one.
+    drift += Math.round(reserve) - reserve;
     spacers.push({
       kind: 'block',
       pos: leaf.spacerPos,

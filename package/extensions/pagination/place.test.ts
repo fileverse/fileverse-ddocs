@@ -453,6 +453,24 @@ describe('place table rows', () => {
     expect(r.pageStarts.map((s) => s.kind)).toEqual(['before', 'before']);
   });
 
+  it('carries the rounding of a fractional repeated header', () => {
+    // The spacer row is whole pixels (height less the rounded header); the
+    // header clone renders at its measured 29.4px (spacers.ts).
+    const header = 29.4;
+    const rows = rowsFrom(96, [header, ...Array(40).fill(300)], header);
+    const r = place(rows, a4);
+    const moved = r.spacers.filter((sp) => sp.header);
+    expect(moved.length).toBeGreaterThan(5);
+    let rendered = 0;
+    r.spacers.forEach((sp) => {
+      rendered += sp.height - Math.round(sp.header ?? 0) + (sp.header ?? 0);
+      const row = rows.find((l) => l.spacerPos === sp.pos)!;
+      const top = row.top + rendered;
+      const want = a4.contentTopOf(sp.page - 1) + (sp.header ?? 0);
+      expect(Math.abs(top - want)).toBeLessThanOrEqual(0.5);
+    });
+  });
+
   it('a 492px row that fits a fresh page moves whole (fixture 10 v2 A4 case)', () => {
     const rows = rowsFrom(700, [30, 100, 492, 60], 30);
     const r = place([para(0, 96, 1), ...rows], a4);
