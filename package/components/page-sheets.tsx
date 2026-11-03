@@ -8,13 +8,12 @@ import React, {
 } from 'react';
 import type { Editor } from '@tiptap/react';
 import cn from 'classnames';
-import {
-  PAGE_GAP,
-  PAGE_MARGIN,
-  type PageGrid,
-} from '../extensions/pagination/page-grid';
+import { PAGE_GAP, type PageGrid } from '../extensions/pagination/page-grid';
 import { useZoom } from '../hooks/use-zoom';
 import { getEditorScrollContainer } from '../utils/get-editor-scroll-container';
+
+// Screen px between the sheet and its number, which keeps its 100% size.
+const PAGE_NUMBER_GAP = 12;
 
 const clamp = (n: number, max: number) => Math.min(max, Math.max(0, n));
 
@@ -149,7 +148,10 @@ export function PageSheets({
       >
         <span
           className="ddoc-page-number color-text-secondary"
-          style={{ right: `${PAGE_MARGIN}px`, height: `${PAGE_MARGIN}px` }}
+          style={{
+            left: `calc(100% + ${PAGE_NUMBER_GAP / scale}px)`,
+            transform: scale === 1 ? undefined : `scale(${1 / scale})`,
+          }}
         >
           {i + 1}
         </span>

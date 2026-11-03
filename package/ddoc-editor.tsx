@@ -95,6 +95,7 @@ import {
   canChangeZoom,
   COMMENT_COLUMN_WIDTH,
   FIT_GUTTER,
+  PAGE_NUMBER_GUTTER,
   getFitReservedWidth,
   normalizeZoomLevel,
   resolveZoomScale,
@@ -889,6 +890,7 @@ const DdocEditor = forwardRef(
       hasLeftRail,
       isCommentColumnVisible,
       isLandscape: isLandscapeMode,
+      isPagesMode,
     });
     const { shouldHideRight, shouldScroll, fitScale } = useCanvasMetrics({
       canvasRef,
@@ -1298,6 +1300,7 @@ const DdocEditor = forwardRef(
                         ...(isFit && {
                           marginRight:
                             FIT_GUTTER +
+                            (isPagesMode ? PAGE_NUMBER_GUTTER : 0) +
                             (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0),
                           marginLeft: hasLeftRail ? undefined : FIT_GUTTER,
                         }),

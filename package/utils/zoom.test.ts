@@ -8,6 +8,7 @@ import {
   counterScaledOffset,
   counterScaledPadding,
   getFitReservedWidth,
+  PAGE_NUMBER_GUTTER,
   getZoomScale,
   normalizeZoomLevel,
   resolveZoomScale,
@@ -191,5 +192,14 @@ describe('getFitReservedWidth', () => {
         isLandscape: true,
       }),
     ).toBe(96);
+  });
+  it('adds the page-number gutter in Pages mode', () => {
+    expect(
+      getFitReservedWidth({
+        hasLeftRail: false,
+        isCommentColumnVisible: false,
+        isPagesMode: true,
+      }),
+    ).toBe(48 + PAGE_NUMBER_GUTTER);
   });
 });

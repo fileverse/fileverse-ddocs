@@ -667,11 +667,11 @@
   border: 1px solid hsla(var(--color-border-default));
 }
 
+/* Beside the sheet, level with its bottom edge (left set inline). */
 .ddoc-page-number {
   position: absolute;
   bottom: 0;
-  display: flex;
-  align-items: center;
+  transform-origin: bottom left;
   font-size: 11px;
   line-height: 1;
 }
