@@ -649,6 +649,7 @@ function App() {
     const publishDoc = () => console.log(editor, title);
     const appActions = createDemoAppActions({
       liveEditor,
+      printCurrentTab: () => editorRef.current?.printCurrentTab(),
       exportModal: (format?: string) =>
         editorRef.current?.exportCurrentTabOrOpenExportModal(format),
       exportMarkdown: () =>

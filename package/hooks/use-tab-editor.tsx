@@ -48,6 +48,7 @@ import {
   handleContentPrint,
   handlePrint,
 } from '../utils/handle-print';
+import { printPagesTab } from '../extensions/pagination/print';
 import { isBlackOrWhiteShade } from '../utils/color-utils';
 import { AiAutocomplete } from '../extensions/ai-autocomplete/ai-autocomplete';
 import { AIWriter } from '../extensions/ai-writer';
@@ -1287,9 +1288,12 @@ export const useTabEditor = ({
       if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
         event.preventDefault();
         if (editor) {
-          isPresentationMode
-            ? handlePrint(slides)
-            : handleContentPrint(editor.getHTML());
+          if (isPresentationMode) handlePrint(slides);
+          else {
+            printPagesTab(editor).then((done) => {
+              if (!done) handleContentPrint(editor.getHTML());
+            });
+          }
         }
       }
     };

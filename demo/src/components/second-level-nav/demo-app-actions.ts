@@ -1,5 +1,4 @@
 import { Editor } from '@tiptap/react';
-import { handleContentPrint } from '../../../../package/utils/handle-print';
 import { generateDocId } from '../../utils';
 import type { ActionRegistry } from './action-registry';
 import type {
@@ -10,6 +9,7 @@ import type {
 /** Demo analog of the consumer's app-action registry (buckets 2–4). */
 export type DemoAppActionDeps = {
   liveEditor: Editor | null;
+  printCurrentTab: () => void; // editorRef.printCurrentTab
   exportModal: (format?: string) => void; // editorRef.exportCurrentTabOrOpenExportModal
   exportMarkdown: () => void; // editorRef.exportContentAsMarkDown(title)
   onError: (msg: string) => void;
@@ -56,7 +56,7 @@ export const createDemoAppActions = (d: DemoAppActionDeps): ActionRegistry => ({
   'file.export.md': { run: () => d.exportMarkdown() },
   'file.export.viewerModal': { run: () => d.exportModal() },
   'file.print': {
-    run: () => d.liveEditor && handleContentPrint(d.liveEditor.getHTML()),
+    run: () => d.printCurrentTab(),
   },
   // Canvas visibility toggle (Hide comments / Show comments).
   'view.comments.toggleCanvas': {

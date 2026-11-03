@@ -2,7 +2,13 @@ import { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-handler';
-import { buildPrintHtml, resolvePrintPlacement } from './print';
+import {
+  buildPrintHtml,
+  resolvePrintPlacement,
+  setPrintInputs,
+  printPagesTab,
+} from './print';
+import { handleContentPrint } from '../../utils/handle-print';
 import type { Placement } from './place';
 
 vi.mock('../mardown-paste-handler', async (importOriginal) => ({
@@ -11,6 +17,8 @@ vi.mock('../mardown-paste-handler', async (importOriginal) => ({
     async (doc: PMNode) => doc,
   ),
 }));
+
+vi.mock('../../utils/handle-print', () => ({ handleContentPrint: vi.fn() }));
 
 const pages = { mode: 'pages', paper: 'a4' } as const;
 
@@ -307,5 +315,71 @@ describe('resolvePrintPlacement', () => {
     const editor = stub(() => live);
     expect(resolvePrintPlacement(editor, false)).toBeUndefined();
     expect(editor.storage.pagination.flush).not.toHaveBeenCalled();
+  });
+});
+
+describe('printPagesTab', () => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = new Editor({ extensions: getHeadlessExtensions() });
+    editor.commands.setContent('<p>alpha beta</p><p>gamma</p>');
+    vi.mocked(handleContentPrint).mockClear();
+  });
+  afterEach(() => editor.destroy());
+
+  const withBreak = () => {
+    const doc = editor.state.doc;
+    const pos = textPos(doc, 'beta');
+    const placement: Placement = {
+      breaks: [{ kind: 'inText', pos }],
+      pageStarts: [
+        { kind: 'before', pos: 0 },
+        { kind: 'inText', pos },
+      ],
+      pageCount: 2,
+    };
+    (editor.storage as unknown as Record<string, unknown>).pagination = {
+      flush: () => placement,
+    };
+  };
+
+  it('returns false and prints nothing without registered inputs', async () => {
+    expect(await printPagesTab(editor)).toBe(false);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+  });
+
+  it('returns false for a Pageless pageSetup', async () => {
+    setPrintInputs(editor, () => ({
+      pageSetup: { mode: 'pageless', paper: 'a4' },
+      isPagesActive: false,
+    }));
+    expect(await printPagesTab(editor)).toBe(false);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+  });
+
+  it('prints with the Pages options and the live placement', async () => {
+    setPrintInputs(editor, () => ({ pageSetup: pages, isPagesActive: true }));
+    withBreak();
+    expect(await printPagesTab(editor)).toBe(true);
+    const [html, options] = vi.mocked(handleContentPrint).mock.calls[0];
+    expect(options?.pageSetup).toEqual(pages);
+    expect(html).toContain('data-print-break');
+  });
+
+  it('Pages wanted but inactive prints Pages CSS with no breaks', async () => {
+    setPrintInputs(editor, () => ({
+      pageSetup: { mode: 'pages', paper: 'letter' },
+      isPagesActive: false,
+    }));
+    await printPagesTab(editor);
+    const [html, options] = vi.mocked(handleContentPrint).mock.calls[0];
+    expect(options?.pageSetup?.paper).toBe('letter');
+    expect(html).not.toContain('data-print-break');
+  });
+
+  it('setPrintInputs(editor, null) unregisters', async () => {
+    setPrintInputs(editor, () => ({ pageSetup: pages, isPagesActive: false }));
+    setPrintInputs(editor, null);
+    expect(await printPagesTab(editor)).toBe(false);
   });
 });

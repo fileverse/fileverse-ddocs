@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import { makeEditor } from '../utils/make-editor';
@@ -7,6 +7,19 @@ import { CommentStoreProvider } from '../stores/comment-store-provider';
 import { useEditorToolbar } from './editor-utils';
 import copy from 'copy-to-clipboard';
 import { toast } from '@fileverse/ui';
+import { printPagesTab } from '../extensions/pagination/print';
+import { handleContentPrint } from '../utils/handle-print';
+
+vi.mock('../extensions/pagination/print', () => ({
+  printPagesTab: vi.fn().mockResolvedValue(false),
+}));
+const removeLoader = vi.fn();
+const showLoader = vi.fn(() => 'loader');
+vi.mock('../utils/inline-loader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils/inline-loader')>()),
+  inlineLoader: () => ({ showLoader, removeLoader }),
+}));
+vi.mock('../utils/handle-print', () => ({ handleContentPrint: vi.fn() }));
 
 vi.mock('copy-to-clipboard', () => ({ default: vi.fn() }));
 vi.mock('@fileverse/ui', async () => {
@@ -234,5 +247,67 @@ describe('Copy HTML export', () => {
       'Couldn’t copy HTML. Check clipboard permissions and try again.',
     );
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('Print and PDF export in Pages mode', () => {
+  let editor: Editor;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(printPagesTab).mockReset().mockResolvedValue(false);
+    vi.mocked(handleContentPrint).mockReset();
+    showLoader.mockClear();
+    removeLoader.mockClear();
+  });
+  afterEach(() => {
+    editor?.destroy();
+    vi.useRealTimers();
+  });
+
+  const render = () => {
+    editor = makeEditor('<p>hello</p>');
+    return renderHook(() => useEditorToolbar({ editor, onError: vi.fn() }), {
+      wrapper: ({ children }) => (
+        <CommentStoreProvider editor={editor} initialComments={[]}>
+          {children}
+        </CommentStoreProvider>
+      ),
+    }).result;
+  };
+
+  const run = async (fn: () => void) => {
+    await act(async () => {
+      fn();
+      await vi.runAllTimersAsync();
+    });
+  };
+
+  it('toolbar Print uses printPagesTab in Pages mode and skips the Pageless path', async () => {
+    vi.mocked(printPagesTab).mockResolvedValue(true);
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(printPagesTab).toHaveBeenCalledWith(editor);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+  });
+
+  it('toolbar Print in Pageless calls handleContentPrint exactly as before', async () => {
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(handleContentPrint).mock.calls[0]).toHaveLength(1);
+    expect(vi.mocked(handleContentPrint).mock.calls[0][0]).toContain('hello');
+  });
+
+  it('Export PDF in Pages mode uses printPagesTab and removes the loader', async () => {
+    vi.mocked(printPagesTab).mockResolvedValue(true);
+    const result = render();
+    const pdf = result.current.exportOptions.find(
+      (item) => item?.title === 'PDF document (.pdf)',
+    );
+    await run(() => pdf!.onClick());
+    expect(printPagesTab).toHaveBeenCalledWith(editor);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+    expect(showLoader).toHaveBeenCalledTimes(1);
+    expect(removeLoader).toHaveBeenCalledWith('loader');
   });
 });

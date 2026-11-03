@@ -3,7 +3,10 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { DdocProps, PageSetup } from '../../types';
 import { getTemporaryEditor } from '../../utils/helpers';
 import { getZoomScale } from '../../utils/zoom';
-import type { ContentPrintOptions } from '../../utils/handle-print';
+import {
+  handleContentPrint,
+  type ContentPrintOptions,
+} from '../../utils/handle-print';
 import { renderMermaidBlocks } from '../code-block/render-mermaid-html';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-handler';
 import { collectLeaves } from './collect-leaves';
@@ -243,4 +246,37 @@ export async function buildPrintHtml(args: {
       ? { pageSetup, orientation, rootStyle: readRootStyle(editor.view.dom) }
       : {},
   };
+}
+
+export type PrintInputs = Omit<
+  Parameters<typeof buildPrintHtml>[0],
+  'editor' | 'placement'
+>;
+
+const printInputsByEditor = new WeakMap<Editor, () => PrintInputs>();
+
+export function setPrintInputs(
+  editor: Editor,
+  get: (() => PrintInputs) | null,
+): void {
+  if (get) printInputsByEditor.set(editor, get);
+  else printInputsByEditor.delete(editor);
+}
+
+export function getPrintInputs(editor: Editor): PrintInputs | undefined {
+  return printInputsByEditor.get(editor)?.();
+}
+
+// Prints the tab through the Pages pipeline. False (nothing printed) means the
+// caller keeps its Pageless path.
+export async function printPagesTab(editor: Editor): Promise<boolean> {
+  const inputs = getPrintInputs(editor);
+  if (inputs?.pageSetup?.mode !== 'pages') return false;
+  const { html, options } = await buildPrintHtml({
+    editor,
+    ...inputs,
+    placement: resolvePrintPlacement(editor, inputs.isPagesActive),
+  });
+  handleContentPrint(html, options);
+  return true;
 }

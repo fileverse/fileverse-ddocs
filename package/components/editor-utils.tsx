@@ -44,6 +44,7 @@ import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
 import { colors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
+import { printPagesTab } from '../extensions/pagination/print';
 import { useCommentRefs } from '../stores/comment-store-provider';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../extensions/mardown-paste-handler';
 import { renderMermaidBlocks } from '../extensions/code-block/render-mermaid-html';
@@ -691,6 +692,10 @@ export const useEditorToolbar = ({
             );
 
             const loader = showLoader();
+            if (await printPagesTab(editor)) {
+              removeLoader(loader);
+              return;
+            }
             const originalDoc = editor.state.doc;
             const docWithEmbedImageContent =
               await searchForSecureImageNodeAndEmbedImageContent(
@@ -870,6 +875,7 @@ export const useEditorToolbar = ({
   const printHandler = () => {
     if (editor) {
       const closeAndPrint = async () => {
+        if (await printPagesTab(editor)) return;
         const originalDoc = editor.state.doc;
         const docWithEmbedImageContent =
           await searchForSecureImageNodeAndEmbedImageContent(
