@@ -637,12 +637,6 @@
   --padding-l: 96px;
 }
 
-/* Submitted suggestion previews are hidden in Pages (§12.7); the user's own
-   draft stays visible. */
-[data-page-mode='pages'] .ProseMirror [data-suggestion-preview]:not([data-suggestion-draft]) {
-  display: none;
-}
-
 /* A page break is invisible in Pages: the jump to the next sheet shows it. */
 [data-page-mode='pages'] .ProseMirror .node-pageBreak {
   height: 0;
