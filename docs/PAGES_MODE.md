@@ -285,10 +285,9 @@ M1 turns the M0 column into sheets of paper while you write: the live editor run
 
 **Collapsed headings** (pulled forward from M2: hidden blocks measure as zero-size boxes and would corrupt every placement after them, and print serialises them anyway). While Pages is active, `buildHiddenDecorationSet` (`d-block/dblock-collapse.ts`) returns an empty set in both schemas and the collapse chevrons are hidden. The `isCollapsed` attribute is untouched; leaving Pages restores the collapsed view. The plugin rebuilds its decorations when Pages turns on or off, through its own meta.
 
-**Widgets.** Decided (2026-11-02): hidden, so the screen's pages match print.
+**Widgets.** Decided (2026-11-02): hidden, so the screen's pages match print. Suggestions reversed on 2026-11-03 (below).
 
-- **Pending suggestions.** The proposed-text widgets from `createSuggestionWidgetRenderer` (`comment-decoration-plugin.ts`) are `display: none` under `[data-page-mode='pages']`; the struck-through original range and the suggestion card in the rail stay. Any other suggestion decoration that changes layout (check the `suggestion-source-caret-hidden` node class) is hidden the same way.
-- **Your own draft stays visible** (decision, 2026-11-02): text typed in suggest mode lives only in that widget (`anchor.isDraft`), so hiding it would hide the suggester's typing. The draft widget (and its `suggestion-source-caret-hidden` block) is exempt; while it is open the pass measures it as content, so that user's page breaks are off by the draft until it is submitted, after which it is hidden like any other. Print never includes it.
+- **Pending suggestions are shown** (reversed 2026-11-03: hiding them was reported as a bug, reviewers could not see suggestions in Pages). The proposed-text widgets render as in Pageless and the pass measures them as content (they sit inside top-level blocks, so the resize observer starts a pass when one appears or goes). Print never includes them, so while a suggestion is pending its page and the ones after it can break differently on paper than on screen. The `data-suggestion-preview` / `data-suggestion-draft` attributes stay on the widgets.
 - **AI autocomplete** (`ai-autocomplete.ts`): while Pages is active it does not fetch a suggestion at all (my call), so Tab can never accept text the user cannot see. Hiding the ghost text with CSS alone would leave that trap.
 
 ### 12.8 Page store and page count
@@ -382,7 +381,7 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
   - two tabs: switch back and forth; each tab keeps its own pages and numbers restart at 1; note any flash of the old layout on return (hidden tabs keep their spacers, §12.2);
   - collapsed headings (02c): shown expanded in Pages, chevrons hidden;
   - turning Pages off with collapsed headings: spacers gone and the collapsed view back in the same frame, no stale `aria-label="Page N"`;
-  - suggest-mode draft: your own draft visible while typing, others' proposals hidden, the draft hidden once submitted;
+  - suggestions: your draft and submitted suggestions (yours and others') visible in Pages, and pages reflow when one is added, accepted or rejected;
   - typing at the end of the last page (Enter held, then text): a new sheet appears, the caret never sits below the last sheet.
 
 **Known limits, for M2**:
@@ -432,7 +431,7 @@ One function prints the active tab: what `printCurrentTab()` runs today (`buildP
 | Export ▸ PDF, all tabs (`exportAllTabsAsPdf`, `hooks/use-ddoc-export.ts`) | each tab's `getHTML()` | the active tab with its live breaks; every other tab with the Pages CSS and the browser's breaks (tech spec "All-tabs export"); each tab, and each tab-title page, starts a new page | unchanged |
 | Demo File ▸ Print (`demo-app-actions.ts`) | `handleContentPrint(liveEditor.getHTML())` | `editorRef.printCurrentTab()` in both modes, as the tech spec plans for ddocs.new | prints as `printCurrentTab()` does in Pageless (demo only) |
 | Presentation mode print (`handlePrint(slides)`) | slides | unchanged | unchanged |
-| Headless export (`useExportHeadlessEditorContent`) | `handleContentPrint(tempEditor.getHTML())` | unchanged in M2: it has no layout and no `pageSetup`; M3 decides whether ddocs.new passes one (then it prints like "Pages, not active") | unchanged |
+| Headless export (`useExportHeadlessEditorContent`) | `handleContentPrint(tempEditor.getHTML())` | the export option takes `pageSetup` and `orientation` (added 2026-11-03); with mode `pages` the current tab prints through `buildPrintHtml` like "Pages, not active" (paper, orientation and margins, browser breaks), and all-tabs PDF gets the same inputs through `setPrintInputs` on the session editor. ddocs.new passes the doc's styling in M3 | unchanged |
 
 - **Pageless unchanged** means byte-identical HTML and options to today's call on each path. A unit test per path checks both modes.
 - The Cmd/Ctrl+P effect lives in `use-tab-editor.tsx`, which does not hold the print inputs (`printInputsRef` in `ddoc-editor.tsx`: image fetchers, `pageSetup`, `isPagesActive`). How the shortcut reaches the pipeline is the builder's call (a callback passed down, or the shortcut moved up); the requirement is one code path, not a copy.
