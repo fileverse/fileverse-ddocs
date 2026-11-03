@@ -1,6 +1,6 @@
 # Pages mode
 
-Status: M0 (print test) done (§7.5). M1 (on-screen pages) built; Chrome gate results in §12.13, manual browser QA pending. Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
+Status: M0 (print test) done (§7.5). M1 (on-screen pages) built; Chrome gate results in §12.13, manual browser QA pending. M2 (feature fit) designed in §13. Product and tech specs live on Linear TEC-3006 ("Pages mode: product spec", "Pages mode: tech spec"); this file records what the package builds and every place it departs from or fills in the tech spec. Later milestones extend it.
 
 ## 1. Intent
 
@@ -396,3 +396,137 @@ Run on 2026-11-02 at the M1 head, demo on 5174, headless Chrome over CDP (`scrip
 - `Line.startPos`, `Leaf.marginTop` and `Leaf.spacerCollapse` are measured on first read: read them before the next DOM write.
 - Code gutter with word wrap: the gutter spacer lands before the next gutter row, not the visual line (§12.4).
 - Not pagination, seen in every run: `TypeError ... naturalWidth` in the image node view's `onload` when navigating mid-load; the demo's v1 fixture loader sometimes appends to the doc (§7.5).
+
+## 13. M2: feature fit
+
+### 13.1 Intent and scope
+
+M1 put pages on screen. M2 closes the places where the screen and the printout still differ, or where Pages mode looks unfinished, and makes every way of printing go through the Pages pipeline. Found in the demo (2026-11-03): File ▸ Print and Cmd/Ctrl+P print with Pageless's 0.83 inch side margins, because they still call `handleContentPrint(editor.getHTML())`; only the styling panel's Print button runs `printCurrentTab()` (measured: its PDFs have 1.00 inch side margins on A4, Letter and landscape, as do M0's Safari and Firefox PDFs). And Cmd+Enter opens the link popup instead of inserting a page break.
+
+**In M2**, in this order (my call: the order of the plan, user-visible fixes first):
+
+1. Every print path through the Pages pipeline (§13.2).
+2. Page-break and link shortcuts (§13.3).
+3. Carry-overs from M1: split `index.ts`, the debounce's max wait, quiet passes inside tall blocks, a host failure callback, wiring and listener tests (§13.4).
+4. Images, the media editing chrome and atoms taller than a page (§13.5).
+5. Table rows as leaves (§13.6).
+6. Split boxes cut at the sheet edge (§13.7).
+7. The page-break block in Pages mode (§13.8).
+
+**Not in M2**: anything in ddocs.new (M3: wiring `printCurrentTab()` to its File ▸ Print, the page setup UI, `onPagesError` to Sentry); headless export (`useExportHeadlessEditorContent`, §13.2); Pageless print gaining image embedding or Mermaid on the paths that skip them (the tech spec suggests it; it changes Pageless output, an anti-goal); the M1 manual QA checklist (§12.13), which the user still runs.
+
+**Anti-goals** (§2, unchanged): no Yjs write, no change to Pageless rendering or Pageless print output, no new runtime dependency.
+
+**Departures from the Linear specs** (decision, user, 2026-11-03): the product and tech specs keep ⌘+Enter on the link popup and give Mac users no page-break shortcut. M2 makes ⌘+Enter a page break and moves the link popup to ⌘/Ctrl+K (§13.3). The Linear product spec should be updated to match.
+
+### 13.2 Every print path through the pipeline
+
+One function prints the active tab: what `printCurrentTab()` runs today (`buildPrintHtml` with `resolvePrintPlacement`, then `handleContentPrint(html, options)`, `ddoc-editor.tsx`). Every path below calls it when the doc's `pageSetup.mode` is `'pages'`, so in Pages mode the print dialog always shows the 1 inch sheet and the screen's breaks, whichever way the user printed. It keeps §4.3's rule: Pages wanted but not active (editor under 1024px, Split View, version history) prints with the Pages CSS and no computed breaks.
+
+| Path | Today | Pages mode | Pageless |
+| -- | -- | -- | -- |
+| `printCurrentTab()` (handle) and the demo styling panel's Print button (calls `buildPrintHtml` directly) | the pipeline | unchanged | unchanged |
+| Cmd/Ctrl+P in the editor (`use-tab-editor.tsx`, the print shortcut effect) | `handleContentPrint(editor.getHTML())` | the pipeline | unchanged |
+| Toolbar Print (`printHandler`, `components/editor-utils.tsx`) | image embedding, Mermaid, `handleContentPrint` | the pipeline | unchanged |
+| Export ▸ PDF, current tab (`exportOptions` PDF item, same file) | as toolbar Print, plus the loader | the pipeline, same loader | unchanged |
+| Export ▸ PDF, all tabs (`exportAllTabsAsPdf`, `hooks/use-ddoc-export.ts`) | each tab's `getHTML()` | the active tab with its live breaks; every other tab with the Pages CSS and the browser's breaks (tech spec "All-tabs export"); each tab, and each tab-title page, starts a new page | unchanged |
+| Demo File ▸ Print (`demo-app-actions.ts`) | `handleContentPrint(liveEditor.getHTML())` | `editorRef.printCurrentTab()` in both modes, as the tech spec plans for ddocs.new | prints as `printCurrentTab()` does in Pageless (demo only) |
+| Presentation mode print (`handlePrint(slides)`) | slides | unchanged | unchanged |
+| Headless export (`useExportHeadlessEditorContent`) | `handleContentPrint(tempEditor.getHTML())` | unchanged in M2: it has no layout and no `pageSetup`; M3 decides whether ddocs.new passes one (then it prints like "Pages, not active") | unchanged |
+
+- **Pageless unchanged** means byte-identical HTML and options to today's call on each path. A unit test per path checks both modes.
+- The Cmd/Ctrl+P effect lives in `use-tab-editor.tsx`, which does not hold the print inputs (`printInputsRef` in `ddoc-editor.tsx`: image fetchers, `pageSetup`, `isPagesActive`). How the shortcut reaches the pipeline is the builder's call (a callback passed down, or the shortcut moved up); the requirement is one code path, not a copy.
+- All-tabs in Pages mode: Pages print is flat (§4.4), so the tab boundaries need the same forced break the Pages CSS gives a page break; the builder checks the joined HTML breaks at every tab and title page in Chrome. The `tab-title-page` styles live only in Pageless's print sheet (`CONTENT_STYLES`, not emitted in Pages), so the Pages print CSS restates them.
+
+### 13.3 Page-break and link shortcuts
+
+Decision (user, 2026-11-03):
+
+| Keys | Today | M2 |
+| -- | -- | -- |
+| ⌘+Enter (Mac) | link popup (`components/editor-utils.tsx`, `handleKeyDown`) | page break |
+| Ctrl+Enter (Windows, Linux) | Tiptap default: hard break (exit code block inside one) | page break |
+| ⌘/Ctrl+K | nothing on desktop; link popup in the mobile toolbar (`mobile-toolbar.tsx`) | link popup, toggling as on mobile |
+| Alt/Option+Enter | link popup | unchanged (my call: only ⌘+Enter was asked to move) |
+| Shift+Enter | hard break | unchanged |
+
+- **Where the break goes** (my call). `pageBreak` is allowed only at the top level (`(dBlock|columns|pageBreak)+` in v1, `(block|columns|pageBreak)+` in v2), so `setPageBreak()`'s `insertContentAt` at a nested caret makes ProseMirror close (split) the surrounding list or table, or fail; and every node-type change kills comment anchors inside (AGENTS.md, Lists).
+  - Caret in a top-level paragraph or heading: at the caret, as `setPageBreak()` does today (the paragraph splits; an empty paragraph is replaced).
+  - Caret inside any container (list item, table cell, columns, blockquote, callout): the break goes after the enclosing top-level block and the caret moves to the start of the block after it; nothing is split.
+  - The menu item and slash command keep today's behaviour (§2 anti-goal on Pageless); the shortcut gets its own command with these rules.
+  - `setPageBreak` does position arithmetic (`pos - 2` for an empty paragraph), which differs between v1 and v2 (`docs/POSITION_AUDIT.md`): every rule gets a v1 and a v2 test.
+- **Inside a code block** ⌘/Ctrl+Enter exits it, as Tiptap's `Mod-Enter` does today: the handler returns `false` there so the keymap runs. `editorProps.handleKeyDown` runs before keymaps, which is why the shortcut lives in that handler (tech spec).
+- **Modifiers are exact**: ⌘ without Ctrl, Alt or Shift on Mac; Ctrl without ⌘, Alt or Shift elsewhere. Ctrl+Enter on a Mac keeps today's behaviour.
+- **Both modes** (decision, user, 2026-11-03): the shortcut inserts a page break in Pageless too, like Google Docs; a page break already exists and prints in Pageless. The product spec says Pages mode only.
+- Any tooltip, shortcut list or help text that names ⌘+Enter for links is updated.
+- Node views with their own Ctrl/⌘+Enter (`ai-writer-node-view.tsx`, comment cards) handle it in their own inputs, outside the editor's `handleKeyDown`; the builder checks they still submit.
+- The desktop link handler lives in `useEditorToolbar`, installed by whichever toolbar instance registers last; the mobile toolbar binds ⌘/Ctrl+K on `document`. The two must not both toggle on one keypress. ddocs.new's e2e tests already expect Mod+K to open the link dialog; its shortcut popup lists ⌥+Enter, which stays.
+
+### 13.4 Carry-overs from M1 (§12.13 Known limits)
+
+- **Split `extensions/pagination/index.ts`** (~510 lines). No behaviour change; the existing tests pass with at most import changes. Module boundaries are the builder's call (for example the `PaginationView` controller, the plugin's state and mapping, the extension).
+- **Max wait on the debounce**: the 300 ms wait runs a pass at the latest 1 s after the first edit of a burst, local or remote, so continuous edits cannot hold passes back. The perf check (§12.12 item 6) is rerun with a typing script longer than 1 s; if the budget breaks, the max wait applies to remote edits only.
+- **Quiet passes inside tall blocks**: a keystroke in a textblock inside an atomic leaf taller than a page triggers no pass unless that block's height changed. Today `caretOverflows` fires every keystroke there because the textblock always ends past its page's bottom. With table rows as leaves (§13.6) and images capped (§13.5) this is mostly sliced columns blocks (§13.5).
+- **Host failure callback**: a new optional `DdocEditor` prop, `onPagesError?: (error: unknown) => void` (name is my call), called once when a tab editor's pagination fails (§12.11), after the `console.error`. The package sends nothing anywhere; ddocs.new wires it to Sentry in M3 (tech spec: counts only, never content). Exported in the props type.
+- **Wiring and listener tests**: `ddoc-editor.tsx` calls `setPagination` on the active tab editor whenever an input changes, and with `running: false` on the editor it leaves; observers and listeners (`ResizeObserver`, `document.fonts`, scroll, composition) attach on start and detach on stop and destroy.
+- Stays a known limit: the first exact page count dropped when the active-editor ref lags (practically unreachable, §12.13).
+
+### 13.5 Images, media chrome and atoms taller than a page
+
+**Media editing chrome** (§10). In edit mode the media node view (`resizable-media-node-view.tsx`) puts a grey padded frame (`p-2 pt-1 color-bg-secondary`) and a toolbar row (`flex gap-1 p-1 mb-1`) in flow, ~45–55px that print does not have (fixtures 05 and 10 fail parity on it). In Pages mode the frame's padding and background go and the toolbar overlays the media's top-right corner, shown on hover and while the node is selected (my call on the look; Pageless keeps today's frame). Requirement: in Pages mode the media block's on-screen height equals its print height, so 05 and 10 pass the parity check.
+
+**Media scales to fit** (product rule 4): everything the media node view draws (`img`, secure image, native `video`, its `iframe`; my call: they share a stored width and aspect ratio, and a clip would cut a video's controls). In Pages mode such media is never taller than the page's text height, keeping its aspect ratio; a wide image narrows with it. The whole media block, caption included, fits one page's text height. Same rule in print (the Pages print CSS restates it). The stored width attribute is untouched; resizing still writes it.
+
+**Other atoms taller than a page** (tweets, Mermaid in preview, action buttons, AI writer, embeds outside the media node view, columns), decided (user, 2026-11-03):
+
+- **Not editable** (tweets, Mermaid preview, action button, AI writer, other embeds): clipped at the page's text height (`max-height` and `overflow: hidden`, screen and print), per product rule 4. They never become tall leaves.
+- **Columns** (editable): not clipped, because a clip would hide text the user typed and can still put the caret in. A columns block taller than a page keeps M1's tall-leaf rule (§12.3) unchanged: it starts its page, runs over the sheet's bottom margin, the gap and the next sheets on screen, and the leaves after it follow paper. It is **not** masked (§13.7): a tall box holds 208px more per page on screen (margins and gap) than on paper (20px slack), so a mask would hide ~188px of its text per boundary and still not show the printed slices. Splitting each column at the boundary (like §13.6's in-cell split) would match paper and is not in M2. Safari cannot break inside flex items (§7.5), so its print of a tall columns block is recorded, not gated.
+
+### 13.6 Table rows as leaves
+
+The product spec: "Tables: split between rows. The header row repeats on the next page." M1 placed a table as one atomic leaf and let print break it where Chrome chose (`packRows`), which misses fixture 10 v2 A4 (store 16, PDF 15): Chrome split a 492px row inside its cells. M2 decides every row break itself, on screen and on paper, so Chrome has nothing left to choose.
+
+- **Leaves**: `collectLeaves` runs with `tableRows` on (M0's per-row walk, `visitTable`). M1's whole-table leaf (`wholeTable`) and `packRows` go (my call).
+- **Placement**: a row is atomic. A row that does not fit the rest of the page moves to the next page whole, with a printing break before it, under a repeated header; a header row moves with the row after it (existing keep-with-next). A row that fits a fresh page is never split, whatever Chrome would do: the forced break takes the choice away from print.
+- **Header repeat**: the header repeats on a continued page when it is at most a quarter of the page capacity (the existing `repeated` rule, my call to keep it). This is now our rule on both sides: the print copy clones the header into a piece only when the screen repeats it.
+- **Spacer in a table**: two widgets at the row's position, in order: a borderless spacer `tr` (one cell spanning every column, no padding or border, the spacer height) and, when the header repeats, a `contenteditable="false"` clone of the header row. Both carry the spacer class, so `collectLeaves` skips them and takes their height out of natural positions (§12.3). The clone's key includes the header's content, so an edited header re-clones. A break before row 0 goes before the table's outermost node, like any first child (§12.4).
+- **Print**: unchanged from M0 (§4.3 item 6): the print copy splits the table at every row break and clones the header and `colgroup` into each piece, pinned to the live column widths. This already makes WebKit honour row breaks.
+- **A row taller than a page** (first on its page and taller than the room under the header): split inside its cells. In each cell whose content crosses the page bottom, an inText spacer goes at the first line that does not fit (one line kept is enough, as for a text leaf taller than a page); print gets a `printPageBreak` at the same positions. No header is repeated across an in-cell split, on screen or in print: the piece holding that row prints its header as an ordinary first row, not a `thead` (my call; a header cannot sit inside a row on screen). Before relying on it, the builder probes whether Chrome and WebKit honour a forced break inside a table cell; WebKit is expected not to (§7.5), and that result goes in §13.10 as a Safari gap. **If Chrome ignores it** (my call): the in-cell split is not built; a row taller than a page keeps M1's tall-leaf rule, unmasked like a tall columns block (§13.5, §13.7), and fixture 12's tall-row case becomes a recorded gap.
+- **Hazards for the builder**: tables use `border-collapse: collapse` (`editor.css`), so the spacer row must not draw or steal borders; prosemirror-tables plugins (column resizing, cell selection) must ignore the widget rows; the v1 `dBlock.is-table` width cap and `.tableWrapper` scroll container (Pages already lets it overflow in print) must not clip the clone.
+
+### 13.7 Split boxes cut at the sheet edge
+
+M1 accepted that a code block, callout, blockquote or list split by a spacer draws its border or background through the bottom margin, the desk gap and the next sheet's top margin (§12.4). Print slices such a box at the page edge (`box-decoration-break: slice`, the default). M2 cuts it on screen the same way.
+
+- **Mechanism** (my call): `PageSheets` also draws a **mask** at every sheet boundary it draws (same windowing): from page *i*'s text bottom to page *i+1*'s text top, sheet-width, painted like what is there with nothing on it (sheet fill in the two margins, desk in the gap, the sheet edges redrawn). It sits above the editor content and below every piece of chrome in the zoom layer (drag handle, floating menus, carets, comment and suggestion chrome, page numbers), `pointer-events: none`, `aria-hidden`.
+- Nothing a pass places can sit in that band (text, rows and atoms all end at or above the text bottom), so the mask only hides box decoration and a page-break marker squeezed into the bottom margin.
+- **No mask across a tall leaf**: a boundary that a tall atomic leaf crosses (a tall columns block, or a tall row if the in-cell split is not built) gets no mask, because that leaf's content is in the band (§13.5).
+- The cut is at the text bottom; print fills to the page area's bottom (text bottom + the 20px slack). That 20px of background is the one accepted visual difference.
+- Dark mode, focus mode and a custom `canvasBackground` follow the sheet's own colour rules (§12.6).
+
+### 13.8 The page-break block in Pages mode
+
+Today the page-break node view is a full-bleed grey strip (`color-bg-secondary`) with a hover "Remove page breaker" button (`page-break-node-view.tsx`). In Pages mode the jump to the next sheet already shows the break, so the strip goes (tech spec): a thin full-width marker (a hairline across the text width, about 24px tall in all) with the same hover label, icon and remove action (my call on the exact look; a Figma frame replaces it if design has one). Pageless, focus mode in Pageless, and preview mode keep today's views. The marker sits on the page it ends; if it falls past the text bottom, §13.7's mask hides it and it stays removable through selection and Delete.
+
+### 13.9 Decided after the builder check
+
+Both decided by the user on 2026-11-03, each departing from the product spec:
+
+1. Tall non-editable atoms are clipped at the page's text height. A tall columns block is neither clipped nor split: it runs over the margins and gap, as in M1 (§13.5). The product spec cuts everything but images at the page bottom.
+2. ⌘/Ctrl+Enter inserts a page break in Pageless too (§13.3). The product spec says Pages mode only.
+
+### 13.10 Gate
+
+M2 is done when all of these hold (`scripts/pages-print-check.cjs` and `scripts/pages-perf-check.cjs`, CDP against the demo on 5174, as in M1).
+
+1. **Chrome matrix**: fixtures 01–10 and 02c, plus a new fixture 12 (an image taller than a page, a captioned image near a page tall, a columns block taller than a page, an embed and a Mermaid diagram taller than a page, a table with a header row and a row taller than a page, a table with no header row), both schemas, A4 and Letter, plus 01 and 04 landscape. Every case passes sheets (I4), markers and page count (I3), parity and settle. That includes 04 (back in the matrix with row leaves), 05 and 10 parity, and 10 v2 A4's page count. The tall-row case is gated in Chrome only if the in-cell probe (§13.6) says Chrome honours the break.
+2. **Invariants**: I1, I2 and Enter-at-end (§12.13), both schemas.
+3. **Performance**: the §12.12 item 6 budgets on fixture 11, with the max wait on (§13.4). The first emit after typing (16–18 ms in M1) is reported, not gated.
+4. **Print paths**: a unit test per path in §13.2 (Pages mode reaches the pipeline with the live placement; Pageless makes today's exact call). Manual, in the demo: File ▸ Print and Cmd+P in Pages mode show the 1 inch sheet in Chrome's print dialog.
+5. **Shortcuts**: unit tests, v1 and v2: ⌘+Enter (Mac) and Ctrl+Enter (Windows) insert a page break where the menu item does; inside a code block they exit it; ⌘/Ctrl+K opens the link popup; Alt+Enter still does; ⌘+Enter no longer does.
+6. **Unit tests** for every new rule: row placement and header repeat, in-cell split positions, the max wait, the tall-block quiet rule, `onPagesError` called once, the wiring and listener tests (§13.4). `npm test`, `npx tsc` clean, `eslint --no-fix` on touched files with no new problems.
+7. **Manual spot checks** (the user): Safari, on-screen sheets for 04 and 10 and a print of 04 at A4 v2 (row breaks); live Chrome: the media toolbar overlay, the page-break marker, the mask at a split code block in light and dark mode.
+
+### 13.11 Left to the builder
+
+Internal names and module boundaries, how Cmd/Ctrl+P reaches the pipeline (§13.2), the mask's DOM (§13.7), the exact media toolbar overlay and page-break marker styling within the rules above, fixture 12's wording, and how each probe is run.
