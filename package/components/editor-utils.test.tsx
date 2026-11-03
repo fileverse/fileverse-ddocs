@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import { makeEditor } from '../utils/make-editor';
 import { CommentStoreProvider } from '../stores/comment-store-provider';
 import { useEditorToolbar, shortcutAction } from './editor-utils';
@@ -430,6 +431,43 @@ describe('page-break and link shortcuts through handleKeyDown', () => {
     expect(event.defaultPrevented).toBe(false);
     expect(JSON.stringify(editor.getJSON())).not.toContain('pageBreak');
     expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
+  });
+
+  it('⌘+Enter with everything selected is swallowed and changes nothing', () => {
+    mockMac();
+    editor = makeEditor('<p>one</p><p>two</p>');
+    mount();
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+    const before = editor.getJSON();
+    const dispatch = vi.spyOn(editor.view, 'dispatch');
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(editor.getJSON()).toEqual(before);
+  });
+
+  it('⌘+Enter with a node-selected block keeps it and adds a break after', () => {
+    mockMac();
+    editor = makeEditor('<p>one</p><hr><p>two</p>');
+    mount();
+    let hr = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'horizontalRule') hr = pos;
+    });
+    const $hr = editor.state.doc.resolve(hr);
+    const at = $hr.depth > 0 ? $hr.before(1) : hr;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, at)),
+    );
+    const { handled } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    const json = JSON.stringify(editor.getJSON());
+    expect(json).toContain('horizontalRule');
+    expect(json).toContain('pageBreak');
+    expect(json).toContain('two');
   });
 
   it('with two useEditorToolbar instances, ⌘+K leaves the link popup open', () => {

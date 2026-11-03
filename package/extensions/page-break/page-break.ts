@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { mergeAttributes, Node } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from 'prosemirror-state';
 import { wrapBlockNode } from '../../utils/block-schema';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { PageBreakNodeView } from './page-break-node-view';
@@ -19,6 +24,8 @@ declare module '@tiptap/core' {
       /**
        * Page break for the keyboard shortcut: at the caret in a top-level
        * paragraph or heading, otherwise after the enclosing top-level block
+       * (or the selected block). False in a code block or with nothing to
+       * anchor to (AllSelection, top-level gap cursor)
        */
       insertPageBreakAtCaret: () => ReturnType;
       /**
@@ -87,21 +94,32 @@ export const PageBreak = Node.create<PageBreakRuleOptions>({
       insertPageBreakAtCaret:
         () =>
         ({ state, tr, dispatch, commands }) => {
-          const { $head } = state.selection;
+          const { selection } = state;
+          const { $head } = selection;
           const parent = $head.parent;
           if (parent.type.name === 'codeBlock') return false;
 
-          const topDepth = state.schema.nodes.dBlock ? 2 : 1;
-          const isDirect =
-            $head.depth === topDepth &&
-            (parent.type.name === 'paragraph' ||
-              parent.type.name === 'heading');
-          if (isDirect) return commands.setPageBreak();
-          if ($head.depth < 1) return false;
+          // A selected block: the break goes after its top-level block.
+          let afterBlock: number | null = null;
+          if (selection instanceof NodeSelection && selection.node.isBlock) {
+            afterBlock =
+              selection.$from.depth === 0
+                ? selection.to
+                : selection.$from.after(1);
+          } else {
+            const topDepth = state.schema.nodes.dBlock ? 2 : 1;
+            const isDirect =
+              $head.depth === topDepth &&
+              (parent.type.name === 'paragraph' ||
+                parent.type.name === 'heading');
+            if (isDirect) return commands.setPageBreak();
+            // AllSelection or a gap cursor at the top level.
+            if ($head.depth < 1) return false;
+            afterBlock = $head.after(1);
+          }
 
           if (dispatch) {
             const breakNode = state.schema.nodes[this.name].create();
-            const afterBlock = $head.after(1);
             tr.insert(afterBlock, breakNode);
             const next = afterBlock + breakNode.nodeSize;
             if (next >= tr.doc.content.size) {

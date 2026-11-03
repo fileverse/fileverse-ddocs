@@ -262,7 +262,13 @@ export const useEditorToolbar = ({
           navigator.platform.includes('Mac'),
         );
         if (action === 'pageBreak') {
-          if (!editor.commands.insertPageBreakAtCaret()) return false;
+          // Falls through only in a code block (Mod-Enter exits it); with no
+          // place for a break (AllSelection, gap cursor) the key is swallowed.
+          const { $head } = editor.state.selection;
+          if ($head.parent.type.name === 'codeBlock') return false;
+          if (editor.can().insertPageBreakAtCaret()) {
+            editor.commands.insertPageBreakAtCaret();
+          }
           event.preventDefault();
           return true;
         }

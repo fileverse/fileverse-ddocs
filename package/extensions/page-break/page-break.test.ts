@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import * as Y from 'yjs';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 
 const makeEditor = (schemaVersion: number) =>
@@ -38,6 +39,20 @@ const countNodes = (editor: Editor, name: string) => {
     if (node.type.name === name) n++;
   });
   return n;
+};
+
+// Node-selects the first node of `name`, or its v1 dBlock when `outer`.
+const selectNode = (editor: Editor, name: string, outer = false) => {
+  let at: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (at === null && node.type.name === name) at = pos;
+  });
+  if (at === null) throw new Error(`${name} not found`);
+  const $at = editor.state.doc.resolve(at);
+  const pos = outer && $at.depth > 0 ? $at.before(1) : at;
+  editor.view.dispatch(
+    editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, pos)),
+  );
 };
 
 const placeCaretAtEnd = (editor: Editor, text: string) => {
@@ -125,6 +140,64 @@ describe.each([
     editor = makeEditor(schemaVersion);
     editor.commands.setContent('<pre><code>code</code></pre><p>after</p>');
     placeCaretAtEnd(editor, 'code');
+    const before = editor.getJSON();
+    expect(editor.commands.insertPageBreakAtCaret()).toBe(false);
+    expect(editor.getJSON()).toEqual(before);
+  });
+  it.each([
+    ['hr', '<p>one</p><hr><p>two</p>', 'horizontalRule', false],
+    ['hr block', '<p>one</p><hr><p>two</p>', 'horizontalRule', true],
+    [
+      'image',
+      '<p>one</p><img src="https://x.test/a.png"><p>two</p>',
+      'resizableMedia',
+      false,
+    ],
+    [
+      'image block',
+      '<p>one</p><img src="https://x.test/a.png"><p>two</p>',
+      'resizableMedia',
+      true,
+    ],
+  ])(
+    'node-selected %s: break after it, node kept, caret in the next block',
+    (_n, html, name, outer) => {
+      editor = makeEditor(schemaVersion);
+      editor.commands.setContent(html);
+      selectNode(editor, name, outer);
+      expect(editor.commands.insertPageBreakAtCaret()).toBe(true);
+      expect(topLevelTypes(editor)).toEqual([
+        'paragraph',
+        name,
+        'pageBreak',
+        'paragraph',
+      ]);
+      expect(editor.state.selection.$head.parent.textContent).toBe('two');
+    },
+  );
+
+  it('node-selected last block: a new empty paragraph holds the caret', () => {
+    editor = makeEditor(schemaVersion);
+    editor.commands.setContent('<p>one</p><hr>');
+    selectNode(editor, 'horizontalRule', true);
+    expect(editor.commands.insertPageBreakAtCaret()).toBe(true);
+    expect(topLevelTypes(editor)).toEqual([
+      'paragraph',
+      'horizontalRule',
+      'pageBreak',
+      'paragraph',
+    ]);
+    const { $head } = editor.state.selection;
+    expect($head.parent.type.name).toBe('paragraph');
+    expect($head.parent.textContent).toBe('');
+  });
+
+  it('all selected: returns false and changes nothing', () => {
+    editor = makeEditor(schemaVersion);
+    editor.commands.setContent('<p>one</p><hr><p>two</p>');
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
     const before = editor.getJSON();
     expect(editor.commands.insertPageBreakAtCaret()).toBe(false);
     expect(editor.getJSON()).toEqual(before);
