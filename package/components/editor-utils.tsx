@@ -146,6 +146,23 @@ export const IMG_UPLOAD_SETTINGS = {
   },
 };
 
+export function shortcutAction(
+  event: Pick<
+    KeyboardEvent,
+    'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'
+  >,
+  isMac: boolean,
+): 'pageBreak' | 'link' | null {
+  const { key, metaKey, ctrlKey, altKey, shiftKey } = event;
+  const primary = isMac ? metaKey && !ctrlKey : ctrlKey && !metaKey;
+  if (key === 'Enter' && primary && !altKey && !shiftKey) return 'pageBreak';
+  if (key.toLowerCase() === 'k' && primary && !altKey && !shiftKey) {
+    return 'link';
+  }
+  if (altKey && key === 'Enter') return 'link';
+  return null;
+}
+
 /**
  * `Editor#setOptions({ editorProps })` replaces the whole `editorProps`
  * object rather than merging it — tiptap merges top-level options but
@@ -240,8 +257,16 @@ export const useEditorToolbar = ({
           return true;
         }
 
-        // Open link popup (Alt/Option + Enter)
-        if ((event.altKey || event.metaKey) && event.key === 'Enter') {
+        const action = shortcutAction(
+          event,
+          navigator.platform.includes('Mac'),
+        );
+        if (action === 'pageBreak') {
+          if (!editor.commands.insertPageBreakAtCaret()) return false;
+          event.preventDefault();
+          return true;
+        }
+        if (action === 'link') {
           event.preventDefault();
           setToolVisibility(IEditorTool.LINK_POPUP);
           return true;

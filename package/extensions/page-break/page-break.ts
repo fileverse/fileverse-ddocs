@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { mergeAttributes, Node } from '@tiptap/core';
-import { Plugin, PluginKey } from 'prosemirror-state';
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import { wrapBlockNode } from '../../utils/block-schema';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { PageBreakNodeView } from './page-break-node-view';
 
@@ -15,6 +16,11 @@ declare module '@tiptap/core' {
        * Add a page break
        */
       setPageBreak: () => ReturnType;
+      /**
+       * Page break for the keyboard shortcut: at the caret in a top-level
+       * paragraph or heading, otherwise after the enclosing top-level block
+       */
+      insertPageBreakAtCaret: () => ReturnType;
       /**
        * Remove a page break
        */
@@ -76,6 +82,38 @@ export const PageBreak = Node.create<PageBreakRuleOptions>({
             )
             .focus()
             .run();
+        },
+
+      insertPageBreakAtCaret:
+        () =>
+        ({ state, tr, dispatch, commands }) => {
+          const { $head } = state.selection;
+          const parent = $head.parent;
+          if (parent.type.name === 'codeBlock') return false;
+
+          const topDepth = state.schema.nodes.dBlock ? 2 : 1;
+          const isDirect =
+            $head.depth === topDepth &&
+            (parent.type.name === 'paragraph' ||
+              parent.type.name === 'heading');
+          if (isDirect) return commands.setPageBreak();
+          if ($head.depth < 1) return false;
+
+          if (dispatch) {
+            const breakNode = state.schema.nodes[this.name].create();
+            const afterBlock = $head.after(1);
+            tr.insert(afterBlock, breakNode);
+            const next = afterBlock + breakNode.nodeSize;
+            if (next >= tr.doc.content.size) {
+              const empty = state.schema.nodeFromJSON(
+                wrapBlockNode(state.schema, { type: 'paragraph' }),
+              );
+              tr.insert(next, empty);
+            }
+            tr.setSelection(TextSelection.near(tr.doc.resolve(next), 1));
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
         },
 
       unsetPageBreak:

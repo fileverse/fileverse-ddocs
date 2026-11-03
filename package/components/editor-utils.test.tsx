@@ -4,7 +4,8 @@ import { renderHook, act } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import { makeEditor } from '../utils/make-editor';
 import { CommentStoreProvider } from '../stores/comment-store-provider';
-import { useEditorToolbar } from './editor-utils';
+import { useEditorToolbar, shortcutAction } from './editor-utils';
+import { IEditorTool } from '../hooks/use-visibility';
 import copy from 'copy-to-clipboard';
 import { toast } from '@fileverse/ui';
 import { printPagesTab } from '../extensions/pagination/print';
@@ -333,5 +334,111 @@ describe('Print and PDF export in Pages mode', () => {
     expect(err).toHaveBeenCalled();
     expect(handleContentPrint).toHaveBeenCalledTimes(1);
     err.mockRestore();
+  });
+});
+
+describe('shortcutAction', () => {
+  it.each([
+    [{ key: 'Enter', metaKey: true }, true, 'pageBreak'],
+    [{ key: 'Enter', ctrlKey: true }, false, 'pageBreak'],
+    [{ key: 'Enter', ctrlKey: true }, true, null],
+    [{ key: 'Enter', metaKey: true, shiftKey: true }, true, null],
+    [{ key: 'k', metaKey: true }, true, 'link'],
+    [{ key: 'K', ctrlKey: true }, false, 'link'],
+    [{ key: 'Enter', altKey: true }, true, 'link'],
+  ])('shortcutAction(%o, mac=%s) is %s', (event, isMac, expected) => {
+    expect(
+      shortcutAction(
+        {
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          ...event,
+        },
+        isMac,
+      ),
+    ).toBe(expected);
+  });
+});
+
+describe('page-break and link shortcuts through handleKeyDown', () => {
+  let editor: Editor;
+  let platform: ReturnType<typeof vi.spyOn> | undefined;
+  const mockMac = () => {
+    platform = vi
+      .spyOn(navigator, 'platform', 'get')
+      .mockReturnValue('MacIntel');
+  };
+  afterEach(() => {
+    editor?.destroy();
+    platform?.mockRestore();
+  });
+
+  const mount = () =>
+    renderHook(
+      () =>
+        useEditorToolbar({
+          editor,
+          onError: vi.fn(),
+          setIsPresentationMode: vi.fn(),
+          isPresentationMode: false,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <CommentStoreProvider editor={editor} initialComments={[]}>
+            {children}
+          </CommentStoreProvider>
+        ),
+      },
+    );
+
+  const press = (init: KeyboardEventInit) => {
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    let handled: boolean | undefined;
+    act(() => {
+      handled = editor.view.someProp('handleKeyDown', (f) =>
+        f(editor.view, event),
+      );
+    });
+    return { handled, event };
+  };
+
+  it('⌘+Enter inserts a page break and does not open the link popup', () => {
+    mockMac();
+    editor = makeEditor('<ul><li><p>a</p></li></ul>');
+    const { result } = mount();
+    editor.commands.setTextSelection(4);
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(JSON.stringify(editor.getJSON())).toContain('pageBreak');
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
+  });
+
+  it('⌘+Enter inside a code block falls through', () => {
+    mockMac();
+    editor = makeEditor('<pre><code>code</code></pre>');
+    const { result } = mount();
+    editor.commands.setTextSelection(3);
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBeFalsy();
+    expect(event.defaultPrevented).toBe(false);
+    expect(JSON.stringify(editor.getJSON())).not.toContain('pageBreak');
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
+  });
+
+  it('with two useEditorToolbar instances, ⌘+K leaves the link popup open', () => {
+    mockMac();
+    editor = makeEditor('<p>hello</p>');
+    mount();
+    const second = mount();
+    const { event } = press({ key: 'k', metaKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(second.result.current.toolVisibility).toBe(IEditorTool.LINK_POPUP);
   });
 });
