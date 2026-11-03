@@ -390,6 +390,41 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     });
   });
 
+  describe('atoms in a cell', () => {
+    it("lists each cell's non-text blocks, read back from its spacers", () => {
+      editor.commands.setContent(
+        '<table><tbody><tr><td><p>a1</p><img src="data:image/svg+xml;base64,PHN2Zy8+"><p>a2</p></td><td><p>b1</p></td></tr></tbody></table>',
+      );
+      document.elementFromPoint = () => null;
+      const rect = (el: Element, top: number, height: number) => {
+        el.getBoundingClientRect = () =>
+          ({ top, bottom: top + height, height, left: 0 }) as DOMRect;
+      };
+      let imgPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'resizableMedia') imgPos = pos;
+      });
+      expect(imgPos).toBeGreaterThan(0);
+      // A 100px spacer in a1 moves a1, the image and a2 down by 100.
+      const a1 = [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === 'a1',
+      )!;
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      rect(spacer, 110, 100);
+      a1.prepend(spacer);
+      rect(editor.view.nodeDOM(imgPos) as Element, 240, 100);
+      const row = collectLeaves(editor.view, 931).find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+      if (row?.kind !== 'atomic') throw new Error('expected a row leaf');
+      expect(row.cells?.map((c) => c.atoms)).toEqual([
+        [{ top: 140, bottom: 240 }],
+        [],
+      ]);
+    });
+  });
+
   it('marks headings and the table header row', () => {
     const leaves = collectLeaves(editor.view, 931);
     expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });

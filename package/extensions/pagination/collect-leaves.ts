@@ -312,8 +312,8 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
 
   type Atomic = Extract<Leaf, { kind: 'atomic' }>;
 
-  // Lines of every textblock in each cell of a single row, read back from
-  // the row's spacers before it (base) and the cell's own (§13.6).
+  // Lines of every textblock and boxes of every other block in each cell of a single row, read back from the
+  // row's spacers before it (base) and the cell's own (§13.6).
   const cellsOf = (row: PMNode, rowPos: number, base: number) => {
     const out: NonNullable<Atomic['cells']> = [];
     row.forEach((cell, offset) => {
@@ -327,10 +327,29 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
           base,
         );
       const lines: Line[] = [];
+      const atoms: { top: number; bottom: number }[] = [];
       cell.descendants((node, offsetIn) => {
-        if (node.type.name === 'table') return false;
-        if (!node.isTextblock) return true;
         const pos = cellPos + 1 + offsetIn;
+        const isMermaid =
+          node.type.name === 'codeBlock' && node.attrs.language === 'mermaid';
+        // Anything not read into lines moves as one box (media with its
+        // caption, embeds, nested tables, columns).
+        const walked =
+          WALKED.has(node.type.name) || node.type.name === 'callout';
+        if (isMermaid || (!node.isTextblock && !walked)) {
+          const el = view.nodeDOM(pos);
+          if (el instanceof HTMLElement) {
+            const rect = el.getBoundingClientRect();
+            const top = (rect.top - originTop) / scale;
+            const bottom = (rect.bottom - originTop) / scale;
+            atoms.push({
+              top: top - shiftAt(top),
+              bottom: bottom - shiftAt(bottom - 1),
+            });
+          }
+          return false;
+        }
+        if (!node.isTextblock) return true;
         const el = view.nodeDOM(pos);
         if (!(el instanceof HTMLElement)) return false;
         const rectBottom =
@@ -348,7 +367,11 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
         );
         return false;
       });
-      out.push({ lines, bottom: cellBottom(cellEl) - base - sumOf(own) });
+      out.push({
+        lines,
+        atoms,
+        bottom: cellBottom(cellEl) - base - sumOf(own),
+      });
     });
     return out;
   };

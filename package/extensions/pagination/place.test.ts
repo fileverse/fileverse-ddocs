@@ -634,4 +634,60 @@ describe('place table rows', () => {
     expect(p.breaks).toEqual([]);
     expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
   });
+  // A cell with a non-text child (image, embed, nested table) between lines.
+  const withAtom = (
+    from: number,
+    linesAbove: number,
+    atomH: number,
+    linesBelow: number,
+  ) => {
+    const above = cell(from, 100, linesAbove, 30);
+    const atomTop = above.bottom;
+    const below = cell(from + 1000, atomTop + atomH, linesBelow, 30);
+    return {
+      lines: [...above.lines, ...below.lines],
+      bottom: below.bottom,
+      atoms: [{ top: atomTop, bottom: atomTop + atomH }],
+    };
+  };
+
+  it('a cell with an atom across the page bottom keeps the tall-leaf rule', () => {
+    // Atom 700..1200 crosses 1027; the first crossing line comes after it.
+    const a = withAtom(1000, 20, 500, 10);
+    const row = tallRow(TABLE + 1, 96, [a, cell(5000, 100, 5, 30)]);
+    const p = place([row], a4);
+    expect(p.breaks).toEqual([]);
+    expect(p.spacers.filter((s) => s.kind === 'inText')).toEqual([]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
+  });
+
+  it('an atom wholly below the bottom but above the cut also refuses the split', () => {
+    // Lines to 1000, atom 1030..1100, then the first crossing line.
+    const above = cell(1000, 100, 30, 30);
+    const a = {
+      lines: [...above.lines, ...cell(2000, 1100, 10, 30).lines],
+      bottom: 1400,
+      atoms: [{ top: 1030, bottom: 1100 }],
+    };
+    const p = place([tallRow(TABLE + 1, 96, [a])], a4);
+    expect(p.breaks).toEqual([]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
+  });
+
+  it('an atom that fits above the crossing line does not stop the split', () => {
+    // Atom 400..600 fits; line 24 (1030..1060) is the first to cross.
+    const a = withAtom(1000, 10, 200, 30);
+    const p = place([tallRow(TABLE + 1, 96, [a])], a4);
+    const k = a.lines.findIndex((l) => l.bottom > 1027);
+    expect(p.breaks).toEqual([{ kind: 'inText', pos: a.lines[k].startPos }]);
+  });
+
+  it('a cell whose kept line starts at or below the bottom keeps the tall-leaf rule', () => {
+    // Something without lines fills the cell to 1030: the first line would
+    // be kept wholly in the band.
+    const a = cell(1000, 1030, 20, 30);
+    const p = place([tallRow(TABLE + 1, 96, [a])], a4);
+    expect(p.breaks).toEqual([]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
+  });
 });

@@ -3,6 +3,11 @@
 import { PRINT_BOTTOM_SLACK, type PageGrid } from './page-grid';
 
 export type Line = { top: number; bottom: number; startPos: number };
+export type Cell = {
+  lines: Line[];
+  bottom: number;
+  atoms?: { top: number; bottom: number }[];
+};
 // marginTop: what print keeps above the leaf after a forced break, i.e. the
 // margins, borders and padding of the boxes that start with it (leadingOffset).
 export type Leaf =
@@ -27,9 +32,10 @@ export type Leaf =
       spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
-      // A single row's cells: lines of every textblock in each, and where
-      // its content ends. Read only when the row splits (§13.6).
-      cells?: { lines: Line[]; bottom: number }[];
+      // A single row's cells: lines of every textblock in each, the boxes
+      // of its non-text blocks (atoms), and where its content ends. Read
+      // only when the row splits (§13.6).
+      cells?: Cell[];
     }
   | { kind: 'forced'; pos: number };
 export type PrintBreak =
@@ -153,20 +159,38 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
 
   // A row taller than the room splits inside its cells: each crossing cell
   // breaks at its first line that does not fit, keeping one line (§13.6).
-  // No header is repeated across it. Returns false when no cell can break.
-  const splitRow = (cells: { lines: Line[]; bottom: number }[]) => {
+  // No header is repeated across it. Returns false, placing nothing, when no
+  // cell can break, or when a split would leave content in the masked band:
+  // an atom the cut does not move ends below the bottom, or the kept line
+  // starts at or below it.
+  const splitRow = (cells: Cell[]) => {
     const start = { shift, drift };
+    const counts = [breaks.length, spacers.length, pageStarts.length, page];
     const at = cells.map(() => ({ ...start, idx: 0 }));
     for (;;) {
       const bottom = bottomOfPage();
+      let inBand = false;
       const cuts = cells.flatMap((cell, c) => {
         const { lines } = cell;
+        const s = at[c].shift;
         let k = lines.findIndex(
-          (line, i) => i >= at[c].idx && line.bottom + at[c].shift > bottom,
+          (line, i) => i >= at[c].idx && line.bottom + s > bottom,
         );
-        if (k === at[c].idx) k += 1;
-        return k > 0 && k < lines.length ? [{ c, k, line: lines[k] }] : [];
+        if (k === at[c].idx) {
+          if (lines[k].top + s >= bottom) inBand = true;
+          k += 1;
+        }
+        const cut = k > 0 && k < lines.length ? lines[k] : null;
+        inBand ||= (cell.atoms ?? []).some(
+          (a) => a.bottom + s > bottom && (!cut || a.top < cut.top),
+        );
+        return cut ? [{ c, k, line: cut }] : [];
       });
+      if (inBand) {
+        [breaks.length, spacers.length, pageStarts.length, page] = counts;
+        ({ shift, drift } = start);
+        return false;
+      }
       if (!cuts.length) break;
       page += 1;
       pageStarts.push({ kind: 'inText', pos: cuts[0].line.startPos });
