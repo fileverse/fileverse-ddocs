@@ -18,7 +18,8 @@ export type MenuLabel = string | ((ctx: MenuContext) => string);
 type BaseNode = {
   id: string;
   label: MenuLabel;
-  icon?: string;
+  /** Icon name; a function resolves it from ctx like a label. */
+  icon?: MenuLabel;
   visibleWhen?: MenuPredicate;
 };
 
@@ -51,6 +52,8 @@ export type RadioNode = BaseNode & {
   value: string;
   /** Selected state, derived from ctx (usually ctx.state[action].current). */
   state: MenuPredicate;
+  /** Helper line under the label. */
+  description?: string;
   enabledWhen?: MenuPredicate;
 };
 
@@ -110,6 +113,7 @@ export type ProjectedRadio = ProjectedBase & {
   action: string;
   value: string;
   checked: boolean;
+  description?: string;
 };
 
 export type ProjectedSubmenu = ProjectedBase & {

@@ -56,6 +56,7 @@ import { PagesPanel } from './pages/PagesPanel';
 import { installPagesDebug, waitForLayout } from './pages/pages-debug';
 import {
   DocumentStyling,
+  PageSetup,
   CollaborationProps,
   CollabState,
   SerializedCommentAnchor,
@@ -285,6 +286,19 @@ function App() {
     };
   });
   const [showStylingControls, setShowStylingControls] = useState(false);
+  // null toggles. Keeps the paper size the document already has.
+  const setPageMode = useCallback((mode: PageSetup['mode'] | null) => {
+    setDocumentStyling((prev) => {
+      const current = prev?.pageSetup?.mode ?? 'pageless';
+      return {
+        ...(prev ?? {}),
+        pageSetup: {
+          paper: prev?.pageSetup?.paper ?? 'a4',
+          mode: mode ?? (current === 'pages' ? 'pageless' : 'pages'),
+        },
+      };
+    });
+  }, []);
 
   const [inlineCommentData, setInlineCommentData] = useState({
     inlineCommentText: '',
@@ -662,6 +676,7 @@ function App() {
       setZoomLevel,
       documentStyling,
       setDocumentStyling,
+      setPageMode,
       startPresentation: () => setIsPresentationMode(true),
       openWordCountModal: () => setWordCountModalOpen(true),
     });
@@ -1087,7 +1102,12 @@ function App() {
           }}
         />
       </div>
-      <DemoFooter wordCount={wordCount} pageCount={pageCount} />
+      <DemoFooter
+        wordCount={wordCount}
+        pageCount={pageCount}
+        isPagesMode={documentStyling?.pageSetup?.mode === 'pages'}
+        onTogglePageMode={() => setPageMode(null)}
+      />
       <WordCountModal
         open={wordCountModalOpen}
         onOpenChange={setWordCountModalOpen}

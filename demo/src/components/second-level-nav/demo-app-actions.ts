@@ -2,7 +2,10 @@ import { Editor } from '@tiptap/react';
 import { handleContentPrint } from '../../../../package/utils/handle-print';
 import { generateDocId } from '../../utils';
 import type { ActionRegistry } from './action-registry';
-import type { DocumentStyling } from '../../../../package/types';
+import type {
+  DocumentStyling,
+  PageSetup,
+} from '../../../../package/types';
 
 /** Demo analog of the consumer's app-action registry (buckets 2–4). */
 export type DemoAppActionDeps = {
@@ -26,6 +29,8 @@ export type DemoAppActionDeps = {
   setZoomLevel: (v: string) => void;
   documentStyling: DocumentStyling | undefined;
   setDocumentStyling: (s: DocumentStyling) => void;
+  /** null toggles between pages and pageless. */
+  setPageMode: (mode: PageSetup['mode'] | null) => void;
   startPresentation: () => void;
   openWordCountModal: () => void;
 };
@@ -94,6 +99,11 @@ export const createDemoAppActions = (d: DemoAppActionDeps): ActionRegistry => ({
         orientation: v as 'portrait' | 'landscape',
       }),
     current: d.documentStyling?.orientation ?? 'portrait',
+  },
+  // A value sets the mode (Page setup radios); no value toggles it.
+  'format.pageMode': {
+    run: (v) => d.setPageMode(v === 'pages' || v === 'pageless' ? v : null),
+    current: d.documentStyling?.pageSetup?.mode ?? 'pageless',
   },
   'tools.slides': { run: () => d.startPresentation() },
   // Word count modal (TEC-2705) — demo/src/components/WordCountModal.tsx,

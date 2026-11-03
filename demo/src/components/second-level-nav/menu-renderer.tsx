@@ -147,10 +147,24 @@ export const MenuBarRenderer = ({
                 dispatch(r);
               }}
             >
-              <div className="flex items-center">
-                {itemIcon(r.icon)}
-                {r.label}
-              </div>
+              {r.description ? (
+                <div className="flex items-center gap-3 py-0.5 pr-2">
+                  {r.icon && <LucideIcon name={r.icon} size="md" />}
+                  <div className="flex flex-col gap-1 max-w-[160px]">
+                    <span className={r.checked ? 'text-body-sm-bold' : ''}>
+                      {r.label}
+                    </span>
+                    <span className="text-helper-text-sm color-text-secondary">
+                      {r.description}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  {itemIcon(r.icon)}
+                  {r.label}
+                </div>
+              )}
             </MenubarRadioItem>
           ))}
         </MenubarRadioGroup>,
