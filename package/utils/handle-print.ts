@@ -4,8 +4,13 @@ import type { FontDescriptor, PageSetup } from '../types';
 import {
   getPaperPx,
   PAGE_MARGIN,
+  PageGrid,
   PRINT_BOTTOM_SLACK,
 } from '../extensions/pagination/page-grid';
+import {
+  MEDIA_RATIO_VAR,
+  publishMediaRatios,
+} from '../extensions/resizable-media/media-ratio';
 import { applyMarkerFonts } from '../extensions/list-toggle/marker-font';
 
 const A4_HEIGHT_INCHES = 11.69;
@@ -968,6 +973,12 @@ const buildPagesPrintStyles = (
 ) => {
   const { width } = getPaperPx(pageSetup.paper, orientation);
   const size = pageSetup.paper === 'a4' ? 'A4' : 'letter';
+  const { textHeight } = new PageGrid(pageSetup.paper, orientation);
+  // Media fits one page and narrows with its ratio, as editor.css does on
+  // screen. An image prints content-box in its screen box's 2px border.
+  const mediaCap = (height: number, border = 0) => `
+    max-height: ${height - border}px;
+    max-width: min(calc(100% - ${border}px), calc(${height - border}px * var(${MEDIA_RATIO_VAR}, 1000)));`;
   return `
   ${buildRegisteredFontFaceCss()}
   .${PRINT_HOST_CLASS} { display: none; }
@@ -1058,6 +1069,33 @@ const buildPagesPrintStyles = (
     padding-left: 16px;
   }
   .${PRINT_HOST_CLASS} pre[data-word-wrap='false'] > code { white-space: pre; }
+  /* The media node view's box without its editing chrome (§13.5): an image
+     in a 2px transparent border, the caption under it. On screen the caption
+     sits in a caption-styled content div, in a flex column (no collapsing);
+     its line-height is the inherited 1.5, where the print root sets px. */
+  .${PRINT_HOST_CLASS} [data-type='resizable-media'] { border: 0; }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']
+    :is([data-type='media-caption-wrapper'], .media-caption) {
+    display: flow-root;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .${PRINT_HOST_CLASS} :is(iframe, [data-type='resizable-media'] > video) {
+    object-fit: contain;${mediaCap(textHeight)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media'] > img {
+    box-sizing: content-box;
+    border: 2px solid transparent;
+    object-fit: contain;${mediaCap(textHeight, 4)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']:has(.media-caption) > video {${mediaCap(textHeight - 26)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']:has(.media-caption) > img {${mediaCap(textHeight - 26, 4)}
+  }
 `;
 };
 
@@ -1132,7 +1170,9 @@ export const mountContentPrintHost = (
 
   document.head.appendChild(styleEl);
   let pageNumberEl: HTMLStyleElement | null = null;
+  let stopMediaRatios: (() => void) | null = null;
   if (isPages) {
+    stopMediaRatios = publishMediaRatios(contentRoot);
     pageNumberEl = document.createElement('style');
     pageNumberEl.setAttribute('data-ddoc-print', 'page-numbers');
     pageNumberEl.textContent = PAGES_PAGE_NUMBER_STYLES;
@@ -1152,6 +1192,7 @@ export const mountContentPrintHost = (
     cleanup: () => {
       if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
       pageNumberEl?.remove();
+      stopMediaRatios?.();
       if (host.parentNode) host.parentNode.removeChild(host);
     },
   };

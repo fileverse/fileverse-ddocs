@@ -1729,6 +1729,13 @@ const DdocEditor = forwardRef(
             isContainerQueryRoot && 'ddoc-editor-cq',
           )}
           data-page-mode={isPagesMode ? 'pages' : undefined}
+          style={
+            isPagesMode && pageGrid
+              ? ({
+                  '--ddoc-page-text-h': `${pageGrid.textHeight}px`,
+                } as CSSProperties)
+              : undefined
+          }
         >
           <EditorWidthContext.Provider value={editorWidthStore}>
             <ZoomProvider

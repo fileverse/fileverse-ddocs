@@ -12,6 +12,7 @@ import { SecureImageV2 } from '../../components/secure-image-v2.tsx';
 import { IpfsImageFetchPayload } from '../../types.ts';
 import { toLayoutDelta } from '../../utils/zoom';
 import { getCornerResizeStep } from './corner-resize';
+import { publishMediaRatios } from './media-ratio';
 interface WidthAndHeight {
   width: number;
   height: number;
@@ -126,6 +127,13 @@ export const getResizableMediaNodeView =
     useEffect(() => {
       mediaSetupOnLoad();
     }, []);
+
+    // Pages narrows media taller than a page by its ratio (editor.css).
+    const mediaBoxRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      if (!mediaBoxRef.current) return;
+      return publishMediaRatios(mediaBoxRef.current, mediaBoxRef.current);
+    }, [node.attrs.src, node.attrs.width, node.attrs.height]);
 
     // Converts the legacy `caption` string attribute into an editable
     // `mediaCaption` child node. Called on user interaction (click on the
@@ -407,6 +415,7 @@ export const getResizableMediaNodeView =
         <div
           draggable={isDragging}
           data-drag-handle={isDragging}
+          data-media-frame
           className={cn(
             'w-fit flex flex-col relative group transition-all ease-in-out',
             !isPreviewMode && 'p-2 pt-1 color-bg-secondary rounded-lg',
@@ -418,7 +427,7 @@ export const getResizableMediaNodeView =
           onTouchCancel={handleTouchEnd}
         >
           {!isPreviewMode && (
-            <div className="flex gap-1 p-1 mb-1 ml-auto">
+            <div data-media-toolbar className="flex gap-1 p-1 mb-1 ml-auto">
               {isImageType && (
                 <MediaBackgroundPicker
                   value={node.attrs.backgroundColor ?? null}
@@ -454,6 +463,7 @@ export const getResizableMediaNodeView =
             </div>
           )}
           <div
+            ref={mediaBoxRef}
             contentEditable={false}
             className={cn(
               'relative',

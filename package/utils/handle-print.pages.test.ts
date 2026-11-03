@@ -75,6 +75,19 @@ describe('content print, pages', () => {
     expect(root.getAttribute('data-page-mode')).toBe('pages');
   });
 
+  it('Pages print CSS caps media at the text height', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    expect(readMounted().style).toMatch(/max-height:\s*931px/);
+  });
+
+  it('caps media at the text height of the paper and orientation', () => {
+    mountContentPrintHost(HTML, {
+      pageSetup: { mode: 'pages', paper: 'letter' },
+      orientation: 'landscape',
+    });
+    expect(readMounted().style).toMatch(/max-height:\s*624px/);
+  });
+
   // On screen, cell content sits in the React node view's pre-wrap content
   // div; ProseMirror's own break-spaces wraps a word earlier.
   it('matches screen wrapping inside table cells and lets tables break', () => {

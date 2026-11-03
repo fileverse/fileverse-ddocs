@@ -168,6 +168,69 @@ const proposal = () => {
   ].join('');
 };
 
+// Blocks taller than a page and blocks a page splits (§13.5 to §13.7).
+const tallBlocks = () => {
+  const r = rng(12);
+  const captioned = (w: number, h: number, caption: string) =>
+    svgImage(w, h, '#fde68a').replace(
+      /^<img (.*) width="(\d+)">$/,
+      `<div data-type="resizable-media" width="$2"><img $1><div data-type="media-caption-wrapper"><div data-type="media-caption">${caption}</div></div></div>`,
+    );
+  const cols = `<div data-type="columns"><div data-type="column">${paragraphs(
+    r,
+    9,
+    3,
+    6,
+  )}</div><div data-type="column">${paragraphs(r, 9, 3, 6)}</div></div>`;
+  const mermaid = `<pre><code class="language-mermaid">graph TD; ${Array.from(
+    { length: 30 },
+    (_, i) => `N${i}[Step ${i}] --> N${i + 1}[Step ${i + 1}]`,
+  ).join('; ')}</code></pre>`;
+  const iframe =
+    '<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ" width="602" height="1400"></iframe>';
+  const cell = (tag: 'td' | 'th', html: string) => `<${tag}>${html}</${tag}>`;
+  const tallRowTable = `<table><tbody><tr>${['Item', 'Owner', 'Notes']
+    .map((t) => cell('th', `<p>${t}</p>`))
+    .join('')}</tr>${Array.from(
+    { length: 4 },
+    (_, i) =>
+      `<tr>${cell('td', `<p>Row ${i + 1}</p>`)}${cell(
+        'td',
+        `<p>${sentence(r, 2, 4)}</p>`,
+      )}${cell('td', i === 1 ? paragraphs(r, 5, 3, 5) : `<p>${sentence(r, 3, 8)}</p>`)}</tr>`,
+  ).join('')}</tbody></table>`;
+  const codeBlock = `<pre><code>${Array.from(
+    { length: 60 },
+    (_, i) => `const line${i} = compute(${i}, '${sentence(r, 2, 5)}');`,
+  ).join('\n')}</code></pre>`;
+  return [
+    '<h1>Tall blocks</h1>',
+    paragraphs(r, 2),
+    svgImage(400, 2000),
+    paragraphs(r, 2),
+    captioned(602, 920, 'A captioned image about a page tall'),
+    paragraphs(r, 2),
+    cols,
+    paragraphs(r, 2),
+    mermaid,
+    paragraphs(r, 2),
+    iframe,
+    paragraphs(r, 2),
+    tallRowTable,
+    paragraphs(r, 2),
+    table(r, 30, false),
+    paragraphs(r, 3),
+    codeBlock,
+    paragraphs(r, 2),
+    `<aside data-type="callout">${paragraphs(r, 7)}</aside>`,
+    paragraphs(r, 2),
+    `<blockquote>${paragraphs(r, 7)}</blockquote>`,
+    paragraphs(r, 2),
+    `<ul>${Array.from({ length: 28 }, () => `<li><p>${sentences(r, 1, 3)}</p></li>`).join('')}</ul>`,
+    paragraphs(r, 3),
+  ].join('');
+};
+
 // ~50,000 words for the performance check (§12.12 item 6).
 const large = () => {
   const r = rng(11);
@@ -201,6 +264,7 @@ const BUILDERS: Record<string, () => string> = {
   '09': columns,
   '10': proposal,
   '11': large,
+  '12': tallBlocks,
 };
 
 export const PAGES_FIXTURES: PagesFixture[] = PAGES_FIXTURES_META.map(
