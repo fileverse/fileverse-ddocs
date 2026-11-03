@@ -128,12 +128,7 @@ const contentOf = (el: HTMLElement): HTMLElement =>
     ?.contentDOM ?? el;
 
 // Leaves in document order, measured in the view.dom frame, unscaled.
-export function collectLeaves(
-  view: EditorView,
-  textHeight: number,
-  options: { tableRows?: boolean } = {},
-): Leaf[] {
-  const { tableRows = false } = options;
+export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
   const scale = getZoomScale(view.dom);
   const originTop = view.dom.getBoundingClientRect().top;
   const range = document.createRange();
@@ -170,14 +165,16 @@ export function collectLeaves(
       el,
       inText,
       top: (rect.top - originTop) / scale,
-      amount: inText
-        ? height
-        : height +
-          spacerExtra(
-            parent,
-            realSibling(el, 'previousElementSibling'),
-            realSibling(el, 'nextElementSibling'),
-          ),
+      // A table row has no margins: it displaces by its height.
+      amount:
+        inText || el.tagName === 'TR'
+          ? height
+          : height +
+            spacerExtra(
+              parent,
+              realSibling(el, 'previousElementSibling'),
+              realSibling(el, 'nextElementSibling'),
+            ),
     };
   });
   // Spacers are in document order: those before an element, then those
@@ -286,7 +283,7 @@ export function collectLeaves(
   };
 
   type Atomic = Extract<Leaf, { kind: 'atomic' }>;
-  const atomic = (pos: number, extra: Pick<Atomic, 'row' | 'table'> = {}) => {
+  const atomic = (pos: number, extra: Pick<Atomic, 'row'> = {}) => {
     const b = box(pos);
     if (b) leaves.push(flowLeaf('atomic', pos, b, extra));
   };
@@ -317,17 +314,6 @@ export function collectLeaves(
     );
   };
 
-  // One leaf, with its rows: print breaks a tall table between rows.
-  const wholeTable = (table: PMNode, pos: number) => {
-    const rows: { top: number; bottom: number }[] = [];
-    table.forEach((_, offset) => {
-      const b = box(pos + 1 + offset);
-      if (b) rows.push({ top: b.top, bottom: b.bottom });
-    });
-    const { headerHeight } = tableHeader(table, pos);
-    atomic(pos, { table: { rows, headerHeight } });
-  };
-
   const visit = (node: PMNode, pos: number) => {
     const name = node.type.name;
     if (WALKED.has(name)) return walk(node, pos + 1);
@@ -335,9 +321,7 @@ export function collectLeaves(
       leaves.push({ kind: 'forced', pos });
       return;
     }
-    if (name === 'table') {
-      return tableRows ? visitTable(node, pos) : wholeTable(node, pos);
-    }
+    if (name === 'table') return visitTable(node, pos);
     if (name === 'callout') {
       const b = box(pos);
       if (b && b.bottom - b.top > textHeight) return walk(node, pos + 1);

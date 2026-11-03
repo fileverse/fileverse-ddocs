@@ -265,6 +265,33 @@ describe('editStaysInOneTextblock', () => {
     expect(editStaysInOneTextblock(trs, [])).toBe(false);
   });
 
+  // The header clones copy the row's DOM (docs/PAGES_MODE.md §13.6).
+  it('typing in a header row the screen repeats is false', () => {
+    editor.commands.setContent(
+      '<table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table>',
+    );
+    const textAt = (text: string) => {
+      let at = -1;
+      editor.state.doc.descendants((n, pos) => {
+        if (at < 0 && n.isText && n.text === text) at = pos;
+      });
+      return at;
+    };
+    let lastRow = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === 'tableRow') lastRow = pos;
+    });
+    const typeAt = (pos: number) =>
+      capture(() => editor.view.dispatch(editor.state.tr.insertText('x', pos)));
+    const header = sp({ kind: 'block', pos: lastRow, header: 30 });
+    const plain = sp({ kind: 'block', pos: lastRow });
+    const inHeader = typeAt(textAt('H') + 1);
+    expect(editStaysInOneTextblock(inHeader, [header])).toBe(false);
+    expect(editStaysInOneTextblock(inHeader, [plain])).toBe(true);
+    const inBody = typeAt(textAt('a') + 1);
+    expect(editStaysInOneTextblock(inBody, [header])).toBe(true);
+  });
+
   it('no steps or an empty list is true', () => {
     expect(editStaysInOneTextblock([], [])).toBe(true);
     expect(editStaysInOneTextblock([editor.state.tr], [])).toBe(true);

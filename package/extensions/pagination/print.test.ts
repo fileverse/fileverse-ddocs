@@ -45,6 +45,7 @@ describe('buildPrintHtml', () => {
         { kind: 'inText', pos: textPos(doc, 'beta') },
       ],
       pageCount: 2,
+      spacers: [],
     };
   });
   afterEach(() => {
@@ -175,7 +176,7 @@ describe('buildPrintHtml', () => {
       editor,
       pageSetup: pages,
       isPagesActive: true,
-      placement: { breaks: [], pageStarts: [], pageCount: 1 },
+      placement: { breaks: [], pageStarts: [], pageCount: 1, spacers: [] },
     });
     const div = document.createElement('div');
     div.innerHTML = html;
@@ -220,6 +221,7 @@ describe('buildPrintHtml', () => {
           { kind: 'before', pos: rowPos },
         ],
         pageCount: 2,
+        spacers: [],
       },
     });
     const div = document.createElement('div');
@@ -235,6 +237,45 @@ describe('buildPrintHtml', () => {
     });
     expect(div.querySelector('[data-print-col-widths]')).toBeNull();
   });
+
+  // docs/PAGES_MODE.md §13.6: the piece repeats the header when the screen does.
+  it.each([
+    [40, 'H'],
+    [undefined, undefined],
+  ])(
+    'clones the header into a split piece per the screen spacer (header %s)',
+    async (header, thead) => {
+      editor.commands.setContent(
+        '<table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table>',
+      );
+      let rowPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'tableRow' && node.textContent === 'b')
+          rowPos = pos;
+      });
+      const spacer = { kind: 'block' as const, pos: rowPos, height: 300 };
+      const { html } = await buildPrintHtml({
+        editor,
+        pageSetup: pages,
+        isPagesActive: true,
+        placement: {
+          breaks: [{ kind: 'before', pos: rowPos }],
+          pageStarts: [
+            { kind: 'before', pos: 0 },
+            { kind: 'before', pos: rowPos },
+          ],
+          pageCount: 2,
+          spacers: [{ ...spacer, page: 2, print: true, header }],
+        },
+      });
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      const tables = [...div.querySelectorAll('table')];
+      expect(tables).toHaveLength(2);
+      expect(tables[1].querySelector('thead')?.textContent).toBe(thead);
+      expect(div.querySelector('[data-print-repeat-header]')).toBeNull();
+    },
+  );
 
   // A span directly in a <tr> is moved out of the table by the HTML parser.
   it('puts a table row marker inside its first cell', async () => {
@@ -257,6 +298,7 @@ describe('buildPrintHtml', () => {
           { kind: 'before', pos: rowPos },
         ],
         pageCount: 2,
+        spacers: [],
       },
       debugMarkers: true,
     });
@@ -294,7 +336,12 @@ describe('buildPrintHtml', () => {
 describe('resolvePrintPlacement', () => {
   const stub = (flush: () => Placement | null) =>
     ({ storage: { pagination: { flush: vi.fn(flush) } } }) as unknown as Editor;
-  const live: Placement = { breaks: [], pageStarts: [], pageCount: 3 };
+  const live: Placement = {
+    breaks: [],
+    pageStarts: [],
+    pageCount: 3,
+    spacers: [],
+  };
 
   it('flushes and uses the live placement in Pages', () => {
     const editor = stub(() => live);
@@ -337,6 +384,7 @@ describe('printPagesTab', () => {
         { kind: 'inText', pos },
       ],
       pageCount: 2,
+      spacers: [],
     };
     (editor.storage as unknown as Record<string, unknown>).pagination = {
       flush: () => placement,

@@ -1,7 +1,11 @@
 import { Editor } from '@tiptap/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
-import { buildPrintSchema, serializeWithBreaks } from './print-break-node';
+import {
+  buildPrintSchema,
+  REPEAT_HEADER,
+  serializeWithBreaks,
+} from './print-break-node';
 
 const IMG =
   'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPg==';
@@ -43,12 +47,14 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
   const html = (
     breaks: Parameters<typeof serializeWithBreaks>[2],
     starts: Parameters<typeof serializeWithBreaks>[3] = [],
+    blockAttrs: Parameters<typeof serializeWithBreaks>[4] = [],
   ) =>
     serializeWithBreaks(
       editor.state.doc,
       buildPrintSchema(editor.schema),
       breaks,
       starts,
+      blockAttrs,
     );
   const dom = (s: string) => {
     const div = document.createElement('div');
@@ -223,6 +229,7 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
           { kind: 'before', pos: nodePos(doc, 'heading') },
           { kind: 'before', pos: row },
         ],
+        [{ pos: row, attrs: { [REPEAT_HEADER]: '' } }],
       ),
     );
     const tables = [...out.querySelectorAll('table')];
@@ -252,6 +259,27 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     expect(top(first).hasAttribute('data-print-split')).toBe(true);
     expect(top(rest).hasAttribute('data-print-continued')).toBe(true);
     expect(top(rest).hasAttribute('data-print-split')).toBe(false);
+  });
+
+  // docs/PAGES_MODE.md §13.6: one header rule on screen and in print.
+  it('a split piece gets the header only when the screen repeats it', () => {
+    const doc = editor.state.doc;
+    const row = nodePos(doc, 'tableRow', 2);
+    const pieces = (blockAttrs: Parameters<typeof html>[2]) => {
+      const out = dom(html([{ kind: 'before', pos: row }], [], blockAttrs));
+      expect(out.querySelector(`[${REPEAT_HEADER}]`)).toBeNull();
+      return [...out.querySelectorAll('table')];
+    };
+    const repeated = pieces([{ pos: row, attrs: { [REPEAT_HEADER]: '' } }]);
+    expect(repeated[1].querySelector('thead')?.textContent).toBe('H');
+    const plain = pieces([]);
+    expect(plain).toHaveLength(3);
+    expect(plain[0].querySelector('thead')?.textContent).toBe('H');
+    expect(plain[1].querySelector('thead')).toBeNull();
+    expect(plain[1].querySelector('colgroup')).not.toBeNull();
+    expect(
+      [...plain[1].querySelectorAll('tr')].map((r) => r.textContent),
+    ).toEqual(['b']);
   });
 
   // The dBlock node view marks a table block .is-table; its width cap hangs

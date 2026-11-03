@@ -27,8 +27,6 @@ export type Leaf =
       spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
-      // A whole table: its rows' natural boxes, for print's row breaks.
-      table?: { rows: { top: number; bottom: number }[]; headerHeight: number };
     }
   | { kind: 'forced'; pos: number };
 export type PrintBreak =
@@ -45,12 +43,15 @@ export type PageStart = {
 // break there (the leaf after a box taller than a page). print means the
 // page also starts on paper, not that `breaks` has an entry: a leaf after a
 // forced pageBreak gets print: true and no break.
+// header: the repeated header row's height, part of `height`, when the spacer
+// opens a page in the middle of a table (docs/PAGES_MODE.md §13.6).
 export type Spacer = {
   kind: 'block' | 'inText';
   pos: number;
   height: number;
   page: number;
   print: boolean;
+  header?: number;
 };
 export type Placement = {
   breaks: PrintBreak[];
@@ -120,58 +121,16 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
       height: pixels(height, leaf.spacerCollapse),
       page: page + 1,
       print: true,
+      ...(reserve > 0 ? { header: reserve } : {}),
     });
     pageStarts.push({ kind: 'before', pos: leaf.pos });
     headingsOnly = true;
-  };
-
-  const continuePage = (leaf: FlowLeaf) => {
-    page += 1;
-    pageStarts.push({ kind: 'continued', pos: leaf.pos });
-  };
-
-  // Chrome breaks a table between rows: a row that does not fit what is left
-  // of the page starts the next one, under the repeated header; only a row
-  // taller than that is fragmented. Moves `shift` to the table's printed end.
-  const packRows = (
-    leaf: FlowLeaf,
-    {
-      rows,
-      headerHeight,
-    }: { rows: { top: number; bottom: number }[]; headerHeight: number },
-  ) => {
-    const end = () => grid.contentBottomOf(page) + PRINT_BOTTOM_SLACK;
-    const header = repeated(headerHeight);
-    const room = Math.max(1, capacity - header);
-    let y = rows[0].top + shift;
-    rows.forEach((row, i) => {
-      const height = row.bottom - row.top;
-      if (y + height > end() && height <= room) {
-        continuePage(leaf);
-        y = grid.contentTopOf(page) + header;
-      }
-      let rest = y + height - end();
-      y += height;
-      while (rest > 0) {
-        continuePage(leaf);
-        y = grid.contentTopOf(page) + header + rest;
-        rest -= room;
-      }
-      if (i + 1 < rows.length) y += rows[i + 1].top - row.bottom;
-    });
-    shift +=
-      y + (leaf.bottom - rows[rows.length - 1].bottom) - (leaf.bottom + shift);
   };
 
   // Print fragments a box taller than a page across pages; each printed page
   // holds the text height plus the bottom slack, less a repeated table header.
   const spill = (leaf: Extract<FlowLeaf, { kind: 'atomic' }>) => {
     const shiftBefore = shift;
-    if (leaf.table?.rows.length) {
-      packRows(leaf, leaf.table);
-      carry = shift - shiftBefore;
-      return;
-    }
     const reserve =
       leaf.row && !leaf.row.isHeader ? repeated(leaf.row.headerHeight) : 0;
     const room = Math.max(1, capacity - reserve);

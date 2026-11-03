@@ -164,71 +164,6 @@ describe('place', () => {
     ]);
   });
 
-  describe('a whole table taller than a page prints row by row', () => {
-    const rowsFrom = (top: number, heights: number[]) => {
-      let y = top;
-      return heights.map((h) => ({ top: y, bottom: (y += h) }));
-    };
-    const table = (top: number, heights: number[], headerHeight = 0) => {
-      const rows = rowsFrom(top, heights);
-      return atom(0, top, rows[rows.length - 1].bottom - top, {
-        table: { rows, headerHeight },
-      });
-    };
-
-    it('starts a row that does not fit on the next page', () => {
-      const heights = Array(7).fill(230);
-      const after = para(100, 96 + 1610, 1);
-      // As one box: 1610 - 884 = 726 left fits page 1, two pages.
-      const generic = place([atom(0, 96, 1610), after], grid);
-      expect(generic.pageCount).toBe(2);
-      // Rows: 3 on page 0 (to 786), 3 on page 1 (1168..1858), 1 on page 2.
-      const r = place([table(96, heights), after], grid);
-      expect(r.pageCount).toBe(3);
-      expect(r.pageStarts.filter((s) => s.kind === 'continued')).toHaveLength(
-        2,
-      );
-      expect(r.spacers).toEqual([
-        { kind: 'block', pos: 100, height: 2470 - 1706, page: 3, print: false },
-      ]);
-    });
-
-    it('reserves the repeated header on each continued page', () => {
-      // Header 40, then 230px rows: 3 on page 0, 3 on page 1 from 1168 + 40.
-      const t = table(96, [40, ...Array(6).fill(230)], 40);
-      const after = para(100, t.kind === 'atomic' ? t.bottom : 0, 1);
-      const r = place([t, after], grid);
-      expect(r.pageCount).toBe(2);
-      expect(r.spacers[0]).toMatchObject({ height: 1898 - 1516, print: false });
-    });
-
-    // Letter landscape: text 96..720 on page 0, a printed page holds 644.
-    const landscape = new PageGrid('letter', 'landscape');
-
-    it('does not repeat a header taller than a quarter of the page', () => {
-      const rows = rowsFrom(96, [300, ...Array(5).fill(200)]);
-      const t = atom(0, 96, 1300, { table: { rows, headerHeight: 300 } });
-      const r = place([t, para(100, 1396, 1)], landscape);
-      // Header and row 1 on page 0, rows 2-4 on page 1 from 928, 5 on page 2 from 1760.
-      expect(r.pageCount).toBe(3);
-      expect(r.spacers[0]).toMatchObject({ height: 1960 - 1396 });
-    });
-
-    it('ends with a header row taller than a page', () => {
-      const rows = rowsFrom(96, [700, 200, 200]);
-      const t = atom(0, 96, 1100, { table: { rows, headerHeight: 700 } });
-      expect(place([t], landscape).pageCount).toBe(2);
-    });
-
-    it('fragments a row taller than what a page holds', () => {
-      // Row 2 (1100px) runs from 196: 316px past page 0 continue at 1168.
-      const after = para(100, 1296, 1);
-      const r = place([table(96, [100, 1100]), after], grid);
-      expect(r.pageCount).toBe(2);
-      expect(r.spacers[0]).toMatchObject({ height: 1484 - 1296, print: false });
-    });
-  });
-
   it('spills a tall row under a header taller than a page', () => {
     const landscape = new PageGrid('letter', 'landscape');
     const row = (pos: number, top: number, height: number, isHeader = false) =>
@@ -469,5 +404,98 @@ describe('place spacers', () => {
     printing.forEach((s, i) => {
       if (s.kind === 'inText') expect(s.pos).toBe(r.breaks[i].pos);
     });
+  });
+});
+
+// docs/PAGES_MODE.md §13.6: rows are leaves; a row that does not fit moves to
+// the next page whole, under the repeated header.
+describe('place table rows', () => {
+  // A4: page 0 content 96..1027, page 1 content starts at 1235.
+  const a4 = new PageGrid('a4');
+  const TABLE = 5;
+  const rowsFrom = (
+    top: number,
+    heights: number[],
+    headerHeight: number,
+    { hasHeader = headerHeight > 0 } = {},
+  ) => {
+    let y = top;
+    return heights.map((h, i) => {
+      const pos = TABLE + 1 + i * 10;
+      const leaf = atom(pos, y, h, {
+        // Row 0 starts the table: its spacer goes before it (§12.4).
+        spacerPos: i === 0 ? TABLE : pos,
+        row: { tableId: 1, isHeader: hasHeader && i === 0, headerHeight },
+      });
+      y += h;
+      return leaf as Extract<Leaf, { kind: 'atomic' }>;
+    });
+  };
+
+  it('a row that does not fit moves whole under a repeated header', () => {
+    const rows = rowsFrom(96, [40, ...Array(20).fill(60)], 40);
+    const r = place(rows, a4);
+    // Row 14 (976..1036) crosses 1027.
+    const row = rows.find((l) => l.bottom > 1027)!;
+    expect(row.top).toBe(976);
+    expect(r.breaks).toEqual([{ kind: 'before', pos: row.pos }]);
+    expect(r.spacers).toHaveLength(1);
+    const [spacer] = r.spacers;
+    expect(spacer).toMatchObject({
+      kind: 'block',
+      pos: row.spacerPos,
+      page: 2,
+      print: true,
+      header: 40,
+    });
+    const nextRowTopOnScreen = row.top + spacer.height;
+    expect(nextRowTopOnScreen).toBe(1235 + 40);
+    expect(r.pageStarts.map((s) => s.kind)).toEqual(['before', 'before']);
+  });
+
+  it('a 492px row that fits a fresh page moves whole (fixture 10 v2 A4 case)', () => {
+    const rows = rowsFrom(700, [30, 100, 492, 60], 30);
+    const r = place([para(0, 96, 1), ...rows], a4);
+    // 830..1322 crosses 1027 and fits a fresh page under the header.
+    expect(r.breaks).toEqual([{ kind: 'before', pos: rows[2].pos }]);
+    expect(r.pageStarts.map((s) => s.kind)).toEqual(['before', 'before']);
+    expect(r.spacers[0]).toMatchObject({ pos: rows[2].pos, header: 30 });
+    expect(r.spacers[0].height).toBe(1235 + 30 - 830);
+    expect(r.pageCount).toBe(2);
+  });
+
+  it('no header field when the header exceeds a quarter of the capacity', () => {
+    // A4 capacity 931 + 20: a quarter is 237.75.
+    const rows = rowsFrom(96, [240, ...Array(4).fill(200)], 240);
+    const r = place(rows, a4);
+    expect(r.breaks).toEqual([{ kind: 'before', pos: rows[4].pos }]);
+    expect(r.spacers).toHaveLength(1);
+    expect('header' in r.spacers[0]).toBe(false);
+    expect(r.spacers[0].height).toBe(1235 - rows[4].top);
+  });
+
+  it('no header field in a table without a header row', () => {
+    const rows = rowsFrom(96, Array(20).fill(60), 0);
+    const r = place(rows, a4);
+    expect(r.spacers).toHaveLength(1);
+    expect('header' in r.spacers[0]).toBe(false);
+  });
+
+  it('a header row moves with the row after it', () => {
+    const rows = rowsFrom(960, [40, 60, 60], 40);
+    const r = place([para(0, 96, 1), ...rows], a4);
+    expect(r.breaks).toEqual([{ kind: 'before', pos: rows[0].pos }]);
+    expect(r.spacers).toHaveLength(1);
+    expect(r.spacers[0]).toMatchObject({ pos: TABLE, page: 2 });
+    expect('header' in r.spacers[0]).toBe(false);
+    expect(r.spacers[0].height).toBe(1235 - 960);
+  });
+
+  it('a break before row 0 goes before the table', () => {
+    const rows = rowsFrom(1000, [60, 60], 0);
+    const r = place([para(0, 96, 1), ...rows], a4);
+    expect(r.breaks).toEqual([{ kind: 'before', pos: rows[0].pos }]);
+    expect(r.spacers[0].pos).toBe(TABLE);
+    expect('header' in r.spacers[0]).toBe(false);
   });
 });

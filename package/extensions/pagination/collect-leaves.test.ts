@@ -43,7 +43,7 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
   afterEach(() => editor.destroy());
 
   it('yields one leaf per placeable unit, in document order', () => {
-    const leaves = collectLeaves(editor.view, 931, { tableRows: true });
+    const leaves = collectLeaves(editor.view, 931);
     const doc = editor.state.doc;
     expect(
       leaves.map((leaf) => [leaf.kind, doc.nodeAt(leaf.pos)?.type.name]),
@@ -62,19 +62,45 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     ]);
   });
 
-  it('treats a table as one atomic leaf by default', () => {
+  it('makes every table row a leaf; row 0 anchors its spacer before the table', () => {
     const doc = editor.state.doc;
-    const kinds = collectLeaves(editor.view, 931).map((l) => [
-      l.kind,
-      doc.nodeAt(l.pos)?.type.name,
-    ]);
-    expect(kinds).toContainEqual(['atomic', 'table']);
-    expect(kinds).not.toContainEqual(['atomic', 'tableRow']);
-    // With its rows' boxes, for print's row breaks (place's packRows).
-    const table = collectLeaves(editor.view, 931).find(
-      (l) => l.kind === 'atomic' && doc.nodeAt(l.pos)?.type.name === 'table',
+    const leaves = collectLeaves(editor.view, 931);
+    const kinds = leaves.map((l) => [l.kind, doc.nodeAt(l.pos)?.type.name]);
+    expect(kinds).not.toContainEqual(['atomic', 'table']);
+    const rows = leaves.filter(
+      (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
     );
-    expect(table?.kind === 'atomic' && table.table?.rows).toHaveLength(2);
+    expect(rows).toHaveLength(2);
+    const [row0, row1] = rows;
+    if (row0.kind === 'forced' || row1.kind === 'forced') throw new Error();
+    // The outermost node that starts with row 0: the dBlock in v1.
+    const outer = doc.nodeAt(row0.spacerPos)?.type.name;
+    expect(outer).toBe(schemaVersion === 1 ? 'dBlock' : 'table');
+    expect(row1.spacerPos).toBe(row1.pos);
+  });
+
+  it('takes a spacer row and a header clone out of the rows below them', () => {
+    const doc = editor.state.doc;
+    const rowEls = Array.from(editor.view.dom.querySelectorAll('tr'));
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height }) as DOMRect;
+    };
+    const spacer = document.createElement('tr');
+    spacer.className = `${SPACER_CLASS} ddoc-page-spacer-row`;
+    const clone = rowEls[0].cloneNode(true) as HTMLElement;
+    clone.className = `${SPACER_CLASS} ddoc-page-spacer-header`;
+    rowEls[1].before(spacer, clone);
+    rectOf(rowEls[0], 100, 30);
+    rectOf(spacer, 130, 200);
+    rectOf(clone, 330, 30);
+    rectOf(rowEls[1], 360, 40);
+    const rows = collectLeaves(editor.view, 931).filter(
+      (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+    );
+    expect(rows).toHaveLength(2);
+    // A tr has no margins: each one displaces by its height.
+    expect(rows[1]).toMatchObject({ top: 130, bottom: 170 });
   });
 
   it('anchors a spacer at the outermost node that starts with the leaf', () => {
@@ -199,7 +225,7 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
   });
 
   it('marks headings and the table header row', () => {
-    const leaves = collectLeaves(editor.view, 931, { tableRows: true });
+    const leaves = collectLeaves(editor.view, 931);
     expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });
     expect(leaves[1]).toMatchObject({ kind: 'text', isHeading: false });
     const rows = leaves.filter((l) => l.kind === 'atomic' && l.row);

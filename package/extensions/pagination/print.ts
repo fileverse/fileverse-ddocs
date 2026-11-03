@@ -12,7 +12,11 @@ import { searchForSecureImageNodeAndEmbedImageContent } from '../mardown-paste-h
 import { collectLeaves } from './collect-leaves';
 import { PageGrid } from './page-grid';
 import { place, type Placement } from './place';
-import { buildPrintSchema, serializeWithBreaks } from './print-break-node';
+import {
+  buildPrintSchema,
+  REPEAT_HEADER,
+  serializeWithBreaks,
+} from './print-break-node';
 
 export type PagesPrintBreaks = Placement & { pageFirstText: string[] };
 
@@ -143,6 +147,13 @@ const splitTableWidths = (editor: Editor, placement: Placement): BlockAttrs => {
   return out;
 };
 
+// Rows that open a page under a repeated header on screen: their print piece
+// repeats it too.
+const repeatedHeaderRows = (placement: Placement): BlockAttrs =>
+  placement.spacers
+    .filter((s) => s.header)
+    .map((s) => ({ pos: s.pos, attrs: { [REPEAT_HEADER]: '' } }));
+
 // Mermaid blocks the live editor shows as source: Pages prints a diagram in
 // the state it shows, so these stay code.
 const MERMAID_SOURCE = 'data-print-mermaid-source';
@@ -222,7 +233,12 @@ export async function buildPrintHtml(args: {
         ? [
             ...mermaidSourceBlocks(editor),
             ...orderedListMargins(editor),
-            ...(placement ? splitTableWidths(editor, placement) : []),
+            ...(placement
+              ? [
+                  ...splitTableWidths(editor, placement),
+                  ...repeatedHeaderRows(placement),
+                ]
+              : []),
           ]
         : [],
     );

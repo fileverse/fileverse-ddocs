@@ -14,7 +14,7 @@ import {
   PassScheduler,
   SETTLE_CAP,
 } from './scheduler';
-import { spacerKey, spacersMatch } from './spacers';
+import { rowSpacerHeader, spacerKey, spacersMatch } from './spacers';
 
 export type PaginationOptions = {
   pageSetup?: PageSetup;
@@ -48,7 +48,8 @@ export type PassInfo = {
 
 export const controllers = new WeakMap<PaginationStorage, PaginationView>();
 
-// Only kind and pos matter to the skip rule; the key starts with the kind.
+// Only kind, pos and header matter to the skip rule; the key starts with
+// the kind.
 const spacersIn = (set: DecorationSet): Spacer[] =>
   set.find().map((d) => ({
     kind: String(d.spec.key).split(':')[0] as Spacer['kind'],
@@ -56,6 +57,7 @@ const spacersIn = (set: DecorationSet): Spacer[] =>
     height: 0,
     page: 0,
     print: true,
+    header: rowSpacerHeader(d.spec.key),
   }));
 
 const signature = (spacers: Spacer[]) =>
@@ -299,7 +301,8 @@ export class PaginationView {
     const placement = place(leaves, grid);
     const t2 = mark('place', t1);
     const current = paginationPluginKey.getState(view.state);
-    const changed = !current || !spacersMatch(current, placement.spacers);
+    const changed =
+      !current || !spacersMatch(current, placement.spacers, view.state.doc);
     const sig = signature(placement.spacers);
     // a/b/a: keep b in the view and the store, and stop (§12.5).
     if (changed && this.guard.repeats(sig)) {

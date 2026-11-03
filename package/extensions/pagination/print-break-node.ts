@@ -146,8 +146,12 @@ const topLevel = (root: HTMLElement, el: Element) => {
   return el;
 };
 
+// On a row whose page repeats the header on screen (docs/PAGES_MODE.md §13.6).
+export const REPEAT_HEADER = 'data-print-repeat-header';
+
 // WebKit ignores break-before on a table row. The table splits there instead:
-// each piece repeats the header, and the live column widths stay pinned.
+// a piece repeats the header when the screen does, and the live column widths
+// stay pinned.
 const splitTablesAtRowBreaks = (root: HTMLElement) => {
   const rows = [...root.querySelectorAll('tr[data-print-break-before]')];
   rows.reverse().forEach((row) => {
@@ -175,8 +179,11 @@ const splitTablesAtRowBreaks = (root: HTMLElement) => {
       if (i > 0) clones[i - 1].appendChild(clone);
     });
     const piece = clones[clones.length - 1];
+    const parts = row.hasAttribute(REPEAT_HEADER)
+      ? ':scope > colgroup, :scope > thead'
+      : ':scope > colgroup';
     table
-      .querySelectorAll(':scope > colgroup, :scope > thead')
+      .querySelectorAll(parts)
       .forEach((el) => piece.appendChild(el.cloneNode(true)));
     const body = document.createElement('tbody');
     for (let r: Element | null = row; r; ) {
@@ -189,6 +196,10 @@ const splitTablesAtRowBreaks = (root: HTMLElement) => {
     chain.forEach((el) => el.setAttribute('data-print-split', ''));
     top.after(clones[0]);
   });
+
+  root
+    .querySelectorAll(`[${REPEAT_HEADER}]`)
+    .forEach((el) => el.removeAttribute(REPEAT_HEADER));
 
   root.querySelectorAll('[data-print-col-widths]').forEach((holder) => {
     const widths = holder.getAttribute('data-print-col-widths')!.split(',');

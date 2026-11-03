@@ -48,9 +48,23 @@ function stepRange(step: Step): [number, number] | null {
   return null;
 }
 
+// In the header row of a table whose header the screen repeats: the clones
+// copy the row's DOM, so an edit there needs a pass (docs/PAGES_MODE.md §13.6).
+function inRepeatedHeader($pos: ResolvedPos, spacers: Spacer[]): boolean {
+  for (let d = $pos.depth; d > 1; d--) {
+    if ($pos.node(d).type.name !== 'tableRow') continue;
+    if ($pos.index(d - 1) !== 0) return false;
+    const start = $pos.start(d - 1);
+    const end = $pos.end(d - 1);
+    return spacers.some((s) => !!s.header && s.pos > start && s.pos < end);
+  }
+  return false;
+}
+
 /**
  * True when every step is an inline edit inside one and the same textblock
- * that holds no inText spacer. Spacer positions refer to the doc before `trs`.
+ * that holds no inText spacer and is not a repeated table header. Spacer
+ * positions refer to the doc before `trs`.
  * Transactions without steps are ignored; no doc changes at all returns true.
  */
 export function editStaysInOneTextblock(
@@ -74,7 +88,8 @@ export function editStaysInOneTextblock(
         if (
           spacers.some(
             (s) => s.kind === 'inText' && s.pos >= start && s.pos <= end,
-          )
+          ) ||
+          inRepeatedHeader($from, spacers)
         ) {
           return false;
         }
