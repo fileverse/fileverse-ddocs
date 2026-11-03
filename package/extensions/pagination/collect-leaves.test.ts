@@ -9,6 +9,9 @@ import {
   leadingOffset,
   spacerDisplacement,
 } from './collect-leaves';
+import { PageGrid } from './page-grid';
+import { place } from './place';
+import { buildPrintSchema, serializeWithBreaks } from './print-break-node';
 
 const HTML = `<h2>Heading</h2><p>Paragraph</p><ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul><table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr></tbody></table><img src="data:image/svg+xml;base64,PHN2Zy8+"><div data-type="page-break"></div><aside data-type="callout"><p>note</p></aside>`;
 
@@ -222,6 +225,85 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     } finally {
       Range.prototype.getClientRects = rects;
     }
+  });
+
+  // A row joined to the next by a rowspan: no break or spacer may fall
+  // between them, on screen or in print.
+  describe('rows joined by a rowspan', () => {
+    const MERGED = `<table><tbody><tr><th><p>H1</p></th><th><p>H2</p></th></tr><tr><td rowspan="2"><p>m</p></td><td><p>a</p></td></tr><tr><td><p>b</p></td></tr><tr><td><p>c</p></td><td><p>d</p></td></tr></tbody></table>`;
+    const rowLeaves = () => {
+      const doc = editor.state.doc;
+      return collectLeaves(editor.view, 931).filter(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+    };
+    const rowPositions = () => {
+      const out: number[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'tableRow') out.push(pos);
+        return node.type.name !== 'tableRow';
+      });
+      return out;
+    };
+    const layout = (tops: number[], height = 40) =>
+      Array.from(editor.view.dom.querySelectorAll('tr')).forEach((tr, i) => {
+        tr.getBoundingClientRect = () =>
+          ({
+            top: tops[i],
+            bottom: tops[i] + height,
+            height,
+          }) as DOMRect;
+      });
+
+    beforeEach(() => {
+      editor.commands.setContent(MERGED);
+    });
+
+    it('makes them one atomic leaf from the first row to the last', () => {
+      layout([100, 140, 180, 220]);
+      const rows = rowPositions();
+      const leaves = rowLeaves();
+      expect(leaves.map((l) => l.pos)).toEqual([rows[0], rows[1], rows[3]]);
+      expect(leaves[1]).toMatchObject({
+        kind: 'atomic',
+        top: 140,
+        bottom: 220,
+        spacerPos: rows[1],
+        row: { isHeader: false },
+      });
+      expect(leaves[0]).toMatchObject({ row: { isHeader: true } });
+    });
+
+    it('place and print break before the group, never inside it', () => {
+      editor.commands.setContent(
+        MERGED.replace(
+          '<tr><td rowspan',
+          '<tr><td><p>x</p></td><td><p>y</p></td></tr><tr><td rowspan',
+        ),
+      );
+      // A4: page 0 text ends at 1027; row "b" (1000..1040) crosses it.
+      layout([880, 920, 960, 1000, 1040], 40);
+      const rows = rowPositions();
+      const leaves = collectLeaves(editor.view, 931);
+      const placement = place(leaves, new PageGrid('a4'));
+      expect(placement.breaks).toEqual([{ kind: 'before', pos: rows[2] }]);
+      expect(placement.spacers.map((s) => s.pos)).toEqual([rows[2]]);
+      const html = serializeWithBreaks(
+        editor.state.doc,
+        buildPrintSchema(editor.schema),
+        placement.breaks,
+        placement.pageStarts,
+      );
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      const tables = [...div.querySelectorAll('table')];
+      expect(tables).toHaveLength(2);
+      const body = (t: Element) =>
+        [...t.querySelectorAll('tbody tr')].map((r) => r.textContent);
+      expect(body(tables[0])).toEqual(['xy']);
+      expect(body(tables[1])).toEqual(['ma', 'b', 'cd']);
+      expect(tables[1].querySelector('td[rowspan="2"]')).not.toBeNull();
+    });
   });
 
   it('marks headings and the table header row', () => {

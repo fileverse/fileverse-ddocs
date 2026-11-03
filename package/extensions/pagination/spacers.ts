@@ -79,9 +79,24 @@ function createHeaderClone(
   clone.style.display = 'table-row';
   clone.querySelectorAll('.column-resize-handle').forEach((el) => el.remove());
   clone.querySelectorAll<HTMLTableCellElement>('td, th').forEach((cell) => {
-    cell.classList.remove('selectedCell');
     cell.rowSpan = 1;
+    // A cell node view's chrome (the hover "…" trigger) sits outside its
+    // content; atoms inside the content stay, so the height matches.
+    const content = cell.querySelector('[data-node-view-content]');
+    cell
+      .querySelectorAll('.trigger-button, [contenteditable="false"]')
+      .forEach((el) => {
+        const chrome =
+          el.classList.contains('trigger-button') ||
+          (!!content && !content.contains(el));
+        if (chrome) el.remove();
+      });
   });
+  clone
+    .querySelectorAll('.selectedCell, .ProseMirror-selectednode')
+    .forEach((el) =>
+      el.classList.remove('selectedCell', 'ProseMirror-selectednode'),
+    );
   return clone;
 }
 

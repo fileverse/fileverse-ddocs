@@ -1,5 +1,6 @@
 // Ported from Edentext (https://github.com/stffnb/edentext, b5ee86a), src/lib/editor/extensions/pageBreaks.ts. AGPL-3.0.
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { getZoomScale } from '../../utils/zoom';
 import { measureLines } from './line-split';
@@ -304,14 +305,44 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
     };
   };
 
+  // Rows joined by a rowspan are one leaf, from the first row's top to the
+  // last row's bottom: no break or spacer can fall inside a merged cell.
   const visitTable = (table: PMNode, pos: number) => {
     tableId += 1;
     const { hasHeader, headerHeight } = tableHeader(table, pos);
-    table.forEach((_, offset) =>
-      atomic(pos + 1 + offset, {
-        row: { tableId, isHeader: hasHeader && offset === 0, headerHeight },
-      }),
-    );
+    const map = TableMap.get(table);
+    const joined = (r: number) => {
+      for (let c = 0; c < map.width; c += 1) {
+        const i = r * map.width + c;
+        if (map.map[i] === map.map[i + map.width]) return true;
+      }
+      return false;
+    };
+    const rows: number[] = [];
+    table.forEach((_, offset) => rows.push(pos + 1 + offset));
+    for (let first = 0; first < rows.length; ) {
+      let last = first;
+      while (last + 1 < rows.length && joined(last)) last += 1;
+      const top = box(rows[first]);
+      const bottom = last === first ? top : box(rows[last]);
+      if (top && bottom) {
+        leaves.push(
+          flowLeaf(
+            'atomic',
+            rows[first],
+            { ...top, bottom: bottom.bottom },
+            {
+              row: {
+                tableId,
+                isHeader: hasHeader && first === 0,
+                headerHeight,
+              },
+            },
+          ),
+        );
+      }
+      first = last + 1;
+    }
   };
 
   const visit = (node: PMNode, pos: number) => {

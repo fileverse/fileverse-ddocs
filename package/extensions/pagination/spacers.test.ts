@@ -201,6 +201,27 @@ describe.each([1, 2])('row spacers, schema v%i', (schemaVersion) => {
     expect(rowSpacerHeader(before[1])).toBe(0);
   });
 
+  // Header cells are React node views: hover and selection chrome (the "…"
+  // trigger) must not freeze into the clones.
+  it('strips node-view chrome and selection classes from the clone', () => {
+    setup();
+    const live = document.createElement('tr');
+    live.innerHTML =
+      '<th class="selectedCell ProseMirror-selectednode"><div><div data-node-view-content=""><p>H1<span contenteditable="false">atom</span></p></div><label class="trigger-button" contenteditable="false">…</label><div contenteditable="false">menu</div></div></th>' +
+      '<th colspan="2"><p>H2<span contenteditable="false">math</span></p></th>';
+    vi.spyOn(editor.view, 'nodeDOM').mockReturnValue(live);
+    show([sp({ pos: rowPos(2), height: 300, header: 40, page: 2 })]);
+    const clone = editor.view.dom.querySelector(
+      'tr.ddoc-page-spacer-header',
+    ) as HTMLElement;
+    expect(clone.querySelector('.trigger-button')).toBeNull();
+    expect(clone.textContent).toBe('H1atomH2math');
+    expect(clone.querySelector('.selectedCell')).toBeNull();
+    expect(clone.querySelector('.ProseMirror-selectednode')).toBeNull();
+    // The live row keeps its chrome.
+    expect(live.querySelector('.trigger-button')).not.toBeNull();
+  });
+
   it('a table without a header row gets only the spacer tr', () => {
     setup(false);
     show([sp({ pos: rowPos(2), height: 300, page: 2 })]);
