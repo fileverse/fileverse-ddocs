@@ -175,6 +175,40 @@ describe.each([1, 2])('row spacers, schema v%i', (schemaVersion) => {
     }
   });
 
+  it('the spacer row is hidden from assistive tech and whole pixels tall', () => {
+    setup();
+    show([sp({ pos: rowPos(2), height: 300, header: 29.078125, page: 2 })]);
+    const spacer = tbodyRows()[2];
+    expect(spacer.getAttribute('aria-hidden')).toBe('true');
+    expect(spacer.hasAttribute('role')).toBe(false);
+    expect(spacer.hasAttribute('aria-label')).toBe(false);
+    expect(spacer.style.height).toBe('271px');
+  });
+
+  it('the header clone finds its table from the widget position', () => {
+    setup();
+    const set = buildSpacerDecorations(editor.state.doc, [
+      sp({ pos: rowPos(2), height: 300, header: 40, page: 2 }),
+    ]);
+    // Positions shift after the set was built.
+    const tr = editor.state.tr.insertText('xx', 3);
+    editor.view.dispatch(tr);
+    const deco = set
+      .find()
+      .find((d) =>
+        (d as unknown as { spec: { key: string } }).spec.key.startsWith(
+          'header:',
+        ),
+      )!;
+    const nodeDOM = vi.spyOn(editor.view, 'nodeDOM');
+    (
+      deco as unknown as {
+        type: { toDOM: (v: unknown, g: () => number) => HTMLElement };
+      }
+    ).type.toDOM(editor.view, () => tr.mapping.map(deco.from));
+    expect(nodeDOM).toHaveBeenCalledWith(rowPos(0));
+  });
+
   it('a header height off by measurement noise matches the same spacers', () => {
     setup();
     const list = [

@@ -70,4 +70,16 @@ describe('printTab', () => {
     expect(handleContentPrint).toHaveBeenCalledWith('<p>x</p>');
     err.mockRestore();
   });
+
+  it('does not run the plain print twice when it throws', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(handleContentPrint).mockClear();
+    vi.mocked(handleContentPrint).mockImplementationOnce(() => {
+      throw new Error('print blocked');
+    });
+    vi.mocked(printPagesTab).mockResolvedValue(false);
+    await expect(printTab(fake, false, [])).rejects.toThrow('print blocked');
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
 });

@@ -809,8 +809,8 @@
 }
 
 /* Atoms the user cannot resize are clipped at one page's text height instead
-   of splitting (§13.5). Columns are not: they split. Pages print restates
-   this. */
+   of splitting (§13.5). Columns are not clipped or split: they run over the
+   margins and gap. Pages print restates this. */
 [data-page-mode='pages'] .ProseMirror [data-page-atom] {
   max-height: var(--ddoc-page-text-h);
   overflow: hidden;

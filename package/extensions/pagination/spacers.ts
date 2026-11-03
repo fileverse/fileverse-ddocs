@@ -36,15 +36,19 @@ function createSpacerElement(s: Spacer): HTMLElement {
   return el;
 }
 
-// One borderless cell across the table; the row's height is the spacer's.
+// The header height is measured (and divided by the zoom scale): whole pixels
+// in the keys, or float noise at another zoom re-dispatches the same spacers.
+const headerKey = (s: Spacer) => Math.round(s.header ?? 0);
+
+// One borderless cell across the table; the row's height is the spacer's,
+// less the whole-pixel header. A separator role is invalid on a tbody row.
 function createSpacerRow(s: Spacer, columns: number): HTMLElement {
   const tr = document.createElement('tr');
   tr.className = `${SPACER_CLASS} ${SPACER_ROW_CLASS}`;
   tr.setAttribute('contenteditable', 'false');
-  tr.setAttribute('role', 'separator');
-  tr.setAttribute('aria-label', `Page ${s.page}`);
+  tr.setAttribute('aria-hidden', 'true');
   tr.style.display = 'table-row';
-  tr.style.height = `${Math.max(0, s.height - (s.header ?? 0))}px`;
+  tr.style.height = `${Math.max(0, s.height - headerKey(s))}px`;
   const td = document.createElement('td');
   td.colSpan = columns;
   Object.assign(td.style, {
@@ -112,12 +116,8 @@ type Widget = {
   pos: number;
   key: string;
   side: number;
-  toDOM: (view: EditorView) => HTMLElement;
+  toDOM: (view: EditorView, getPos: () => number | undefined) => HTMLElement;
 };
-
-// The header height is measured (and divided by the zoom scale): whole pixels
-// in the keys, or float noise at another zoom re-dispatches the same spacers.
-const headerKey = (s: Spacer) => Math.round(s.header ?? 0);
 
 // A spacer between table rows is a spacer row and, when the header repeats,
 // a clone of the header row (docs/PAGES_MODE.md §13.6).
@@ -148,12 +148,19 @@ function widgetsOf(doc: PMNode, s: Spacer): Widget[] {
   ];
   const header = table.firstChild;
   if (s.header && header) {
-    const tableStart = $pos.start();
     out.push({
       pos: s.pos,
       key: `header:${hash(JSON.stringify(header.toJSON()))}:${headerKey(s)}:${s.page}`,
       side: -1,
-      toDOM: (view) => createHeaderClone(view, tableStart, header),
+      // The doc may have moved on since the set was built.
+      toDOM: (view, getPos) => {
+        const at = getPos() ?? s.pos;
+        return createHeaderClone(
+          view,
+          view.state.doc.resolve(at).start(),
+          header,
+        );
+      },
     });
   }
   return out;

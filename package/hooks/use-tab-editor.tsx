@@ -116,6 +116,23 @@ export function subscribePagesCount(
   return store.subscribe(sync);
 }
 
+export const printTab = (
+  editor: Editor,
+  isPresentationMode: boolean | undefined,
+  slides: string[],
+) => {
+  if (isPresentationMode) return handlePrint(slides);
+  return printPagesTab(editor).then(
+    (done) => {
+      if (!done) handleContentPrint(editor.getHTML());
+    },
+    (error) => {
+      console.error('Pages print failed, using the plain path', error);
+      handleContentPrint(editor.getHTML());
+    },
+  );
+};
+
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
 // `spellcheck`, `suppressContentEditableWarning`). Extracted to a named,
@@ -125,22 +142,6 @@ export function subscribePagesCount(
 // `DdocEditorProps` the way the pre-existing bug did (a later `attributes:`
 // key in the same object literal overwrites the earlier one from
 // `...DdocEditorProps`, rather than merging).
-export const printTab = (
-  editor: Editor,
-  isPresentationMode: boolean | undefined,
-  slides: string[],
-) => {
-  if (isPresentationMode) return handlePrint(slides);
-  return printPagesTab(editor)
-    .then((done) => {
-      if (!done) handleContentPrint(editor.getHTML());
-    })
-    .catch((error) => {
-      console.error('Pages print failed, using the plain path', error);
-      handleContentPrint(editor.getHTML());
-    });
-};
-
 export const TAB_EDITOR_ATTRIBUTES: Record<string, string> = {
   ...(DdocEditorProps.attributes as Record<string, string>),
 };
