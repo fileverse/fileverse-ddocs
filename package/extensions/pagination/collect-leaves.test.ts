@@ -306,6 +306,90 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     });
   });
 
+  // docs/PAGES_MODE.md §13.6: a row taller than a page splits in its cells.
+  describe('cells of a row', () => {
+    const TABLE_HTML =
+      '<table><tbody><tr><td><p>a1</p><p>a2</p></td><td><p>b1</p></td></tr></tbody></table><p>after</p>';
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height, left: 0, right: 100 }) as DOMRect;
+    };
+    const para = (text: string) =>
+      [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === text,
+      )!;
+    const spacerIn = (p: Element, top: number, height: number) => {
+      const el = document.createElement('div');
+      el.className = SPACER_CLASS;
+      el.contentEditable = 'false';
+      rectOf(el, top, height);
+      p.prepend(el);
+    };
+    let tops: Record<string, number> = {};
+    beforeEach(() => {
+      editor.commands.setContent(TABLE_HTML);
+      document.elementFromPoint = () => null;
+      Range.prototype.getClientRects = function (this: Range) {
+        const top = tops[this.startContainer.textContent ?? ''] ?? 0;
+        return [lineAt(top)] as unknown as DOMRectList;
+      };
+    });
+    afterEach(() => {
+      Range.prototype.getClientRects = function () {
+        return lineRects as unknown as DOMRectList;
+      };
+      tops = {};
+    });
+    const rowLeaf = () => {
+      const doc = editor.state.doc;
+      const leaves = collectLeaves(editor.view, 931);
+      const row = leaves.find(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+      if (row?.kind !== 'atomic') throw new Error('expected a row leaf');
+      const after = leaves.find(
+        (l) => doc.nodeAt(l.pos)?.textContent === 'after',
+      );
+      if (after?.kind !== 'text') throw new Error('expected a text leaf');
+      return { row, after };
+    };
+
+    it("lists each cell's lines from every textblock, and its bottom", () => {
+      tops = { a1: 110, a2: 140, b1: 110 };
+      rectOf(editor.view.dom.querySelector('tr')!, 100, 70);
+      rectOf(para('a1'), 110, 20);
+      rectOf(para('a2'), 140, 20);
+      rectOf(para('b1'), 110, 20);
+      rectOf(para('after'), 180, 20);
+      const { row } = rowLeaf();
+      expect(row.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 140],
+        [110],
+      ]);
+      expect(row.cells?.map((c) => c.bottom)).toEqual([160, 130]);
+    });
+
+    it('reads in-cell spacers back per cell; the row grows by its tallest cell', () => {
+      // Natural: a2 140..160, b1 110..130, row 100..170, "after" at 180.
+      tops = { a1: 110, a2: 340, b1: 260 };
+      spacerIn(para('a2'), 140, 200);
+      spacerIn(para('b1'), 110, 150);
+      rectOf(editor.view.dom.querySelector('tr')!, 100, 270);
+      rectOf(para('a1'), 110, 20);
+      rectOf(para('a2'), 140, 220);
+      rectOf(para('b1'), 110, 170);
+      rectOf(para('after'), 380, 20);
+      const { row, after } = rowLeaf();
+      expect(row.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 140],
+        [110],
+      ]);
+      expect(row.cells?.map((c) => c.bottom)).toEqual([160, 130]);
+      expect(row.bottom).toBe(170);
+      expect(after.top).toBe(180);
+    });
+  });
+
   it('marks headings and the table header row', () => {
     const leaves = collectLeaves(editor.view, 931);
     expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });

@@ -222,6 +222,21 @@ const splitTablesAtRowBreaks = (root: HTMLElement) => {
   });
 };
 
+// A table piece holding an in-cell break prints its header once, as a body
+// row: the screen repeats no header across that split (§13.6).
+const demoteHeadersAcrossInCellBreaks = (root: HTMLElement) => {
+  root.querySelectorAll('table').forEach((table) => {
+    const thead = table.querySelector(':scope > thead');
+    const tbody = table.querySelector(':scope > tbody');
+    const split = [
+      ...table.querySelectorAll('td [data-print-break], th [data-print-break]'),
+    ].some((el) => el.closest('table') === table);
+    if (!thead || !tbody || !split) return;
+    tbody.prepend(...thead.children);
+    thead.remove();
+  });
+};
+
 export const serializeWithBreaks = (
   liveDoc: PMNode,
   printSchema: Schema,
@@ -290,5 +305,6 @@ export const serializeWithBreaks = (
   );
   moveHeaderRowsToThead(root);
   splitTablesAtRowBreaks(root);
+  demoteHeadersAcrossInCellBreaks(root);
   return root.innerHTML;
 };

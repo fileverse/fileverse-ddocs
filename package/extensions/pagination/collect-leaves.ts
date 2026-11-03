@@ -4,7 +4,7 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { getZoomScale } from '../../utils/zoom';
 import { measureLines } from './line-split';
-import type { Leaf } from './place';
+import type { Leaf, Line } from './place';
 
 // Containers whose children are placed one by one (docs/PAGES_MODE.md §4.2).
 const WALKED = new Set([
@@ -114,8 +114,8 @@ function spacerExtra(
 }
 
 // Defines `key` as a getter that computes once, on first read.
-function lazy(obj: object, key: string, get: () => number) {
-  let value: number | undefined;
+function lazy<T>(obj: object, key: string, get: () => T) {
+  let value: T | undefined;
   Object.defineProperty(obj, key, {
     enumerable: true,
     get: () => (value ??= get()),
@@ -165,6 +165,7 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
     return {
       el,
       inText,
+      height,
       top: (rect.top - originTop) / scale,
       // A table row has no margins: it displaces by its height.
       amount:
@@ -178,6 +179,32 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
             ),
     };
   });
+  // Cells of a row sit side by side: their inText spacers do not add up.
+  // Each counts 0 for what follows, except the row's last one, which carries
+  // how much the row grew: its lowest cell bottom, with and without them.
+  const inCell = new Map<HTMLElement, typeof spacers>();
+  spacers.forEach((s) => {
+    const cell = s.inText ? s.el.closest<HTMLElement>('td, th') : null;
+    if (!cell || !view.dom.contains(cell)) return;
+    inCell.set(cell, [...(inCell.get(cell) ?? []), s]);
+  });
+  const cellBottom = (cell: HTMLElement) => {
+    const last = realChild(contentOf(cell), true);
+    return last ? (last.getBoundingClientRect().bottom - originTop) / scale : 0;
+  };
+  const sumOf = (list: typeof spacers = []) =>
+    list.reduce((sum, s) => sum + s.height, 0);
+  new Set([...inCell.keys()].map((cell) => cell.parentElement)).forEach(
+    (tr) => {
+      if (!tr) return;
+      const cells = [...tr.children] as HTMLElement[];
+      const own = cells.flatMap((cell) => inCell.get(cell) ?? []);
+      own.forEach((s) => (s.amount = 0));
+      const rendered = cells.map(cellBottom);
+      const natural = cells.map((c, i) => rendered[i] - sumOf(inCell.get(c)));
+      own[own.length - 1].amount = Math.max(...rendered) - Math.max(...natural);
+    },
+  );
   // Spacers are in document order: those before an element, then those
   // inside it, then the rest. The boundary is searched from the last one
   // found: visits mostly move forward, so one or two comparisons each.
@@ -284,6 +311,48 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
   };
 
   type Atomic = Extract<Leaf, { kind: 'atomic' }>;
+
+  // Lines of every textblock in each cell of a single row, read back from
+  // the row's spacers before it (base) and the cell's own (§13.6).
+  const cellsOf = (row: PMNode, rowPos: number, base: number) => {
+    const out: NonNullable<Atomic['cells']> = [];
+    row.forEach((cell, offset) => {
+      const cellPos = rowPos + 1 + offset;
+      const cellEl = view.nodeDOM(cellPos);
+      if (!(cellEl instanceof HTMLElement)) return;
+      const own = inCell.get(cellEl) ?? [];
+      const shiftAt = (top: number) =>
+        own.reduce(
+          (sum, s) => (s.top <= top + 0.5 ? sum + s.height : sum),
+          base,
+        );
+      const lines: Line[] = [];
+      cell.descendants((node, offsetIn) => {
+        if (node.type.name === 'table') return false;
+        if (!node.isTextblock) return true;
+        const pos = cellPos + 1 + offsetIn;
+        const el = view.nodeDOM(pos);
+        if (!(el instanceof HTMLElement)) return false;
+        const rectBottom =
+          (el.getBoundingClientRect().bottom - originTop) / scale;
+        lines.push(
+          ...measureLines(view, contentOf(el), {
+            from: pos + 1,
+            to: pos + 1 + node.content.size,
+            originTop,
+            bottom: rectBottom - shiftAt(rectBottom - 1),
+            scale,
+            range,
+            shiftAt,
+          }),
+        );
+        return false;
+      });
+      out.push({ lines, bottom: cellBottom(cellEl) - base - sumOf(own) });
+    });
+    return out;
+  };
+
   const atomic = (pos: number, extra: Pick<Atomic, 'row'> = {}) => {
     const b = box(pos);
     if (b) leaves.push(flowLeaf('atomic', pos, b, extra));
@@ -326,20 +395,25 @@ export function collectLeaves(view: EditorView, textHeight: number): Leaf[] {
       const top = box(rows[first]);
       const bottom = last === first ? top : box(rows[last]);
       if (top && bottom) {
-        leaves.push(
-          flowLeaf(
-            'atomic',
-            rows[first],
-            { ...top, bottom: bottom.bottom },
-            {
-              row: {
-                tableId,
-                isHeader: hasHeader && first === 0,
-                headerHeight,
-              },
+        const leaf = flowLeaf(
+          'atomic',
+          rows[first],
+          { ...top, bottom: bottom.bottom },
+          {
+            row: {
+              tableId,
+              isHeader: hasHeader && first === 0,
+              headerHeight,
             },
-          ),
+          },
         );
+        // Rows joined by a rowspan never split inside (merged cells).
+        if (last === first) {
+          const base = sums[top.first];
+          const [node, at] = [table.child(first), rows[first]];
+          lazy(leaf, 'cells', () => cellsOf(node, at, base));
+        }
+        leaves.push(leaf);
       }
       first = last + 1;
     }

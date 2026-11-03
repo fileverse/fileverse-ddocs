@@ -498,4 +498,140 @@ describe('place table rows', () => {
     expect(r.spacers[0].pos).toBe(TABLE);
     expect('header' in r.spacers[0]).toBe(false);
   });
+
+  // A row taller than the room splits inside its cells (§13.6).
+  const cell = (from: number, top: number, count: number, lineH: number) => {
+    const lines = Array.from({ length: count }, (_, i) => ({
+      top: top + i * lineH,
+      bottom: top + (i + 1) * lineH,
+      startPos: from + i * 10,
+    }));
+    return { lines, bottom: top + count * lineH };
+  };
+  const tallRow = (
+    pos: number,
+    top: number,
+    cells: ReturnType<typeof cell>[],
+    headerHeight = 0,
+  ) =>
+    atom(pos, top, Math.max(...cells.map((c) => c.bottom)) + 10 - top, {
+      row: { tableId: 1, isHeader: false, headerHeight },
+      cells,
+    }) as Extract<Leaf, { kind: 'atomic' }>;
+
+  it('a row taller than the room splits in each crossing cell at its first non-fitting line', () => {
+    // Cell A: 30px lines from 100; line 30 (1000..1030) crosses 1027.
+    const a = cell(1000, 100, 50, 30);
+    const b = cell(2000, 100, 10, 30);
+    const row = tallRow(TABLE + 1, 96, [a, b]);
+    const p = place([row], a4);
+    expect(
+      p.spacers.filter((s) => s.kind === 'inText').map((s) => s.pos),
+    ).toEqual([a.lines[30].startPos]);
+    expect(p.breaks).toContainEqual({
+      kind: 'inText',
+      pos: a.lines[30].startPos,
+    });
+    expect(p.breaks.some((br) => br.kind === 'before')).toBe(false);
+    expect(p.spacers[0].height).toBe(1235 - 1000);
+    expect(p.pageStarts).toEqual([
+      { kind: 'before', pos: row.pos },
+      { kind: 'inText', pos: a.lines[30].startPos },
+    ]);
+    expect(p.pageCount).toBe(2);
+  });
+
+  it('two crossing cells get one spacer each, heights from their own line tops', () => {
+    const a = cell(1000, 100, 50, 30);
+    // Cell B: 25px lines; line 37 (1025..1050) crosses.
+    const b = cell(2000, 100, 50, 25);
+    const after = para(3000, 1610, 1);
+    const p = place([tallRow(TABLE + 1, 96, [a, b]), after], a4);
+    expect(p.spacers).toEqual([
+      expect.objectContaining({
+        kind: 'inText',
+        pos: a.lines[30].startPos,
+        height: 235,
+        page: 2,
+      }),
+      expect.objectContaining({
+        kind: 'inText',
+        pos: b.lines[37].startPos,
+        height: 210,
+        page: 2,
+      }),
+    ]);
+    expect(p.breaks).toEqual([
+      { kind: 'inText', pos: a.lines[30].startPos },
+      { kind: 'inText', pos: b.lines[37].startPos },
+    ]);
+    // One page start per page, at the first cell's break.
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'inText']);
+    expect(p.pageCount).toBe(2);
+  });
+
+  it('the row ends where its tallest cell ends, not at the largest displacement', () => {
+    // A is tallest (ends 1600, moves 235); B's 55px line 16 (980..1035)
+    // crosses, so B moves 255 but ends at 1200 + 255 = 1455.
+    const a = cell(1000, 100, 50, 30);
+    const b = cell(2000, 100, 20, 55);
+    const row = tallRow(TABLE + 1, 96, [a, b]);
+    const after = para(3000, row.bottom, 40);
+    const p = place([row, after], a4);
+    // The row ends at 1610 + 235: line 16 of the paragraph crosses 2166
+    // (with 255 it would be line 15).
+    const cut = after.lines.findIndex((l) => l.bottom + 235 > 2166);
+    expect(cut).toBe(16);
+    expect(p.breaks).toContainEqual({
+      kind: 'inText',
+      pos: after.lines[cut].startPos,
+    });
+  });
+
+  it('pages repeat while any cell still crosses', () => {
+    // Page 1 content 1235..2166: after the first cut at line 30, line 61
+    // (1235 + 31 * 30 = 2165 .. 2195) crosses.
+    const a = cell(1000, 100, 80, 30);
+    const p = place([tallRow(TABLE + 1, 96, [a, cell(2000, 100, 5, 30)])], a4);
+    expect(p.breaks).toEqual([
+      { kind: 'inText', pos: a.lines[30].startPos },
+      { kind: 'inText', pos: a.lines[61].startPos },
+    ]);
+    expect(p.pageCount).toBe(3);
+    expect(p.pageStarts.some((s) => s.kind === 'continued')).toBe(false);
+  });
+
+  it('no header is reserved across an in-cell split', () => {
+    const header = rowsFrom(96, [40], 40)[0];
+    const a = cell(1000, 140, 50, 30);
+    const row = tallRow(TABLE + 11, 136, [a], 40);
+    const p = place([header, row], a4);
+    // Line 29 (1010..1040) is the first to cross 1027.
+    const k = a.lines.findIndex((l) => l.bottom > 1027);
+    expect(p.breaks).toEqual([{ kind: 'inText', pos: a.lines[k].startPos }]);
+    expect(p.spacers).toHaveLength(1);
+    expect('header' in p.spacers[0]).toBe(false);
+    expect(p.spacers[0].height).toBe(1235 - a.lines[k].top);
+  });
+
+  it('a row moved under a repeated header splits there without a second header', () => {
+    const rows = rowsFrom(96, [40, 800], 40);
+    const a = cell(1000, 946, 40, 30);
+    const tall = tallRow(TABLE + 21, rows[1].bottom, [a], 40);
+    const p = place([...rows, tall], a4);
+    expect(p.breaks[0]).toEqual({ kind: 'before', pos: tall.pos });
+    expect(p.spacers[0]).toMatchObject({ kind: 'block', header: 40 });
+    // Moved under the repeated header, then cut where page 1 ends (2166).
+    const moved = 1235 + 40 - tall.top;
+    const k = a.lines.findIndex((l) => l.bottom + moved > 2166);
+    expect(p.breaks[1]).toEqual({ kind: 'inText', pos: a.lines[k].startPos });
+    expect('header' in p.spacers[1]).toBe(false);
+  });
+
+  it('a row with no lines in any crossing cell keeps the tall-leaf rule', () => {
+    const row = tallRow(TABLE + 1, 96, [{ lines: [], bottom: 1500 }]);
+    const p = place([row], a4);
+    expect(p.breaks).toEqual([]);
+    expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'continued']);
+  });
 });

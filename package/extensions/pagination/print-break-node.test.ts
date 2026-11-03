@@ -282,6 +282,46 @@ describe.each([1, 2])('serializeWithBreaks, schema v%i', (schemaVersion) => {
     ).toEqual(['b']);
   });
 
+  // docs/PAGES_MODE.md §13.6: no header repeats across an in-cell split.
+  it('print: the piece holding an in-cell split has its header as a body row, not thead', () => {
+    editor.commands.setContent(
+      '<table><tbody><tr><th><p>H</p></th><th><p>G</p></th></tr><tr><td><p>one two</p></td><td><p>three four</p></td></tr><tr><td><p>five six</p></td><td><p>seven</p></td></tr></tbody></table>',
+    );
+    const doc = editor.state.doc;
+    const body = (t: Element) =>
+      [...t.querySelectorAll('tbody > tr')].map((r) => r.textContent);
+    const first = dom(
+      html([
+        { kind: 'inText', pos: textPos(doc, 'two') },
+        { kind: 'inText', pos: textPos(doc, 'four') },
+      ]),
+    );
+    expect(first.querySelectorAll('[data-print-break]')).toHaveLength(2);
+    expect(first.querySelector('thead')).toBeNull();
+    expect(body(first.querySelector('table')!)).toEqual([
+      'HG',
+      'one twothree four',
+      'five sixseven',
+    ]);
+
+    // A later piece under a repeated header: the clone prints once, in tbody.
+    const row = nodePos(doc, 'tableRow', 2);
+    const later = dom(
+      html(
+        [
+          { kind: 'before', pos: row },
+          { kind: 'inText', pos: textPos(doc, 'six') },
+        ],
+        [],
+        [{ pos: row, attrs: { [REPEAT_HEADER]: '' } }],
+      ),
+    );
+    const [head, piece] = [...later.querySelectorAll('table')];
+    expect(head.querySelector('thead')?.textContent).toBe('HG');
+    expect(piece.querySelector('thead')).toBeNull();
+    expect(body(piece)).toEqual(['HG', 'five sixseven']);
+  });
+
   // The dBlock node view marks a table block .is-table; its width cap hangs
   // off that class.
   it.runIf(schemaVersion === 1)('marks a dBlock holding a table', () => {

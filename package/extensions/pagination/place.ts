@@ -27,6 +27,9 @@ export type Leaf =
       spacerCollapse: number;
       // headerHeight is 0 when the table has no header row.
       row?: { tableId: number; isHeader: boolean; headerHeight: number };
+      // A single row's cells: lines of every textblock in each, and where
+      // its content ends. Read only when the row splits (§13.6).
+      cells?: { lines: Line[]; bottom: number }[];
     }
   | { kind: 'forced'; pos: number };
 export type PrintBreak =
@@ -148,6 +151,50 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
     carry = shift - shiftBefore;
   };
 
+  // A row taller than the room splits inside its cells: each crossing cell
+  // breaks at its first line that does not fit, keeping one line (§13.6).
+  // No header is repeated across it. Returns false when no cell can break.
+  const splitRow = (cells: { lines: Line[]; bottom: number }[]) => {
+    const start = { shift, drift };
+    const at = cells.map(() => ({ ...start, idx: 0 }));
+    for (;;) {
+      const bottom = bottomOfPage();
+      const cuts = cells.flatMap((cell, c) => {
+        const { lines } = cell;
+        let k = lines.findIndex(
+          (line, i) => i >= at[c].idx && line.bottom + at[c].shift > bottom,
+        );
+        if (k === at[c].idx) k += 1;
+        return k > 0 && k < lines.length ? [{ c, k, line: lines[k] }] : [];
+      });
+      if (!cuts.length) break;
+      page += 1;
+      pageStarts.push({ kind: 'inText', pos: cuts[0].line.startPos });
+      cuts.forEach(({ c, k, line }) => {
+        const delta = grid.contentTopOf(page) - (line.top + at[c].shift);
+        drift = at[c].drift;
+        const height = pixels(delta);
+        at[c] = { shift: at[c].shift + delta, drift, idx: k };
+        breaks.push({ kind: 'inText', pos: line.startPos });
+        spacers.push({
+          kind: 'inText',
+          pos: line.startPos,
+          height,
+          page: page + 1,
+          print: true,
+        });
+      });
+    }
+    if (at.every((a) => a.idx === 0)) return false;
+    // The row ends where its lowest cell now ends.
+    const end = (c: number) => cells[c].bottom + at[c].shift;
+    const last = cells.reduce((m, _, c) => (end(c) > end(m) ? c : m), 0);
+    const natural = Math.max(...cells.map((cell) => cell.bottom));
+    shift = end(last) - natural;
+    drift = at[last].drift;
+    return true;
+  };
+
   const nextFlowLeaf = (i: number): FlowLeaf | null => {
     const next = leaves[i + 1];
     return next && next.kind !== 'forced' ? next : null;
@@ -211,7 +258,9 @@ export function place(leaves: Leaf[], grid: PageGrid): Placement {
         breaks.push({ kind: 'before', pos: leaf.pos });
         pushToNextPage(leaf, reserve);
       }
-      if (!fits(leaf)) spill(leaf);
+      if (!fits(leaf) && !(leaf.cells && splitRow(leaf.cells))) {
+        spill(leaf);
+      }
       placedOnPage = true;
       if (!leaf.row?.isHeader) headingsOnly = false;
       return;
