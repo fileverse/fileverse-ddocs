@@ -1096,6 +1096,10 @@ const buildPagesPrintStyles = (
   }
   .${PRINT_HOST_CLASS} [data-type='resizable-media']:has(.media-caption) > img {${mediaCap(textHeight - 26, 4)}
   }
+  .${PRINT_HOST_CLASS} :is(div[data-tweet-id], div[data-action-node], div[data-type='ai-writer'], svg[id^='mermaid-export-']) {
+    overflow: hidden;
+    max-height: ${textHeight}px;
+  }
 `;
 };
 

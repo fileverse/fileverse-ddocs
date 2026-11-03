@@ -572,7 +572,10 @@ export const AIWriterNodeView = memo(
     if (isPreviewMode) return null;
 
     return (
-      <NodeViewWrapper className="min-w-[calc(100%+1rem)] translate-x-[-0.5rem]">
+      <NodeViewWrapper
+        data-page-atom
+        className="min-w-[calc(100%+1rem)] translate-x-[-0.5rem]"
+      >
         <div
           ref={containerRef}
           className={cn(

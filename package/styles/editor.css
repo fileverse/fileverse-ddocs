@@ -767,6 +767,19 @@
   );
 }
 
+/* Atoms the user cannot resize are clipped at one page's text height instead
+   of splitting (§13.5). Columns are not: they split. Pages print restates
+   this. */
+[data-page-mode='pages'] .ProseMirror [data-page-atom] {
+  max-height: var(--ddoc-page-text-h);
+  overflow: hidden;
+}
+
+[data-page-mode='pages'] .ProseMirror pre[data-mermaid-view='preview'] {
+  max-height: var(--ddoc-page-text-h);
+  overflow: hidden;
+}
+
 /* Passes read the final layout (§12.3), so in Pages a paragraph's margins do
    not animate: paragraphs carry transition-all. */
 [data-page-mode='pages'] .ProseMirror p {

@@ -329,6 +329,7 @@ const ActionButtonNodeView = ({
   return (
     <NodeViewWrapper
       as="div"
+      data-page-atom
       className="flex gap-2 group w-full relative justify-center items-start"
     >
       {!isPreviewMode && (

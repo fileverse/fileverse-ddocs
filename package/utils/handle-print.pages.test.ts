@@ -93,6 +93,24 @@ describe('content print, pages', () => {
     expect(video.getAttribute('width')).toBe('400');
   });
 
+  it('clips tweet, action button, AI writer and Mermaid diagrams at the text height', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const { style } = readMounted();
+    [
+      'div[data-tweet-id]',
+      'div[data-action-node]',
+      "div[data-type='ai-writer']",
+      "svg[id^='mermaid-export-']",
+    ].forEach((sel) => {
+      const at = style.indexOf(sel);
+      expect(at, sel).toBeGreaterThan(-1);
+      const body = style.slice(at, style.indexOf('}', at));
+      expect(body, sel).toMatch(/max-height:\s*931px/);
+      expect(body, sel).toMatch(/overflow:\s*hidden/);
+    });
+    expect(style).not.toMatch(/data-type=['"]?columns[^{]*\{[^}]*931px/);
+  });
+
   it('caps media at the text height of the paper and orientation', () => {
     mountContentPrintHost(HTML, {
       pageSetup: { mode: 'pages', paper: 'letter' },
