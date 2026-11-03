@@ -49,6 +49,16 @@ describe('content print, pages', () => {
     expect(readMounted()).toEqual(before);
   });
 
+  it('restates the tab-title-page styles and breaks before each tab section', () => {
+    mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
+    const { style } = readMounted();
+    expect(style).toMatch(/\.tab-title-page__text/);
+    expect(style).toMatch(/\.tab-title-page\s*\{/);
+    expect(style).toMatch(
+      /\[data-page-break='true'\]\s*\+\s*\*\s*\{[^}]*break-before:\s*page/,
+    );
+  });
+
   it('A4 portrait uses paper size, 1in margins and editor styling', () => {
     mountContentPrintHost(HTML, { pageSetup: { mode: 'pages', paper: 'a4' } });
     const { style } = readMounted();

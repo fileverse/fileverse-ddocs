@@ -5,6 +5,19 @@ import type { Editor } from '@tiptap/react';
 import { makeEditor } from '../utils/make-editor';
 import { getTemporaryEditor } from '../utils/helpers';
 import { useDdocExport } from './use-ddoc-export';
+import { handleContentPrint } from '../utils/handle-print';
+import {
+  buildPrintHtml,
+  getPrintInputs,
+  resolvePrintPlacement,
+} from '../extensions/pagination/print';
+
+vi.mock('../utils/handle-print', () => ({ handleContentPrint: vi.fn() }));
+vi.mock('../extensions/pagination/print', () => ({
+  buildPrintHtml: vi.fn(),
+  getPrintInputs: vi.fn(),
+  resolvePrintPlacement: vi.fn(),
+}));
 
 vi.mock('../utils/helpers', async () => {
   const actual =
@@ -337,5 +350,103 @@ describe('useDdocExport with subtabs', () => {
     expect(markdown).toBe(
       '# Research\n\nr\n\n## Interviews\n\ni\n\n### Round 1\n\nr1\n\n# Plan\n\nplan',
     );
+  });
+});
+
+describe('useDdocExport all-tabs PDF', () => {
+  let editor: Editor;
+  const tabs = [
+    { id: 'default', name: 'One', emoji: null },
+    { id: 'b', name: 'Two', emoji: null },
+    { id: 'c', name: 'Three', emoji: null },
+  ];
+  const TAB_HTML = '<p>tab</p>';
+
+  const setup = () => {
+    editor = makeEditor('<p>Active</p>');
+    vi.mocked(getTemporaryEditor).mockImplementation(
+      () =>
+        ({ getHTML: () => TAB_HTML, destroy: vi.fn() }) as unknown as Editor,
+    );
+    return renderHook(() =>
+      useDdocExport({
+        editor,
+        tabs,
+        ydoc: new Y.Doc(),
+        exportOptions: [],
+      }),
+    );
+  };
+
+  afterEach(() => {
+    editor?.destroy();
+    vi.mocked(getTemporaryEditor).mockReset();
+    vi.mocked(handleContentPrint).mockReset();
+    vi.mocked(buildPrintHtml).mockReset();
+    vi.mocked(getPrintInputs).mockReset();
+    vi.mocked(resolvePrintPlacement).mockReset();
+  });
+
+  it('in Pages mode the active tab carries its breaks, the others none, one Pages print', async () => {
+    const options = { pageSetup: { mode: 'pages', paper: 'a4' } };
+    vi.mocked(getPrintInputs).mockReturnValue({
+      pageSetup: { mode: 'pages', paper: 'a4' },
+      isPagesActive: true,
+    });
+    vi.mocked(resolvePrintPlacement).mockReturnValue(undefined);
+    vi.mocked(buildPrintHtml).mockImplementation(async (args) => ({
+      html: args.isPagesActive ? '<p data-print-break></p>' : TAB_HTML,
+      options: options as never,
+    }));
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.handleExportAsync({ format: 'pdf', tab: 'all' });
+    });
+
+    expect(handleContentPrint).toHaveBeenCalledOnce();
+    const [html, opts] = vi.mocked(handleContentPrint).mock.calls[0];
+    expect(opts).toEqual(options);
+    expect(html.match(/data-print-break(?!-before)/g)).toHaveLength(1);
+    expect(html.match(/class="tab-title-page"/g)).toHaveLength(3);
+  });
+
+  it('in Pages mode a failed build falls back to the Pageless print', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(getPrintInputs).mockReturnValue({
+      pageSetup: { mode: 'pages', paper: 'a4' },
+      isPagesActive: true,
+    });
+    vi.mocked(buildPrintHtml).mockRejectedValue(new Error('boom'));
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.handleExportAsync({ format: 'pdf', tab: 'all' });
+    });
+
+    expect(handleContentPrint).toHaveBeenCalledOnce();
+    expect(vi.mocked(handleContentPrint).mock.calls[0]).toHaveLength(1);
+  });
+
+  it('in Pageless mode the HTML is the plain join and there are no options', async () => {
+    vi.mocked(getPrintInputs).mockReturnValue(undefined);
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.handleExportAsync({ format: 'pdf', tab: 'all' });
+    });
+
+    const section = (name: string) =>
+      `<section class="tab-title-page"><h1 class="tab-title-page__text">${name}</h1></section>`;
+    const expected = [
+      section('One'),
+      TAB_HTML,
+      section('Two'),
+      TAB_HTML,
+      section('Three'),
+      TAB_HTML,
+    ].join('\n<div data-type="page-break" data-page-break="true"></div>\n');
+    expect(vi.mocked(handleContentPrint).mock.calls).toEqual([[expected]]);
+    expect(buildPrintHtml).not.toHaveBeenCalled();
   });
 });

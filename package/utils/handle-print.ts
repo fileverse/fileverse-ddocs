@@ -1013,6 +1013,15 @@ const buildPagesPrintStyles = (
   .${PRINT_HOST_CLASS} [data-page-break='true'] + * { break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
   .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
+  .${PRINT_HOST_CLASS} .tab-title-page { text-align: left; }
+  .${PRINT_HOST_CLASS} .tab-title-page__text {
+    margin: 0;
+    font-size: 36px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: #0d0d0d;
+    word-break: break-word;
+  }
   .${PRINT_HOST_CLASS} thead { display: table-header-group; }
   /* A table split at a row break: margins only around the whole table. */
   .${PRINT_HOST_CLASS} [data-print-split] { margin-bottom: 0 !important; }
