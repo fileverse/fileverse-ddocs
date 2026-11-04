@@ -166,7 +166,11 @@ A toggle off never joins.
 At offset 0 of an item's first textblock, Backspace takes the item out of the
 list in place with `toggleList(list.type, item.type)` (§3.4): a top-level item
 becomes a paragraph and the list splits around it, a nested item outdents, an
-empty item becomes an empty paragraph. Anything else falls through (a range,
+empty item becomes an empty paragraph. One exception: an empty nested item
+(a single empty textblock) with items after it is deleted and the caret moves
+to the end of the line above. Outdenting it would re-parent the items after it
+under it, and a second press would then lift their sub-list to the top level,
+turning sub-points into main points. Anything else falls through (a range,
 a caret inside the text, a paragraph after a list). `ListToggle` is
 registered after StarterKit, so its keymap runs before `ListKeymap`'s. v1's
 dBlock Backspace list branch is gone; its page-break case stays.
