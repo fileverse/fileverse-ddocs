@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Editor } from '@tiptap/react';
-import { destroyTracked, startOf } from '../caret-marks/test-helpers';
+import { destroyTracked, endOf, startOf } from '../caret-marks/test-helpers';
 import {
   makeListEditor,
   flatShape,
@@ -17,6 +17,8 @@ afterEach(destroyTracked);
 const LIST3 = '<ul><li><p>aa</p></li><li><p>bb</p></li><li><p>cc</p></li></ul>';
 const NESTED =
   '<ul><li><p>aa</p></li><li><p>bb</p><ul><li><p>xx</p></li><li><p>yy</p></li></ul></li><li><p>cc</p></li></ul>';
+const EMPTY_NESTED_MIDDLE =
+  '<ol><li><p>main</p><ol><li><p>s1</p></li><li><p></p></li><li><p>s3</p></li><li><p>s4</p></li></ol></li></ol>';
 
 /** A real keydown, so the keymap priority over dBlock and ListKeymap is exercised. */
 const pressBackspace = (editor: Editor) =>
@@ -90,6 +92,96 @@ describe.each([1, 2])(
         'ul(li(p("aa")) li(p("bb") ul(li(p("xx")))) li(p("yy")) li(p("cc"))) p()',
       );
       expectValid(editor, version);
+    });
+
+    // Outdenting would re-parent s3/s4 under the empty item, and a second
+    // press would hoist them to the top level.
+    it('deletes an empty middle nested item, keeping the items after it nested', () => {
+      const { editor } = makeListEditor(version, EMPTY_NESTED_MIDDLE);
+      caretInEmptyItem(editor);
+      expect(pressBackspace(editor)).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'ol(li(p("main") ol(li(p("s1")) li(p("s3")) li(p("s4"))))) p()',
+      );
+      expect(editor.state.selection.from).toBe(endOf(editor, 's1'));
+      expectValid(editor, version);
+    });
+
+    it('deletes an empty first nested item, caret to the end of the outer line', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ol><li><p>main</p><ol><li><p></p></li><li><p>s2</p></li></ol></li></ol>',
+      );
+      caretInEmptyItem(editor);
+      expect(pressBackspace(editor)).toBe(true);
+      expect(flatShape(editor)).toBe('ol(li(p("main") ol(li(p("s2"))))) p()');
+      expect(editor.state.selection.from).toBe(endOf(editor, 'main'));
+      expectValid(editor, version);
+    });
+
+    it('deletes an empty nested checklist item the same way', () => {
+      const { editor } = makeListEditor(version, '<p>aa</p><p></p><p>cc</p>');
+      rangeOver(editor, 'aa', 'cc');
+      editor.commands.toggleTaskList();
+      editor.commands.setTextSelection(endOf(editor, 'aa') + 4);
+      editor.commands.sinkListItem('taskItem');
+      editor.commands.setTextSelection(startOf(editor, 'cc'));
+      editor.commands.sinkListItem('taskItem');
+      expect(flatShape(editor)).toBe(
+        'tl(ti(p("aa") tl(ti(p()) ti(p("cc"))))) p()',
+      );
+      caretInEmptyItem(editor);
+      expect(pressBackspace(editor)).toBe(true);
+      expect(flatShape(editor)).toBe('tl(ti(p("aa") tl(ti(p("cc"))))) p()');
+      expect(editor.state.selection.from).toBe(endOf(editor, 'aa'));
+      expectValid(editor, version);
+    });
+
+    it('still outdents an empty last nested item', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ol><li><p>main</p><ol><li><p>s1</p></li><li><p></p></li></ol></li></ol>',
+      );
+      caretInEmptyItem(editor);
+      expect(pressBackspace(editor)).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'ol(li(p("main") ol(li(p("s1")))) li(p())) p()',
+      );
+      expectValid(editor, version);
+    });
+
+    it('still outdents a non-empty middle nested item', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ol><li><p>main</p><ol><li><p>s1</p></li><li><p>s2</p></li><li><p>s3</p></li></ol></li></ol>',
+      );
+      expect(backspaceAtStartOf(editor, 's2')).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'ol(li(p("main") ol(li(p("s1")))) li(p("s2") ol(li(p("s3"))))) p()',
+      );
+      expectValid(editor, version);
+    });
+
+    it('still outdents an empty nested item that holds its own sub-list', () => {
+      const { editor } = makeListEditor(
+        version,
+        '<ol><li><p>main</p><ol><li><p></p><ol><li><p>deep</p></li></ol></li><li><p>s2</p></li></ol></li></ol>',
+      );
+      caretInEmptyItem(editor);
+      expect(pressBackspace(editor)).toBe(true);
+      expect(flatShape(editor)).toBe(
+        'ol(li(p("main")) li(p() ol(li(p("deep")) li(p("s2"))))) p()',
+      );
+      expectValid(editor, version);
+    });
+
+    it('keeps comments on the items after a deleted empty nested item', () => {
+      const harness = makeListEditor(version, EMPTY_NESTED_MIDDLE);
+      addComment(harness, 's3', 's3');
+      caretInEmptyItem(harness.editor);
+      expect(pressBackspace(harness.editor)).toBe(true);
+      expect(decorated(harness.editor)).toBe('s3:s3');
+      expect(resolvedAnchors(harness)).toBe('s3:s3');
     });
 
     it('un-checks a checklist item the same way', () => {

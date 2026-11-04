@@ -1,5 +1,6 @@
 import { Extension, getNodeType, getSplittedAttributes } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { Selection } from '@tiptap/pm/state';
 import { isListItemNode, LIST_TOGGLE_META, refuse, sharedList } from './shared';
 import { retypeItems, retypeList } from './retype';
 import { toggleOffNested, toggleOffTopLevel } from './toggle-off';
@@ -34,6 +35,24 @@ export const ListToggle = Extension.create({
           return false;
         }
         const list = $from.node($from.depth - 2);
+        // An empty nested item with items after it is deleted, caret to the
+        // line above (LIST_TOGGLE §3.8). Outdenting would re-parent those
+        // items under it, and a second press would hoist them to the top.
+        if (
+          $from.depth >= 3 &&
+          item.childCount === 1 &&
+          $from.parent.content.size === 0 &&
+          isListItemNode($from.node($from.depth - 3)) &&
+          $from.index($from.depth - 2) < list.childCount - 1
+        ) {
+          return editor.commands.command(({ tr }) => {
+            const itemPos = $from.before($from.depth - 1);
+            tr.setMeta(LIST_TOGGLE_META, true);
+            tr.delete(itemPos, itemPos + item.nodeSize);
+            tr.setSelection(Selection.near(tr.doc.resolve(itemPos), -1));
+            return true;
+          });
+        }
         return editor.commands.toggleList(list.type, item.type);
       },
       // Enter on an empty last nested line takes it out a level keeping the
