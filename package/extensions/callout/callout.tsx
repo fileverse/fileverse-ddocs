@@ -46,13 +46,13 @@ export const Callout = TiptapNode.create({
 
             if (!isInsideCallout) return slice;
 
+            const isWrapper = (node: ProseMirrorNode) =>
+              node.type.name === 'callout' || node.type.name === 'dBlock';
+
             const flattenContent = (fragment: Fragment): ProseMirrorNode[] => {
               const result: ProseMirrorNode[] = [];
               fragment.forEach((node) => {
-                if (
-                  node.type.name === 'callout' ||
-                  node.type.name === 'dBlock'
-                ) {
+                if (isWrapper(node)) {
                   result.push(...flattenContent(node.content));
                 } else {
                   result.push(node);
@@ -64,7 +64,34 @@ export const Callout = TiptapNode.create({
             const flattenedNodes = flattenContent(slice.content);
             const fragment = Fragment.fromArray(flattenedNodes);
 
-            return new Slice(fragment, 0, 0);
+            // Only subtract wrapper levels that were removed. Partial text
+            // must keep its open paragraph edges so it merges at the caret;
+            // a whole copied block must keep its closed edges.
+            const flattenedOpenDepth = (
+              node: ProseMirrorNode | null,
+              depth: number,
+              edge: 'firstChild' | 'lastChild',
+            ) => {
+              while (node && depth > 0 && isWrapper(node)) {
+                depth--;
+                node = node[edge];
+              }
+              return depth;
+            };
+
+            return new Slice(
+              fragment,
+              flattenedOpenDepth(
+                slice.content.firstChild,
+                slice.openStart,
+                'firstChild',
+              ),
+              flattenedOpenDepth(
+                slice.content.lastChild,
+                slice.openEnd,
+                'lastChild',
+              ),
+            );
           },
         },
       }),
