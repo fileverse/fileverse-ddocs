@@ -725,8 +725,8 @@
 }
 
 /* Media editing chrome takes no space in Pages (§13.5): the block is as tall
-   as its print. The toolbar overlays the top-right corner on hover or while
-   the node is selected. */
+   as its print. The toolbar sits just above the top-right corner on hover or
+   while the node is selected, and stays while it is itself hovered. */
 [data-page-mode='pages'] .ProseMirror [data-media-frame] {
   padding: 0;
   background-color: transparent;
@@ -735,8 +735,9 @@
 
 [data-page-mode='pages'] .ProseMirror [data-media-toolbar] {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: -4px;
+  right: 0;
+  transform: translateY(-100%);
   z-index: 21;
   margin: 0;
   border: 1px solid hsla(var(--color-border-default));
@@ -745,8 +746,19 @@
   visibility: hidden;
 }
 
+/* Bridges the 4px gap so moving from the media to the toolbar keeps it. */
+[data-page-mode='pages'] .ProseMirror [data-media-toolbar]::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
 [data-page-mode='pages'] .ProseMirror [data-media-frame]:hover > [data-media-toolbar],
 [data-page-mode='pages'] .ProseMirror .ProseMirror-selectednode [data-media-toolbar],
+[data-page-mode='pages'] .ProseMirror [data-media-toolbar]:hover,
 [data-page-mode='pages'] .ProseMirror [data-media-toolbar]:has([data-state='open']) {
   visibility: visible;
 }
