@@ -118,6 +118,12 @@ export const useDdocEditor = ({
       !ddocContent &&
       !yjsSetup.isIndexeddbSynced,
   );
+  // The host has no body yet but one is coming: null ("wait") on a doc page,
+  // or the '' placeholder a Version History preview shows while it fetches.
+  // An editor built now has no schema marker to read, builds with schema 1,
+  // and when the body lands y-prosemirror deletes every schema-2 `columns`
+  // block in the open tab (TEC-3321). So no editor until the body is here.
+  const isAwaitingBody = isVersionMode ? !ddocContent : ddocContent === null;
   const storeLoadStartedRef = useRef(false);
   useEffect(() => {
     if (!isAwaitingStore || storeLoadStartedRef.current) return;
@@ -266,9 +272,12 @@ export const useDdocEditor = ({
     // An empty activeTabId makes useTabEditorCache destroy every editor and
     // create none, so this build never binds y-sync to a newer-schema doc,
     // nor to a doc whose store has not loaded yet (isAwaitingStore, which
-    // starts the store load itself so holding the editor cannot deadlock).
+    // starts the store load itself so holding the editor cannot deadlock),
+    // nor before a body the host has promised (isAwaitingBody).
     activeTabId:
-      isSchemaUnsupported || isAwaitingStore ? '' : tabManager.activeTabId,
+      isSchemaUnsupported || isAwaitingStore || isAwaitingBody
+        ? ''
+        : tabManager.activeTabId,
     tabIds,
     docSchemaVersion,
     hasTabState: tabManager.hasTabState,
