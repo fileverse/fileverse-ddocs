@@ -101,15 +101,13 @@ export const insertCommands: Record<string, InsertCommand> = {
       .insertTable({ rows: 3, cols: 2, withHeaderRow: true })
       .run();
   },
-  // The column commands never consumed the slash range (existing behavior).
-  // setColumns places the caret in the first cell within its own
-  // transaction; a post-hoc focus(head - 1) here read the PRE-insert
-  // selection at chain-build time and aimed at a stale position.
-  columns2: (editor) => {
-    editor.chain().focus().setColumns(2).run();
+  // Preserve the selected blocks, deleting only the slash trigger when present.
+  // setColumns owns the caret placement within the same transaction.
+  columns2: (editor, range) => {
+    begin(editor, range).setColumns(2, true).run();
   },
-  columns3: (editor) => {
-    editor.chain().focus().setColumns(3).run();
+  columns3: (editor, range) => {
+    begin(editor, range).setColumns(3, true).run();
   },
   bulletList: (editor, range) => {
     begin(editor, range).toggleBulletList().run();
