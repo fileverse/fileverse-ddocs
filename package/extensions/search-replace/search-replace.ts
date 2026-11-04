@@ -75,7 +75,7 @@ declare module '@tiptap/core' {
        */
       previousSearchResult: () => ReturnType;
       /**
-       * @description Replace first instance of search result with given replace term.
+       * @description Replace the selected search result with the given replace term.
        */
       replace: () => ReturnType;
       /**
@@ -111,6 +111,7 @@ const getRegex = (
 interface ProcessedSearches {
   decorationsToReturn: DecorationSet;
   results: Range[];
+  resultIndex: number;
 }
 
 function processSearches(
@@ -129,6 +130,7 @@ function processSearches(
     return {
       decorationsToReturn: DecorationSet.empty,
       results: [],
+      resultIndex: 0,
     };
   }
 
@@ -170,10 +172,15 @@ function processSearches(
     }
   }
 
+  // Replacing the last match wraps to the first remaining match. Keep the
+  // highlight and counter in sync when edits shrink the result list.
+  const currentIndex =
+    resultIndex >= 0 && resultIndex < results.length ? resultIndex : 0;
+
   for (let i = 0; i < results.length; i += 1) {
     const r = results[i];
     const className =
-      i === resultIndex
+      i === currentIndex
         ? `${searchResultClass} ${searchResultClass}-current`
         : searchResultClass;
     const decoration: Decoration = Decoration.inline(r.from, r.to, {
@@ -186,19 +193,21 @@ function processSearches(
   return {
     decorationsToReturn: DecorationSet.create(doc, decorations),
     results,
+    resultIndex: currentIndex,
   };
 }
 
 const replace = (
   replaceTerm: string,
   results: Range[],
+  resultIndex: number,
   { state, dispatch }: { state: EditorState; dispatch: Dispatch },
 ) => {
-  const firstResult = results[0];
+  const currentResult = results[resultIndex];
 
-  if (!firstResult) return;
+  if (!currentResult) return;
 
-  const { from, to } = results[0];
+  const { from, to } = currentResult;
 
   if (dispatch) dispatch(state.tr.insertText(replaceTerm, from, to));
 };
@@ -342,9 +351,9 @@ export const SearchAndReplace = Extension.create<
       replace:
         () =>
         ({ state, dispatch }) => {
-          const { replaceTerm, results } = this.storage;
+          const { replaceTerm, results, resultIndex } = this.storage;
 
-          replace(replaceTerm, results, { state, dispatch });
+          replace(replaceTerm, results, resultIndex, { state, dispatch });
 
           return false;
         },
@@ -406,7 +415,11 @@ export const SearchAndReplace = Extension.create<
               return DecorationSet.empty;
             }
 
-            const { decorationsToReturn, results } = processSearches(
+            const {
+              decorationsToReturn,
+              results,
+              resultIndex: currentIndex,
+            } = processSearches(
               doc,
               getRegex(searchTerm, disableRegex, caseSensitive),
               searchResultClass,
@@ -414,6 +427,8 @@ export const SearchAndReplace = Extension.create<
             );
 
             storage.results = results;
+            storage.resultIndex = currentIndex;
+            setLastResultIndex(currentIndex);
 
             return decorationsToReturn;
           },
