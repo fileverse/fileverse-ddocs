@@ -191,13 +191,14 @@ export const Table = Node.create<TableOptions>({
       insertTable:
         ({ rows = 3, cols = 3, withHeaderRow = true } = {}) =>
         ({ tr, dispatch, editor }) => {
-          const { selection } = tr;
           const node = createTable(editor.schema, rows, cols, withHeaderRow);
 
           if (dispatch) {
-            const offset = tr.selection.anchor + 1;
+            // Use the start for either selection direction. ProseMirror fits
+            // the table into the schema without consuming a preceding character.
+            const offset = tr.selection.from + 1;
 
-            tr.replaceRangeWith(selection.from - 1, selection.to, node)
+            tr.replaceSelectionWith(node)
               .scrollIntoView()
               .setSelection(TextSelection.near(tr.doc.resolve(offset)));
           }
