@@ -19,7 +19,7 @@ import { useZoom } from '../hooks/use-zoom';
 import { getEditorScrollContainer } from '../utils/get-editor-scroll-container';
 
 // Screen px between the sheet and its number, which keeps its 100% size.
-const PAGE_NUMBER_GAP = 12;
+const PAGE_NUMBER_GAP = 6;
 
 const clamp = (n: number, max: number) => Math.min(max, Math.max(0, n));
 
