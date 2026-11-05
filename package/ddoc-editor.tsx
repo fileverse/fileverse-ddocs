@@ -1235,7 +1235,7 @@ const DdocEditor = forwardRef(
                   <div
                     className={cn(
                       'editor-main-lane flex-grow min-w-0 flex overflow-visible items-stretch',
-                      !isSplitViewActive && 'mb-12',
+                      isPagesMode && !isSplitViewActive && 'mb-12',
                       shouldScroll ? 'justify-start' : 'justify-center',
                       isMobile && 'w-full',
                       !isSplitViewActive &&
