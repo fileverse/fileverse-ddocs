@@ -637,6 +637,11 @@
   --padding-l: 96px;
 }
 
+/* Template buttons keep pageless's 6px lift above the first line. */
+[data-page-mode='pages'] #editor-canvas [data-template-overlay] {
+  top: 90px;
+}
+
 /* A page break is invisible in Pages: the jump to the next sheet shows it. */
 [data-page-mode='pages'] .ProseMirror .node-pageBreak {
   height: 0;
