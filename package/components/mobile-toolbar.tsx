@@ -19,6 +19,7 @@ import { parseHeadingLink } from '../utils/heading-link';
 import { useMobileToolbarStore } from '../stores/mobile-toolbar-store';
 import { dismissNativeSelection } from '../utils/dismiss-native-selection';
 import { applyLinkWithText } from '../utils/apply-link-with-text';
+import { useLinkDialogStore } from '../stores/link-dialog-store';
 
 const MobileToolbar = ({
   editor,
@@ -131,6 +132,14 @@ const MobileToolbar = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [editor, setToolVisibility, toolVisibility]);
+
+  const { isLinkDialogRequested, setLinkDialogRequested } =
+    useLinkDialogStore();
+  useEffect(() => {
+    if (!isLinkDialogRequested) return;
+    setLinkDialogRequested(false);
+    setToolVisibility(IEditorTool.LINK_POPUP);
+  }, [isLinkDialogRequested, setLinkDialogRequested, setToolVisibility]);
 
   useEffect(() => {
     if (isKeyboardVisible) {

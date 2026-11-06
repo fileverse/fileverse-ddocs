@@ -9,6 +9,7 @@ import {
   createCommentStore,
 } from '../stores/comment-store';
 import { useCustomSpacingStore } from '../stores/custom-spacing-store';
+import { useLinkDialogStore } from '../stores/link-dialog-store';
 
 describe('useEditorCommands', () => {
   let editor: Editor;
@@ -134,6 +135,17 @@ describe('useEditorCommands', () => {
     act(() => result.current['format.customSpacing'].run());
     expect(useCustomSpacingStore.getState().isCustomSpacingOpen).toBe(true);
     useCustomSpacingStore.setState({ isCustomSpacingOpen: false });
+  });
+
+  it('insert.link opens the link dialog without a URL and links with one', () => {
+    useLinkDialogStore.setState({ isLinkDialogRequested: false });
+    const { result } = renderHook(() => useEditorCommands(editor));
+    act(() => result.current['insert.link'].run());
+    expect(useLinkDialogStore.getState().isLinkDialogRequested).toBe(true);
+    expect(editor.isActive('link')).toBe(false);
+    act(() => result.current['insert.link'].run('example.com'));
+    expect(editor.getAttributes('link').href).toBe('https://example.com');
+    useLinkDialogStore.setState({ isLinkDialogRequested: false });
   });
 
   // The pair the second-level nav renders in its Line height submenu. In

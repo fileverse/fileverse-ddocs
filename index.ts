@@ -9,7 +9,6 @@ export type {
 } from './package/hooks/use-headless-editor';
 export { FANFIC_TEMPLATE } from './package/utils/fanfic-template';
 export { useEditorCommands } from './package/hooks/use-editor-commands';
-export { applyLinkWithText } from './package/utils/apply-link-with-text';
 export type {
   EditorCommand,
   EditorCommandId,

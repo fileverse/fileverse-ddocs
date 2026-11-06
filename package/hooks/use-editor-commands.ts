@@ -23,6 +23,7 @@ import {
   useCommentStoreOptional,
 } from '../stores/comment-store';
 import { openCustomSpacingDialog } from '../stores/custom-spacing-store';
+import { openLinkDialog } from '../stores/link-dialog-store';
 
 // Module-scope stable selectors: useCommentStoreOptional's
 // useSyncExternalStore contract compares snapshots with Object.is, so these
@@ -311,6 +312,11 @@ export const useEditorCommands = (
       'insert.soundcloud': cmd(() => insertCommands.soundcloud(editor)),
       'insert.link': cmd(
         (url) => {
+          // No argument (a menu item) opens the link dialog; '' removes the link.
+          if (url === undefined) {
+            openLinkDialog();
+            return;
+          }
           // same chain the link popup dispatches (editor-utils.tsx:1546)
           if (!url) {
             editor.chain().focus().extendMarkRange('link').unsetLink().run();
