@@ -18,6 +18,8 @@ import {
 import { parseHeadingLink } from '../utils/heading-link';
 import { useMobileToolbarStore } from '../stores/mobile-toolbar-store';
 import { dismissNativeSelection } from '../utils/dismiss-native-selection';
+import { applyLinkWithText } from '../utils/apply-link-with-text';
+import { useLinkDialogStore } from '../stores/link-dialog-store';
 
 const MobileToolbar = ({
   editor,
@@ -87,31 +89,7 @@ const MobileToolbar = ({
 
     finalUrl = finalUrl.trim();
 
-    const { from, to } = editor.state.selection;
-    const isSelected = editor.state.doc.textBetween(from, to).length > 0;
-
-    if (isSelected) {
-      editor
-        .chain()
-        .focus()
-        .deleteSelection()
-        .insertContent({
-          type: 'text',
-          text: linkText,
-          marks: finalUrl ? [{ type: 'link', attrs: { href: finalUrl } }] : [],
-        })
-        .run();
-    } else if (linkText) {
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: 'text',
-          text: linkText,
-          marks: finalUrl ? [{ type: 'link', attrs: { href: finalUrl } }] : [],
-        })
-        .run();
-    }
+    applyLinkWithText(editor, linkText, finalUrl);
 
     setIsUrlValid(true);
     setIsTextValid(true);
@@ -154,6 +132,12 @@ const MobileToolbar = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [editor, setToolVisibility, toolVisibility]);
+
+  const setOpenLinkDialog = useLinkDialogStore((s) => s.setOpenDialog);
+  useEffect(() => {
+    setOpenLinkDialog(() => setToolVisibility(IEditorTool.LINK_POPUP));
+    return () => setOpenLinkDialog(null);
+  }, [setOpenLinkDialog, setToolVisibility]);
 
   useEffect(() => {
     if (isKeyboardVisible) {
