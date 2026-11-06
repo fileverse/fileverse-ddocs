@@ -628,6 +628,253 @@
   }
 }
 
+/* Pages mode: 1 inch margins (docs/PAGES_MODE.md §4.1). The attribute is only
+   set at 1024px+ editor width, so it needs no breakpoint of its own. */
+[data-page-mode='pages'] .ProseMirror.main-doc-editor {
+  --padding-t: 96px;
+  --padding-r: 96px;
+  --padding-b: 96px;
+  --padding-l: 96px;
+}
+
+/* Template buttons keep pageless's 6px lift above the first line. */
+[data-page-mode='pages'] #editor-canvas [data-template-overlay] {
+  top: 90px;
+}
+
+/* A page break is invisible in Pages: the jump to the next sheet shows it. */
+[data-page-mode='pages'] .ProseMirror .node-pageBreak {
+  height: 0;
+  margin: 0;
+  background-color: transparent;
+}
+
+/* Sheets (docs/PAGES_MODE.md §12.6) sit behind the content in the zoom layer
+   and take the canvas fill; the content itself shows the desk between them. */
+[data-page-mode='pages'] .ProseMirror.main-doc-editor {
+  background-color: transparent;
+}
+
+.ddoc-page-sheets {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ddoc-page-sheet {
+  position: absolute;
+  left: 0;
+  box-sizing: border-box;
+  border: 1px solid hsla(var(--color-border-default));
+}
+
+/* Beside the sheet, level with its bottom edge (left set inline). */
+.ddoc-page-number {
+  position: absolute;
+  bottom: 0;
+  transform-origin: bottom left;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Masks (§13.7) cut a split box at the text bottom. They sit in view.dom's
+   parent, above the content and below the chrome stacked there (z-index 2+). */
+.ddoc-page-masks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.ddoc-page-mask {
+  position: absolute;
+}
+
+.ddoc-page-mask-bottom,
+.ddoc-page-mask-top {
+  box-sizing: border-box;
+  border: 0 solid hsla(var(--color-border-default));
+  border-left-width: 1px;
+  border-right-width: 1px;
+}
+
+.ddoc-page-mask-bottom {
+  border-bottom-width: 1px;
+}
+
+.ddoc-page-mask-top {
+  border-top-width: 1px;
+}
+
+/* Chrome the masks must not cover; the rest already stacks at 5 or more. */
+[data-page-mode='pages'] .ddoc-floating-menu,
+[data-page-mode='pages'] .ProseMirror .collaboration-cursor__caret,
+[data-page-mode='pages'] .ProseMirror .custom-cursor__caret,
+[data-page-mode='pages'] .ProseMirror .trigger-button {
+  z-index: 2;
+}
+
+/* Paper cannot scroll: Pages shows every line of a long code block. */
+[data-page-mode='pages'] .ProseMirror [data-code-body] {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Media editing chrome takes no space in Pages (§13.5): the block is as tall
+   as its print. The toolbar sits just above the top-right corner on hover or
+   while the node is selected, and stays while it is itself hovered. */
+[data-page-mode='pages'] .ProseMirror [data-media-frame] {
+  padding: 0;
+  background-color: transparent;
+  transition-property: opacity;
+}
+
+[data-page-mode='pages'] .ProseMirror [data-media-toolbar] {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  transform: translateY(-100%);
+  z-index: 21;
+  margin: 0;
+  border: 1px solid hsla(var(--color-border-default));
+  border-radius: 0.5rem;
+  background-color: hsla(var(--color-bg-default));
+  visibility: hidden;
+}
+
+/* Bridges the 6px gap so moving from the media to the toolbar keeps it. */
+[data-page-mode='pages'] .ProseMirror [data-media-toolbar]::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 6px;
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]:hover
+  > [data-media-toolbar],
+[data-page-mode='pages']
+  .ProseMirror
+  .ProseMirror-selectednode
+  [data-media-toolbar],
+[data-page-mode='pages'] .ProseMirror [data-media-toolbar]:hover,
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-toolbar]:has([data-state='open']) {
+  visibility: visible;
+}
+
+/* Media fits one page's text height, caption included, and narrows to keep
+   its ratio (--ddoc-media-ratio on the box, media-ratio.ts). The box is what
+   narrows: a percentage cap on the media alone leaves the box at the stored
+   width. An image box has a 2px border; a caption takes 26px (an 18px line
+   in two nested caption divs, each 4px below what precedes it).
+   contain only covers the moment before the ratio is known. Pages print
+   restates this. */
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]
+  :is(img, video, iframe) {
+  max-height: var(--ddoc-page-text-h);
+  object-fit: contain;
+}
+
+[data-page-mode='pages'] .ProseMirror [data-media-frame] img {
+  max-height: calc(var(--ddoc-page-text-h) - 4px);
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]:has(> .media-caption)
+  video {
+  max-height: calc(var(--ddoc-page-text-h) - 26px);
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]:has(> .media-caption)
+  img {
+  max-height: calc(var(--ddoc-page-text-h) - 30px);
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]
+  > :has(> :is(video, iframe)) {
+  max-width: min(
+    100%,
+    calc(var(--ddoc-page-text-h) * var(--ddoc-media-ratio, 1000))
+  );
+}
+
+[data-page-mode='pages'] .ProseMirror [data-media-frame] > :has(> img) {
+  max-width: min(
+    100%,
+    calc((var(--ddoc-page-text-h) - 4px) * var(--ddoc-media-ratio, 1000) + 4px)
+  );
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]:has(> .media-caption)
+  > :has(> video) {
+  max-width: min(
+    100%,
+    calc((var(--ddoc-page-text-h) - 26px) * var(--ddoc-media-ratio, 1000))
+  );
+}
+
+[data-page-mode='pages']
+  .ProseMirror
+  [data-media-frame]:has(> .media-caption)
+  > :has(> img) {
+  max-width: min(
+    100%,
+    calc((var(--ddoc-page-text-h) - 30px) * var(--ddoc-media-ratio, 1000) + 4px)
+  );
+}
+
+/* Atoms the user cannot resize are clipped at one page's text height instead
+   of splitting (§13.5). Columns are not clipped or split: they run over the
+   margins and gap. Pages print restates this. */
+[data-page-mode='pages'] .ProseMirror [data-page-atom] {
+  max-height: var(--ddoc-page-text-h);
+  overflow: hidden;
+}
+
+[data-page-mode='pages'] .ProseMirror pre[data-mermaid-view='preview'] {
+  max-height: var(--ddoc-page-text-h);
+  overflow: hidden;
+}
+
+/* Passes read the final layout (§12.3), so in Pages a paragraph's margins do
+   not animate: paragraphs carry transition-all. */
+[data-page-mode='pages'] .ProseMirror p {
+  transition-property: color, background-color, border-color, opacity;
+}
+
+/* Pages mode shows collapsed sections expanded, so the collapse toggles go
+   (preview chevron in both schemas, floating drag-handle cluster). Copy-link
+   stays. */
+[data-page-mode='pages']
+  .ProseMirror
+  .d-block-preview-button:not(.d-block-preview-copy-link),
+[data-page-mode='pages'] .drag-handle [data-test='collapse-button'] {
+  display: none;
+}
+
 /* Read-only-preview heading chrome (collapse chevron + copy link), rendered
    by the dBlock node view INSIDE the editor DOM — the floating drag-handle
    cluster can never appear in preview because the upstream plugin hides its
@@ -822,7 +1069,9 @@
   }
 }
 @media (min-width: 1024px) {
-  .ProseMirror [data-type='d-block'].is-table > [data-node-view-content]:where(:not(.ddoc-editor-cq *)) {
+  .ProseMirror
+    [data-type='d-block'].is-table
+    > [data-node-view-content]:where(:not(.ddoc-editor-cq *)) {
     max-width: 90%;
   }
 }
@@ -2169,4 +2418,13 @@ ul[data-type='taskList'] li[data-checked='true'] > div > p > span {
     margin: 0.1em 0 !important;
     padding: 0;
   }
+}
+
+.ProseMirror .ddoc-page-spacer {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  user-select: none;
 }

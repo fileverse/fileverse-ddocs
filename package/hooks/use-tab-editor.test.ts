@@ -1,7 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Editor } from '@tiptap/react';
 import { getHeadlessExtensions } from './use-headless-editor';
-import { TAB_EDITOR_ATTRIBUTES } from './use-tab-editor';
+import { TAB_EDITOR_ATTRIBUTES, printTab } from './use-tab-editor';
+import { printPagesTab } from '../extensions/pagination/print';
+import { handleContentPrint } from '../utils/handle-print';
+
+vi.mock('../extensions/pagination/print', () => ({
+  printPagesTab: vi.fn(),
+}));
+vi.mock('../utils/handle-print', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils/handle-print')>()),
+  handleContentPrint: vi.fn(),
+}));
 
 /**
  * Regression coverage for a second round of the Task 3 browser-verification
@@ -45,5 +55,31 @@ describe('TAB_EDITOR_ATTRIBUTES', () => {
     } finally {
       editor.destroy();
     }
+  });
+});
+
+describe('printTab', () => {
+  const fake = { getHTML: () => '<p>x</p>' } as unknown as Editor;
+
+  it('falls back to the plain print and logs when Pages print rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(handleContentPrint).mockClear();
+    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    await printTab(fake, false, []);
+    expect(err).toHaveBeenCalled();
+    expect(handleContentPrint).toHaveBeenCalledWith('<p>x</p>');
+    err.mockRestore();
+  });
+
+  it('does not run the plain print twice when it throws', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(handleContentPrint).mockClear();
+    vi.mocked(handleContentPrint).mockImplementationOnce(() => {
+      throw new Error('print blocked');
+    });
+    vi.mocked(printPagesTab).mockResolvedValue(false);
+    await expect(printTab(fake, false, [])).rejects.toThrow('print blocked');
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    err.mockRestore();
   });
 });

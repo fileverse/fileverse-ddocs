@@ -748,9 +748,10 @@ const createSuggestionWidgetRenderer =
     asFollowingListItem?: boolean,
     visualCaret?: boolean,
     listMarkerAt?: (nextItem: number) => string,
+    isDraft = false,
   ) =>
-  () =>
-    createSuggestionWidget(
+  () => {
+    const widget = createSuggestionWidget(
       text,
       commentId,
       isActive,
@@ -761,6 +762,10 @@ const createSuggestionWidgetRenderer =
       visualCaret,
       listMarkerAt,
     );
+    widget.dataset.suggestionPreview = 'true';
+    if (isDraft) widget.dataset.suggestionDraft = 'true';
+    return widget;
+  };
 
 function breaksIntoParagraphAfterHeading(
   state: EditorState,
@@ -972,6 +977,7 @@ function buildDecorations(
             followingItemPos !== null,
             Boolean(visualCaret),
             (nextItem) => suggestionListMarker(state, insertPoint, nextItem),
+            Boolean(anchor.isDraft),
           ),
           {
             commentId: anchor.id,
@@ -979,8 +985,8 @@ function buildDecorations(
             suggestion: true,
             side: -1,
             key: `suggestion-insert-${anchor.id}-${anchor.suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, insertPoint)}-${visualCaret ? 'caret' : 'no-caret'}-${
-              isActive ? 'active' : 'inactive'
-            }`,
+              anchor.isDraft ? 'draft' : 'sent'
+            }-${isActive ? 'active' : 'inactive'}`,
           },
         ),
       );
@@ -1064,6 +1070,7 @@ function buildDecorations(
               followingItemPos !== null,
               false,
               (nextItem) => suggestionListMarker(state, range.from, nextItem),
+              Boolean(anchor.isDraft),
             ),
             {
               commentId: anchor.id,
@@ -1071,8 +1078,8 @@ function buildDecorations(
               suggestion: true,
               side: -1,
               key: `suggestion-insert-${anchor.id}-${suggestedContent}-${JSON.stringify(anchor.multilineStructure)}-${suggestionListMarker(state, range.from)}-${
-                isActive ? 'active' : 'inactive'
-              }`,
+                anchor.isDraft ? 'draft' : 'sent'
+              }-${isActive ? 'active' : 'inactive'}`,
             },
           ),
         );

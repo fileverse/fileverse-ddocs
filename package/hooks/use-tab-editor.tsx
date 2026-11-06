@@ -31,6 +31,7 @@ import {
 } from '@tiptap/pm/state';
 import customTextInputRules from '../extensions/customTextInputRules';
 import { PageBreak } from '../extensions/page-break/page-break';
+import { Pagination } from '../extensions/pagination';
 import { toUint8Array } from 'js-base64';
 import { isJSONString } from '../utils/isJsonString';
 import { sanitizeContent } from '../utils/sanitize-content';
@@ -47,6 +48,7 @@ import {
   handleContentPrint,
   handlePrint,
 } from '../utils/handle-print';
+import { printPagesTab } from '../extensions/pagination/print';
 import { isBlackOrWhiteShade } from '../utils/color-utils';
 import { AiAutocomplete } from '../extensions/ai-autocomplete/ai-autocomplete';
 import { AIWriter } from '../extensions/ai-writer';
@@ -81,6 +83,55 @@ import { useTabEditorCache } from './use-tab-editor-cache';
 import { transactionOnlyChangesText } from '../utils/transaction-range';
 import { clearActiveComment } from '../extensions/comment/comment';
 import { createStatsPublisher } from '../utils/stats-publisher';
+
+/** The Pages layout's page count, or null when Pages is off or has no pass. */
+export function getExactPageCount(editor: Editor): number | null {
+  const state = editor.storage.pagination?.store?.get();
+  return state?.enabled && typeof state.pageCount === 'number'
+    ? state.pageCount
+    : null;
+}
+
+/**
+ * Reports the layout's page count whenever it changes; calls onInexact when
+ * the exact count goes away (Pages off, or a failed pass).
+ */
+export function subscribePagesCount(
+  editor: Editor,
+  onCount: (pages: number) => void,
+  onInexact: () => void,
+): () => void {
+  const store = editor.storage.pagination?.store;
+  if (!store) return () => {};
+  let last: number | null = null;
+  const sync = () => {
+    const pages = getExactPageCount(editor);
+    if (pages === last) return;
+    const lost = pages === null;
+    last = pages;
+    if (lost) onInexact();
+    else onCount(pages);
+  };
+  sync();
+  return store.subscribe(sync);
+}
+
+export const printTab = (
+  editor: Editor,
+  isPresentationMode: boolean | undefined,
+  slides: string[],
+) => {
+  if (isPresentationMode) return handlePrint(slides);
+  return printPagesTab(editor).then(
+    (done) => {
+      if (!done) handleContentPrint(editor.getHTML());
+    },
+    (error) => {
+      console.error('Pages print failed, using the plain path', error);
+      handleContentPrint(editor.getHTML());
+    },
+  );
+};
 
 // The single source of truth for the tab editor's construction-time
 // `editorProps.attributes` (the `main-doc-editor`/prose classes,
@@ -1103,7 +1154,10 @@ export const useTabEditor = ({
           setWordCount?.(words);
           statsPublisher.publish({ characters, words }, { tick: true });
 
-          if (setPageCount || hasStatsListener) {
+          if (
+            (setPageCount || hasStatsListener) &&
+            getExactPageCount(editor) === null
+          ) {
             const pageCounter = pageCounterRef.current;
 
             if (!pageCounter) {
@@ -1205,10 +1259,26 @@ export const useTabEditor = ({
     // Initial count
     updateCounts();
     updateSelectedWordCount();
+    const unsubscribePages =
+      setPageCount || hasStatsListener
+        ? subscribePagesCount(
+            editor,
+            (pages) => {
+              if (activeEditorRef.current !== editor) return;
+              setPageCount?.(pages);
+              statsPublisher.publish({ pages });
+            },
+            () => {
+              pageStructureVersionRef.current += 1;
+              updateCounts({});
+            },
+          )
+        : undefined;
     editor.on('update', updateCounts);
     editor.on('selectionUpdate', updateSelectedWordCount);
 
     return () => {
+      unsubscribePages?.();
       editor.off('update', updateCounts);
       editor.off('selectionUpdate', updateSelectedWordCount);
       if (statsDebounceRef.current) {
@@ -1235,9 +1305,7 @@ export const useTabEditor = ({
       if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
         event.preventDefault();
         if (editor) {
-          isPresentationMode
-            ? handlePrint(slides)
-            : handleContentPrint(editor.getHTML());
+          printTab(editor, isPresentationMode, slides);
         }
       }
     };
@@ -1725,6 +1793,7 @@ const useEditorExtension = ({
         createSlashCommand(),
         customTextInputRules,
         PageBreak,
+        Pagination,
         tabCommentExtension,
         Collaboration.configure({
           document: ydoc,

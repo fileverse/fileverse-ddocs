@@ -33,6 +33,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react';
 import cn from 'classnames';
 import {
@@ -89,16 +90,29 @@ import { useControllableState } from './hooks/use-controllable-state';
 import { useCanvasMetrics } from './hooks/use-canvas-metrics';
 import { ZoomProvider } from './hooks/use-zoom';
 import { useZoomedPage } from './hooks/use-zoomed-page';
+import { usePaginationSync } from './hooks/use-pagination-sync';
 import { useZoomShortcuts } from './hooks/use-zoom-shortcuts';
 import {
   canChangeZoom,
   COMMENT_COLUMN_WIDTH,
   FIT_GUTTER,
+  PAGE_NUMBER_GUTTER,
   getFitReservedWidth,
   normalizeZoomLevel,
   resolveZoomScale,
   stepZoomLevel,
 } from './utils/zoom';
+import {
+  getPagesBaseWidth,
+  isPagesActive,
+  PageGrid,
+} from './extensions/pagination/page-grid';
+import { PageSheets } from './components/page-sheets';
+import {
+  buildPrintHtml,
+  resolvePrintPlacement,
+} from './extensions/pagination/print';
+import { handleContentPrint } from './utils/handle-print';
 import {
   EditorWidthContext,
   useEditorMediaQuery,
@@ -136,6 +150,7 @@ const DdocEditor = forwardRef(
       disableBottomToolbar,
       enableFanficTemplate = false,
       onError,
+      onPagesError,
       setCharacterCount,
       setWordCount,
       setSelectedWordCount,
@@ -285,6 +300,11 @@ const DdocEditor = forwardRef(
     const exportTriggerRef = useRef<
       ((format?: string, name?: string) => void) | null
     >(null);
+    // Latest print inputs for the imperative handle, which is memoised on
+    // [editor, awareness] and created before isPagesMode is computed.
+    const printInputsRef = useRef<
+      Omit<Parameters<typeof buildPrintHtml>[0], 'editor'>
+    >({ isPagesActive: false });
 
     /**
      * Document styling system with dark mode support
@@ -299,8 +319,8 @@ const DdocEditor = forwardRef(
         return { canvas: undefined, background: undefined };
       }
 
-      const canvas: React.CSSProperties = {};
-      const background: React.CSSProperties = {};
+      const canvas: CSSProperties = {};
+      const background: CSSProperties = {};
       const currentTheme = theme ?? 'light';
 
       // Apply custom document styling
@@ -640,6 +660,18 @@ const DdocEditor = forwardRef(
         exportCurrentTabOrOpenExportModal: (format = 'pdf', name?: string) => {
           exportTriggerRef.current?.(format, name);
         },
+        printCurrentTab: async () => {
+          if (!editor) return;
+          const { html, options } = await buildPrintHtml({
+            editor,
+            ...printInputsRef.current,
+            placement: resolvePrintPlacement(
+              editor,
+              printInputsRef.current.isPagesActive,
+            ),
+          });
+          handleContentPrint(html, options);
+        },
         terminateSession,
         updateSessionTitle: (args: {
           encryptedTitle: string;
@@ -814,7 +846,30 @@ const DdocEditor = forwardRef(
     const isCommentColumnVisible =
       hasFloatingComments && !isFloatingCommentHidden;
     const isLandscapeMode = documentStyling?.orientation === 'landscape';
-    const baseWidth = isLandscapeMode ? 1190 : 850;
+    const isWideEnoughForPages = useEditorMediaQuery(
+      '(min-width: 1024px)',
+      editorWidthStore,
+    );
+    const pageSetup = documentStyling?.pageSetup;
+    const isPagesMode = isPagesActive({
+      pageSetup,
+      isWideEnough: isWideEnoughForPages,
+      isSplitViewActive,
+      isVersionHistory: Boolean(rest.versionHistoryState?.enabled),
+    });
+    printInputsRef.current = {
+      pageSetup,
+      orientation: documentStyling?.orientation,
+      isPagesActive: isPagesMode,
+      ipfsImageFetchFn,
+      fetchV1ImageFn,
+    };
+    const baseWidth =
+      isPagesMode && pageSetup
+        ? getPagesBaseWidth(pageSetup, documentStyling?.orientation)
+        : isLandscapeMode
+          ? 1190
+          : 850;
 
     const zoomLevel = normalizeZoomLevel(rawZoomLevel);
     // Zoom shares Split View's 960px gate: below it the toolbar holding its
@@ -837,6 +892,7 @@ const DdocEditor = forwardRef(
       hasLeftRail,
       isCommentColumnVisible,
       isLandscape: isLandscapeMode,
+      isPagesMode,
     });
     const { shouldHideRight, shouldScroll, fitScale } = useCanvasMetrics({
       canvasRef,
@@ -861,6 +917,38 @@ const DdocEditor = forwardRef(
       },
     });
     const scaledWidth = baseWidth * zoom;
+
+    // Primitives, so a new documentStyling object does not re-run a pass.
+    const pagesMode = pageSetup?.mode;
+    const pagesPaper = pageSetup?.paper;
+    const pagesOrientation = documentStyling?.orientation;
+    const pagesSetup = useMemo(
+      () =>
+        pagesMode && pagesPaper
+          ? { mode: pagesMode, paper: pagesPaper }
+          : undefined,
+      [pagesMode, pagesPaper],
+    );
+    const pageGrid = useMemo(
+      () =>
+        pagesPaper ? new PageGrid(pagesPaper, pagesOrientation) : undefined,
+      [pagesPaper, pagesOrientation],
+    );
+    usePaginationSync(editor, {
+      pageSetup: pagesSetup,
+      orientation: pagesOrientation,
+      zoom,
+      isPagesMode,
+      onPagesError,
+      printInputs: () => printInputsRef.current,
+    });
+    // Pages mode: the sheets take the canvas fill; the rest shows the desk.
+    const contentCanvasStyle = (() => {
+      const style = getCanvasStyle();
+      return isPagesMode && style
+        ? { ...style, backgroundColor: undefined }
+        : style;
+    })();
 
     // The scroller is the canvas, except in Split View where it stays on the
     // inner wrapper. The ref object
@@ -1147,6 +1235,7 @@ const DdocEditor = forwardRef(
                   <div
                     className={cn(
                       'editor-main-lane flex-grow min-w-0 flex overflow-visible items-stretch',
+                      isPagesMode && !isSplitViewActive && 'mb-12',
                       shouldScroll ? 'justify-start' : 'justify-center',
                       isMobile && 'w-full',
                       !isSplitViewActive &&
@@ -1195,6 +1284,7 @@ const DdocEditor = forwardRef(
                         ...(isFit && {
                           marginRight:
                             FIT_GUTTER +
+                            (isPagesMode ? PAGE_NUMBER_GUTTER : 0) +
                             (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0),
                           marginLeft: hasLeftRail ? undefined : FIT_GUTTER,
                         }),
@@ -1218,6 +1308,7 @@ const DdocEditor = forwardRef(
                             'transition-[width,max-width] duration-300 ease-in-out',
                           !documentStyling?.canvasBackground &&
                             !isFocusMode &&
+                            !isPagesMode &&
                             'color-bg-default',
                         )}
                         style={{
@@ -1229,7 +1320,7 @@ const DdocEditor = forwardRef(
                               }),
                           flexShrink: 0,
                           minHeight: '100%',
-                          ...(!isFocusMode ? getCanvasStyle() || {} : {}),
+                          ...(!isFocusMode ? contentCanvasStyle || {} : {}),
                           // Split View: fill the right pane instead of the
                           // fixed page width (kept last so it wins).
                           ...(isSplitViewActive
@@ -1240,7 +1331,11 @@ const DdocEditor = forwardRef(
                       >
                         <div
                           ref={editorRef}
-                          className={cn('w-full', isPreviewMode && 'pt-3')}
+                          className={cn(
+                            'w-full',
+                            isPreviewMode && 'pt-3',
+                            isPagesMode && 'relative isolate',
+                          )}
                           data-ddoc-zoom-layer=""
                           data-ddoc-zoom={String(zoom)}
                           style={
@@ -1256,6 +1351,18 @@ const DdocEditor = forwardRef(
                                   }
                           }
                         >
+                          {isPagesMode && pageGrid && (
+                            <PageSheets
+                              editor={editor}
+                              grid={pageGrid}
+                              canvasStyle={
+                                !isFocusMode ? getCanvasStyle() : undefined
+                              }
+                              deskStyle={
+                                !isFocusMode ? getBackgroundStyle() : undefined
+                              }
+                            />
+                          )}
                           <div>
                             {editor && (
                               <>
@@ -1342,8 +1449,8 @@ const DdocEditor = forwardRef(
                                           { 'pt-12': isPreviewMode },
                                         )}
                                         {...(!isFocusMode &&
-                                          getCanvasStyle() && {
-                                            style: getCanvasStyle(),
+                                          contentCanvasStyle && {
+                                            style: contentCanvasStyle,
                                           })}
                                       >
                                         {visibleTags.map((tag, index) => (
@@ -1625,6 +1732,14 @@ const DdocEditor = forwardRef(
             !isPresentationMode ? 'color-bg-secondary' : 'color-bg-default',
             isContainerQueryRoot && 'ddoc-editor-cq',
           )}
+          data-page-mode={isPagesMode ? 'pages' : undefined}
+          style={
+            isPagesMode && pageGrid
+              ? ({
+                  '--ddoc-page-text-h': `${pageGrid.textHeight}px`,
+                } as CSSProperties)
+              : undefined
+          }
         >
           <EditorWidthContext.Provider value={editorWidthStore}>
             <ZoomProvider

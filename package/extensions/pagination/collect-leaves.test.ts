@@ -1,0 +1,650 @@
+import { Editor } from '@tiptap/react';
+import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
+import {
+  SPACER_CLASS,
+  collapsedMargin,
+  collectLeaves,
+  effectiveBottomMargin,
+  effectiveTopMargin,
+  leadingOffset,
+  spacerDisplacement,
+} from './collect-leaves';
+import { PageGrid } from './page-grid';
+import { place } from './place';
+import { buildPrintSchema, serializeWithBreaks } from './print-break-node';
+
+const HTML = `<h2>Heading</h2><p>Paragraph</p><ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul><table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr></tbody></table><img src="data:image/svg+xml;base64,PHN2Zy8+"><div data-type="page-break"></div><aside data-type="callout"><p>note</p></aside>`;
+
+// jsdom has no layout: give every text node one 10px line at the top.
+const lineAt = (top: number) => ({
+  top,
+  bottom: top + 10,
+  left: 0,
+  right: 10,
+  width: 10,
+  height: 10,
+});
+let lineRects = [lineAt(0)];
+beforeAll(() => {
+  Range.prototype.getClientRects = function () {
+    return lineRects as unknown as DOMRectList;
+  };
+});
+afterEach(() => {
+  lineRects = [lineAt(0)];
+});
+
+describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
+  let editor: Editor;
+  beforeEach(() => {
+    editor = new Editor({
+      element: document.createElement('div'),
+      extensions: getHeadlessExtensions({ schemaVersion }),
+    });
+    editor.commands.setContent(HTML);
+  });
+  afterEach(() => editor.destroy());
+
+  it('yields one leaf per placeable unit, in document order', () => {
+    const leaves = collectLeaves(editor.view, 931);
+    const doc = editor.state.doc;
+    expect(
+      leaves.map((leaf) => [leaf.kind, doc.nodeAt(leaf.pos)?.type.name]),
+    ).toEqual([
+      ['text', 'heading'],
+      ['text', 'paragraph'],
+      ['text', 'paragraph'],
+      ['text', 'paragraph'],
+      ['atomic', 'tableRow'],
+      ['atomic', 'tableRow'],
+      ['atomic', 'resizableMedia'],
+      ['forced', 'pageBreak'],
+      ['atomic', 'callout'],
+      // trailingNode's empty paragraph: no line boxes, so it moves as a unit.
+      ['atomic', 'paragraph'],
+    ]);
+  });
+
+  it('makes every table row a leaf; row 0 anchors its spacer before the table', () => {
+    const doc = editor.state.doc;
+    const leaves = collectLeaves(editor.view, 931);
+    const kinds = leaves.map((l) => [l.kind, doc.nodeAt(l.pos)?.type.name]);
+    expect(kinds).not.toContainEqual(['atomic', 'table']);
+    const rows = leaves.filter(
+      (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+    );
+    expect(rows).toHaveLength(2);
+    const [row0, row1] = rows;
+    if (row0.kind === 'forced' || row1.kind === 'forced') throw new Error();
+    // The outermost node that starts with row 0: the dBlock in v1.
+    const outer = doc.nodeAt(row0.spacerPos)?.type.name;
+    expect(outer).toBe(schemaVersion === 1 ? 'dBlock' : 'table');
+    expect(row1.spacerPos).toBe(row1.pos);
+  });
+
+  it('takes a spacer row and a header clone out of the rows below them', () => {
+    const doc = editor.state.doc;
+    const rowEls = Array.from(editor.view.dom.querySelectorAll('tr'));
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height }) as DOMRect;
+    };
+    const spacer = document.createElement('tr');
+    spacer.className = `${SPACER_CLASS} ddoc-page-spacer-row`;
+    const clone = rowEls[0].cloneNode(true) as HTMLElement;
+    clone.className = `${SPACER_CLASS} ddoc-page-spacer-header`;
+    rowEls[1].before(spacer, clone);
+    rectOf(rowEls[0], 100, 30);
+    rectOf(spacer, 130, 200);
+    rectOf(clone, 330, 30);
+    rectOf(rowEls[1], 360, 40);
+    const rows = collectLeaves(editor.view, 931).filter(
+      (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+    );
+    expect(rows).toHaveLength(2);
+    // A tr has no margins: each one displaces by its height.
+    expect(rows[1]).toMatchObject({ top: 130, bottom: 170 });
+  });
+
+  it('anchors a spacer at the outermost node that starts with the leaf', () => {
+    const doc = editor.state.doc;
+    const leaves = collectLeaves(editor.view, 931);
+    for (const leaf of leaves) {
+      if (leaf.kind === 'forced') continue;
+      expect(leaf.spacerPos).toBeLessThanOrEqual(leaf.pos);
+      expect(doc.resolve(leaf.spacerPos).depth).toBeLessThanOrEqual(
+        doc.resolve(leaf.pos).depth,
+      );
+    }
+    const inner = leaves.find(
+      (l) => doc.nodeAt(l.pos)?.textContent === 'inner',
+    );
+    const anchor = inner?.kind === 'forced' ? 0 : (inner?.spacerPos ?? 0);
+    expect(doc.nodeAt(anchor)?.type.name).toBe('bulletList');
+    const first = leaves[0];
+    expect(first.kind === 'forced' ? -1 : first.spacerPos).toBe(0);
+  });
+
+  describe('with a spacer in the DOM', () => {
+    beforeEach(() => {
+      editor.commands.setContent('<p>a</p><p>b</p>');
+    });
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height }) as DOMRect;
+    };
+    const topLevel = (el: Element) => {
+      let e = el;
+      while (e.parentElement !== editor.view.dom) e = e.parentElement!;
+      return e as HTMLElement;
+    };
+    const setup = (style: Record<string, string> = {}) => {
+      const [p0, p1] = Array.from(editor.view.dom.querySelectorAll('p'));
+      Object.assign(p0.style, { marginBottom: '12px' });
+      Object.assign(p1.style, { marginTop: '24px' });
+      rectOf(p0, 0, 20);
+      rectOf(p1, 220, 20);
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      spacer.contentEditable = 'false';
+      rectOf(spacer, 20, 200);
+      Object.assign(editor.view.dom.style, style);
+      editor.view.dom.insertBefore(spacer, topLevel(p1));
+      return { p0, p1 };
+    };
+    const second = () => {
+      const leaves = collectLeaves(editor.view, 931);
+      return { first: leaves[0], leaf: leaves[1] };
+    };
+
+    it('reads natural tops, subtracting the same swallowed margin', () => {
+      setup();
+      const { first, leaf } = second();
+      expect(first.kind === 'forced' ? 0 : first.top).toBe(0);
+      if (leaf.kind === 'forced') throw new Error('unexpected');
+      expect(leaf.spacerCollapse).toBe(12);
+      expect(220 - leaf.top).toBe(200 + leaf.spacerCollapse);
+    });
+
+    it('collapses through zero-margin wrappers, not flex parents', () => {
+      const { p0, p1 } = setup({ display: 'flex', rowGap: '8px' });
+      const { leaf } = second();
+      if (leaf.kind === 'forced') throw new Error('unexpected');
+      expect(leaf.spacerCollapse).toBe(8);
+      expect(220 - leaf.top).toBe(208);
+      expect(p0.style.marginBottom).toBe('12px');
+      expect(p1.style.marginTop).toBe('24px');
+    });
+
+    it('shifts only the lines after a spacer inside a textblock', () => {
+      const p = editor.view.dom.querySelectorAll('p')[1];
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      spacer.contentEditable = 'false';
+      rectOf(spacer, 10, 20);
+      lineRects = [lineAt(0), lineAt(30)];
+      rectOf(p, 0, 50);
+      p.appendChild(spacer);
+      document.elementFromPoint = () => null;
+      const leaf = collectLeaves(editor.view, 931)[1];
+      if (leaf.kind !== 'text') throw new Error('expected a text leaf');
+      expect(leaf.top).toBe(0);
+      expect(leaf.bottom).toBe(30);
+      expect(leaf.lines.map((l) => l.top)).toEqual([0, 10]);
+    });
+  });
+
+  it("measures a node view's lines from its content, not its chrome", () => {
+    // A code block's line-number gutter stays put when a spacer moves the code.
+    editor.view.setProps({
+      nodeViews: {
+        codeBlock: () => {
+          const dom = document.createElement('div');
+          const gutter = document.createElement('div');
+          gutter.textContent = '1';
+          const contentDOM = document.createElement('code');
+          dom.append(gutter, contentDOM);
+          return { dom, contentDOM };
+        },
+      },
+    });
+    editor.commands.setContent('<pre><code>alpha</code></pre>');
+    const rects = Range.prototype.getClientRects;
+    Range.prototype.getClientRects = function (this: Range) {
+      const top = this.startContainer.textContent === '1' ? 300 : 0;
+      return [lineAt(top)] as unknown as DOMRectList;
+    };
+    document.elementFromPoint = () => null;
+    try {
+      const doc = editor.state.doc;
+      const leaf = collectLeaves(editor.view, 931).find(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'codeBlock',
+      );
+      if (leaf?.kind !== 'text') throw new Error('expected a text leaf');
+      expect(leaf.lines.map((l) => l.top)).toEqual([0]);
+    } finally {
+      Range.prototype.getClientRects = rects;
+    }
+  });
+
+  // A row joined to the next by a rowspan: no break or spacer may fall
+  // between them, on screen or in print.
+  describe('rows joined by a rowspan', () => {
+    const MERGED = `<table><tbody><tr><th><p>H1</p></th><th><p>H2</p></th></tr><tr><td rowspan="2"><p>m</p></td><td><p>a</p></td></tr><tr><td><p>b</p></td></tr><tr><td><p>c</p></td><td><p>d</p></td></tr></tbody></table>`;
+    const rowLeaves = () => {
+      const doc = editor.state.doc;
+      return collectLeaves(editor.view, 931).filter(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+    };
+    const rowPositions = () => {
+      const out: number[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'tableRow') out.push(pos);
+        return node.type.name !== 'tableRow';
+      });
+      return out;
+    };
+    const layout = (tops: number[], height = 40) =>
+      Array.from(editor.view.dom.querySelectorAll('tr')).forEach((tr, i) => {
+        tr.getBoundingClientRect = () =>
+          ({
+            top: tops[i],
+            bottom: tops[i] + height,
+            height,
+          }) as DOMRect;
+      });
+
+    beforeEach(() => {
+      editor.commands.setContent(MERGED);
+    });
+
+    it('makes them one atomic leaf from the first row to the last', () => {
+      layout([100, 140, 180, 220]);
+      const rows = rowPositions();
+      const leaves = rowLeaves();
+      expect(leaves.map((l) => l.pos)).toEqual([rows[0], rows[1], rows[3]]);
+      expect(leaves[1]).toMatchObject({
+        kind: 'atomic',
+        top: 140,
+        bottom: 220,
+        spacerPos: rows[1],
+        row: { isHeader: false },
+      });
+      expect(leaves[0]).toMatchObject({ row: { isHeader: true } });
+    });
+
+    it('place and print break before the group, never inside it', () => {
+      editor.commands.setContent(
+        MERGED.replace(
+          '<tr><td rowspan',
+          '<tr><td><p>x</p></td><td><p>y</p></td></tr><tr><td rowspan',
+        ),
+      );
+      // A4: page 0 text ends at 1027; row "b" (1000..1040) crosses it.
+      layout([880, 920, 960, 1000, 1040], 40);
+      const rows = rowPositions();
+      const leaves = collectLeaves(editor.view, 931);
+      const placement = place(leaves, new PageGrid('a4'));
+      expect(placement.breaks).toEqual([{ kind: 'before', pos: rows[2] }]);
+      expect(placement.spacers.map((s) => s.pos)).toEqual([rows[2]]);
+      const html = serializeWithBreaks(
+        editor.state.doc,
+        buildPrintSchema(editor.schema),
+        placement.breaks,
+        placement.pageStarts,
+      );
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      const tables = [...div.querySelectorAll('table')];
+      expect(tables).toHaveLength(2);
+      const body = (t: Element) =>
+        [...t.querySelectorAll('tbody tr')].map((r) => r.textContent);
+      expect(body(tables[0])).toEqual(['xy']);
+      expect(body(tables[1])).toEqual(['ma', 'b', 'cd']);
+      expect(tables[1].querySelector('td[rowspan="2"]')).not.toBeNull();
+    });
+  });
+
+  // docs/PAGES_MODE.md §13.6: a row taller than a page splits in its cells.
+  describe('cells of a row', () => {
+    const TABLE_HTML =
+      '<table><tbody><tr><td><p>a1</p><p>a2</p></td><td><p>b1</p></td></tr></tbody></table><p>after</p>';
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height, left: 0, right: 100 }) as DOMRect;
+    };
+    const para = (text: string) =>
+      [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === text,
+      )!;
+    const spacerIn = (p: Element, top: number, height: number) => {
+      const el = document.createElement('div');
+      el.className = SPACER_CLASS;
+      el.contentEditable = 'false';
+      rectOf(el, top, height);
+      p.prepend(el);
+    };
+    let tops: Record<string, number> = {};
+    beforeEach(() => {
+      editor.commands.setContent(TABLE_HTML);
+      document.elementFromPoint = () => null;
+      Range.prototype.getClientRects = function (this: Range) {
+        const top = tops[this.startContainer.textContent ?? ''] ?? 0;
+        return [lineAt(top)] as unknown as DOMRectList;
+      };
+    });
+    afterEach(() => {
+      Range.prototype.getClientRects = function () {
+        return lineRects as unknown as DOMRectList;
+      };
+      tops = {};
+    });
+    const rowLeaf = () => {
+      const doc = editor.state.doc;
+      const leaves = collectLeaves(editor.view, 931);
+      const row = leaves.find(
+        (l) => doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+      if (row?.kind !== 'atomic') throw new Error('expected a row leaf');
+      const after = leaves.find(
+        (l) => doc.nodeAt(l.pos)?.textContent === 'after',
+      );
+      if (after?.kind !== 'text') throw new Error('expected a text leaf');
+      return { row, after };
+    };
+
+    it("lists each cell's lines from every textblock, and its bottom", () => {
+      tops = { a1: 110, a2: 140, b1: 110 };
+      rectOf(editor.view.dom.querySelector('tr')!, 100, 70);
+      rectOf(para('a1'), 110, 20);
+      rectOf(para('a2'), 140, 20);
+      rectOf(para('b1'), 110, 20);
+      rectOf(para('after'), 180, 20);
+      const { row } = rowLeaf();
+      expect(row.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 140],
+        [110],
+      ]);
+      expect(row.cells?.map((c) => c.bottom)).toEqual([160, 130]);
+    });
+
+    it('reads in-cell spacers back per cell; the row grows by its tallest cell', () => {
+      // Natural: a2 140..160, b1 110..130, row 100..170, "after" at 180.
+      tops = { a1: 110, a2: 340, b1: 260 };
+      spacerIn(para('a2'), 140, 200);
+      spacerIn(para('b1'), 110, 150);
+      rectOf(editor.view.dom.querySelector('tr')!, 100, 270);
+      rectOf(para('a1'), 110, 20);
+      rectOf(para('a2'), 140, 220);
+      rectOf(para('b1'), 110, 170);
+      rectOf(para('after'), 380, 20);
+      const { row, after } = rowLeaf();
+      expect(row.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 140],
+        [110],
+      ]);
+      expect(row.cells?.map((c) => c.bottom)).toEqual([160, 130]);
+      expect(row.bottom).toBe(170);
+      expect(after.top).toBe(180);
+    });
+  });
+
+  describe('atoms in a cell', () => {
+    it("lists each cell's non-text blocks, read back from its spacers", () => {
+      editor.commands.setContent(
+        '<table><tbody><tr><td><p>a1</p><img src="data:image/svg+xml;base64,PHN2Zy8+"><p>a2</p></td><td><p>b1</p></td></tr></tbody></table>',
+      );
+      document.elementFromPoint = () => null;
+      const rect = (el: Element, top: number, height: number) => {
+        el.getBoundingClientRect = () =>
+          ({ top, bottom: top + height, height, left: 0 }) as DOMRect;
+      };
+      let imgPos = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'resizableMedia') imgPos = pos;
+      });
+      expect(imgPos).toBeGreaterThan(0);
+      // A 100px spacer in a1 moves a1, the image and a2 down by 100.
+      const a1 = [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === 'a1',
+      )!;
+      const spacer = document.createElement('div');
+      spacer.className = SPACER_CLASS;
+      rect(spacer, 110, 100);
+      a1.prepend(spacer);
+      rect(editor.view.nodeDOM(imgPos) as Element, 240, 100);
+      const row = collectLeaves(editor.view, 931).find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.type.name === 'tableRow',
+      );
+      if (row?.kind !== 'atomic') throw new Error('expected a row leaf');
+      expect(row.cells?.map((c) => c.atoms)).toEqual([
+        [{ top: 140, bottom: 240 }],
+        [],
+      ]);
+    });
+  });
+
+  // A columns block is a one-row grid: each column is a lane, like a cell.
+  describe('columns taller than a page', () => {
+    const a4 = new PageGrid('a4');
+    const COLS_HTML =
+      '<div data-type="columns"><div data-type="column"><p>a1</p><p>a2</p><p>a3</p></div><div data-type="column"><p>b1</p><p>b2</p></div><div data-type="column"><p>c1</p></div></div><p>after</p>';
+    const rectOf = (el: Element, top: number, height: number) => {
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + height, height, left: 0, right: 100 }) as DOMRect;
+    };
+    const para = (text: string) =>
+      [...editor.view.dom.querySelectorAll('p')].find(
+        (p) => p.textContent === text,
+      )!;
+    // The paragraph and, in v1, the dBlock that wraps it in its column.
+    const placePara = (text: string, top: number, height = 10) => {
+      const p = para(text);
+      rectOf(p, top, height);
+      const block = p.closest('[data-type="d-block"]');
+      if (block) rectOf(block, top, height);
+    };
+    const textPos = (text: string) => {
+      let at = -1;
+      editor.state.doc.descendants((n, pos) => {
+        if (at < 0 && n.isText && n.text === text) at = pos;
+      });
+      return at;
+    };
+    const spacerIn = (p: Element, top: number, height: number) => {
+      const el = document.createElement('div');
+      el.className = SPACER_CLASS;
+      el.contentEditable = 'false';
+      rectOf(el, top, height);
+      p.prepend(el);
+    };
+    let tops: Record<string, number> = {};
+    // Natural layout: a3 (1020..1030) and b2 (1022..1032) cross A4's page 0
+    // text bottom (1027); column C ends at 120.
+    const layout = (colTops = [100, 100, 100]) => {
+      tops = { a1: 110, a2: 600, a3: 1020, b1: 110, b2: 1022, c1: 110 };
+      rectOf(editor.view.dom.querySelector('[data-type="columns"]')!, 100, 940);
+      editor.view.dom
+        .querySelectorAll('[data-type="column"]')
+        .forEach((col, i) => rectOf(col, colTops[i], 940));
+      Object.entries(tops).forEach(([text, top]) => placePara(text, top));
+      placePara('after', 1050);
+    };
+    beforeEach(() => {
+      editor.commands.setContent(COLS_HTML);
+      document.elementFromPoint = () => null;
+      Range.prototype.getClientRects = function (this: Range) {
+        const top = tops[this.startContainer.textContent ?? ''] ?? 0;
+        return [lineAt(top)] as unknown as DOMRectList;
+      };
+    });
+    afterEach(() => {
+      Range.prototype.getClientRects = function () {
+        return lineRects as unknown as DOMRectList;
+      };
+      tops = {};
+    });
+    const columnsLeaf = (leaves: ReturnType<typeof collectLeaves>) => {
+      const leaf = leaves.find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.type.name === 'columns',
+      );
+      if (leaf?.kind !== 'atomic') throw new Error('expected a columns leaf');
+      return leaf;
+    };
+
+    it('a tall columns block splits each crossing column at its first non-fitting line', () => {
+      layout();
+      const p = place(collectLeaves(editor.view, a4.textHeight), a4);
+      expect(p.breaks).toEqual([
+        { kind: 'inText', pos: textPos('a3') },
+        { kind: 'inText', pos: textPos('b2') },
+      ]);
+      expect(p.spacers.map((s) => [s.kind, s.pos, s.height])).toEqual([
+        ['inText', textPos('a3'), 1235 - 1020],
+        ['inText', textPos('b2'), 1235 - 1022],
+      ]);
+      expect(p.pageStarts.map((s) => s.kind)).toEqual(['before', 'inText']);
+    });
+
+    it('a column whose content ends above the bottom gets no spacer', () => {
+      layout();
+      const p = place(collectLeaves(editor.view, a4.textHeight), a4);
+      const c = editor.view.dom.querySelectorAll('[data-type="column"]')[2];
+      const inC = (pos: number) => c.contains(editor.view.domAtPos(pos).node);
+      expect(p.spacers.filter((s) => inC(s.pos))).toEqual([]);
+      expect(p.spacers.filter((s) => s.kind === 'inText')).toHaveLength(2);
+    });
+
+    it('reads in-column spacers back per column; the block grows by its lowest column', () => {
+      // Rendered after the split: a3 and b2 start page 1 (1235).
+      layout();
+      tops = { ...tops, a3: 1235, b2: 1235 };
+      spacerIn(para('a3'), 1020, 215);
+      spacerIn(para('b2'), 1022, 213);
+      placePara('a3', 1020, 225);
+      placePara('b2', 1022, 223);
+      rectOf(
+        editor.view.dom.querySelector('[data-type="columns"]')!,
+        100,
+        1153,
+      );
+      placePara('after', 1050 + 213);
+      const leaves = collectLeaves(editor.view, a4.textHeight);
+      const cols = columnsLeaf(leaves);
+      expect(cols.cells?.map((c) => c.lines.map((l) => l.top))).toEqual([
+        [110, 600, 1020],
+        [110, 1022],
+        [110],
+      ]);
+      expect(cols.cells?.map((c) => c.bottom)).toEqual([1030, 1032, 120]);
+      expect(cols.bottom).toBe(1040);
+      const after = leaves.find(
+        (l) => editor.state.doc.nodeAt(l.pos)?.textContent === 'after',
+      );
+      expect(after?.kind === 'text' && after.top).toBe(1050);
+    });
+
+    it('a grid that wraps onto a second row refuses the split', () => {
+      layout([100, 100, 400]);
+      const leaves = collectLeaves(editor.view, a4.textHeight);
+      expect(columnsLeaf(leaves).cells).toEqual([]);
+      // The block keeps the tall-leaf rule: no break inside it.
+      const p = place(leaves, a4);
+      expect(p.breaks.filter((b) => b.kind === 'inText')).toEqual([]);
+      expect(p.spacers.filter((s) => s.kind === 'inText')).toEqual([]);
+    });
+  });
+
+  it('marks headings and the table header row', () => {
+    const leaves = collectLeaves(editor.view, 931);
+    expect(leaves[0]).toMatchObject({ kind: 'text', isHeading: true });
+    expect(leaves[1]).toMatchObject({ kind: 'text', isHeading: false });
+    const rows = leaves.filter((l) => l.kind === 'atomic' && l.row);
+    expect(rows.map((l) => l.kind === 'atomic' && l.row?.isHeader)).toEqual([
+      true,
+      false,
+    ]);
+  });
+});
+
+// After a forced break print keeps the margin, border and padding of every box
+// that starts with the leaf; margins that collapse through count once.
+describe('leadingOffset', () => {
+  const box = (top: number, marginTop: number, blocksCollapse = false) => ({
+    top,
+    marginTop,
+    blocksCollapse,
+  });
+
+  it('is the leaf margin when nothing starts with it', () => {
+    expect(leadingOffset([box(100, 12)])).toBe(12);
+  });
+
+  it('keeps an ancestor margin that collapses through', () => {
+    expect(leadingOffset([box(100, 0), box(100, 0), box(100, 24)])).toBe(24);
+  });
+
+  it('counts collapsed margins once, the largest', () => {
+    expect(leadingOffset([box(100, 16), box(100, 8)])).toBe(16);
+  });
+
+  it('adds padding and border of an ancestor that stops collapsing', () => {
+    // A callout with a 1px border and 16px padding: the leaf sits 17px in.
+    expect(leadingOffset([box(117, 0), box(100, 0, true)])).toBe(17);
+    expect(leadingOffset([box(117, 0), box(100, 24, true)])).toBe(41);
+  });
+});
+
+describe('effective margins', () => {
+  const html = (inner: string) => {
+    const host = document.createElement('div');
+    host.innerHTML = inner;
+    document.body.appendChild(host);
+    return host.firstElementChild as HTMLElement;
+  };
+  it('collapse through zero-margin wrappers', () => {
+    const el = html(
+      '<div><div><p style="margin-top:8px;margin-bottom:4px">x</p></div></div>',
+    );
+    expect(effectiveTopMargin(el)).toBe(8);
+    expect(effectiveBottomMargin(el)).toBe(4);
+  });
+  it('stop at padding, flex and overflow', () => {
+    expect(
+      effectiveTopMargin(
+        html(
+          '<div style="padding-top:1px"><p style="margin-top:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      effectiveBottomMargin(
+        html(
+          '<div style="display:flex"><p style="margin-bottom:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      effectiveTopMargin(
+        html(
+          '<div style="overflow:hidden"><p style="margin-top:8px">x</p></div>',
+        ),
+      ),
+    ).toBe(0);
+  });
+});
+
+describe('spacer math', () => {
+  it('collapsedMargin', () => {
+    expect(collapsedMargin(12, 24)).toBe(24);
+    expect(collapsedMargin(-8, 20)).toBe(12);
+    expect(collapsedMargin(-8, -20)).toBe(-20);
+  });
+
+  it('spacerDisplacement adds back the margin the spacer swallowed', () => {
+    expect(
+      spacerDisplacement({ height: 200, marginAbove: 12, marginBelow: 24 }),
+    ).toBe(212);
+  });
+});

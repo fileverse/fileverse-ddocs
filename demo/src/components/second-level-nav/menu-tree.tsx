@@ -113,6 +113,37 @@ export const demoMenuTree: MenuBarTree = [
         icon: 'Printer',
         action: 'file.print',
       },
+      {
+        id: 'file.pageSetup',
+        kind: 'submenu',
+        label: 'Page setup',
+        icon: 'FileCog',
+        visibleWhen: canEdit,
+        children: [
+          {
+            id: 'file.pageSetup.pageless',
+            kind: 'radio',
+            label: 'Pageless',
+            description: 'Infinite canvas for whom don’t care about pages',
+            icon: 'Maximize',
+            value: 'pageless',
+            action: 'format.pageMode',
+            state: (c) =>
+              (c.state['format.pageMode']?.current ?? 'pageless') ===
+              'pageless',
+          },
+          {
+            id: 'file.pageSetup.pages',
+            kind: 'radio',
+            label: 'Pages',
+            description: 'Classic pages layout for writers',
+            icon: 'File',
+            value: 'pages',
+            action: 'format.pageMode',
+            state: (c) => c.state['format.pageMode']?.current === 'pages',
+          },
+        ],
+      },
     ],
   },
   {
@@ -808,6 +839,19 @@ export const demoMenuTree: MenuBarTree = [
         icon: 'Frame',
         action: 'format.margins',
         comingSoon: true,
+        visibleWhen: canEdit,
+      },
+      { id: 'format.sepPageMode', kind: 'separator', visibleWhen: canEdit },
+      {
+        id: 'format.pageMode.switch',
+        kind: 'action',
+        label: (c) =>
+          c.state['format.pageMode']?.current === 'pages'
+            ? 'Switch to pageless mode'
+            : 'Switch to pages mode',
+        icon: (c) =>
+          c.state['format.pageMode']?.current === 'pages' ? 'Maximize' : 'File',
+        action: 'format.pageMode',
         visibleWhen: canEdit,
       },
       { id: 'format.sep1', kind: 'separator' },

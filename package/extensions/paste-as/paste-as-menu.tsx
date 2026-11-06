@@ -9,6 +9,10 @@ import {
   type PasteAsCandidate,
 } from './paste-as-candidate';
 
+// Pages mode stacks it above the sheet-edge masks (editor.css).
+const markFloatingMenu = (node: HTMLDivElement | null) =>
+  node?.classList.add('ddoc-floating-menu');
+
 interface PasteAsMenuProps {
   editor: Editor;
 }
@@ -117,6 +121,7 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
   const option = EMBED_OPTION[kind ?? 'image'];
   return (
     <BubbleMenu
+      ref={markFloatingMenu}
       pluginKey="pasteAsMenu"
       editor={editor}
       options={{

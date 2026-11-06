@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { mergeAttributes, Node } from '@tiptap/core';
-import { Plugin, PluginKey } from 'prosemirror-state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from 'prosemirror-state';
+import { wrapBlockNode } from '../../utils/block-schema';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { PageBreakNodeView } from './page-break-node-view';
 
@@ -15,6 +21,13 @@ declare module '@tiptap/core' {
        * Add a page break
        */
       setPageBreak: () => ReturnType;
+      /**
+       * Page break for the keyboard shortcut: at the caret in a top-level
+       * paragraph or heading, otherwise after the enclosing top-level block
+       * (or the selected block). False in a code block or with nothing to
+       * anchor to (AllSelection, top-level gap cursor)
+       */
+      insertPageBreakAtCaret: () => ReturnType;
       /**
        * Remove a page break
        */
@@ -78,11 +91,86 @@ export const PageBreak = Node.create<PageBreakRuleOptions>({
             .run();
         },
 
+      insertPageBreakAtCaret:
+        () =>
+        ({ state, tr, dispatch, commands }) => {
+          const { selection } = state;
+          const { $head } = selection;
+          const parent = $head.parent;
+          if (parent.type.name === 'codeBlock') return false;
+
+          // A selected block: the break goes after its top-level block.
+          let afterBlock: number | null = null;
+          if (selection instanceof NodeSelection && selection.node.isBlock) {
+            afterBlock =
+              selection.$from.depth === 0
+                ? selection.to
+                : selection.$from.after(1);
+          } else {
+            const topDepth = state.schema.nodes.dBlock ? 2 : 1;
+            const isDirect =
+              $head.depth === topDepth &&
+              (parent.type.name === 'paragraph' ||
+                parent.type.name === 'heading');
+            if (isDirect) return commands.setPageBreak();
+            // AllSelection or a gap cursor at the top level.
+            if ($head.depth < 1) return false;
+            afterBlock = $head.after(1);
+          }
+
+          if (dispatch) {
+            const breakNode = state.schema.nodes[this.name].create();
+            tr.insert(afterBlock, breakNode);
+            const next = afterBlock + breakNode.nodeSize;
+            if (next >= tr.doc.content.size) {
+              const empty = state.schema.nodeFromJSON(
+                wrapBlockNode(state.schema, { type: 'paragraph' }),
+              );
+              tr.insert(next, empty);
+            }
+            tr.setSelection(TextSelection.near(tr.doc.resolve(next), 1));
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        },
+
       unsetPageBreak:
         () =>
         ({ chain }) => {
           return chain().deleteSelection().deleteCurrentNode().run();
         },
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      // Pages draws no break, so Backspace at the start of the top-level
+      // block after one deletes it instead of selecting it first.
+      Backspace: ({ editor }) => {
+        if (!editor.storage.pagination?.store?.get().enabled) return false;
+        const { selection } = editor.state;
+        const { $from } = selection;
+        const topDepth = editor.schema.nodes.dBlock ? 2 : 1;
+        if (
+          !selection.empty ||
+          $from.depth !== topDepth ||
+          $from.parentOffset !== 0 ||
+          (topDepth === 2 && $from.index(1) !== 0)
+        ) {
+          return false;
+        }
+        const start = $from.before(1);
+        const prev = editor.state.doc.resolve(start).nodeBefore;
+        const isBreak =
+          prev?.type.name === this.name ||
+          (prev?.type.name === 'dBlock' &&
+            prev.firstChild?.type.name === this.name);
+        if (!prev || !isBreak) return false;
+        editor.view.dispatch(
+          editor.state.tr.delete(start - prev.nodeSize, start).scrollIntoView(),
+        );
+        return true;
+      },
     };
   },
 

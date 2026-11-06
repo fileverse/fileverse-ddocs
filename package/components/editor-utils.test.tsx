@@ -1,12 +1,27 @@
 import React from 'react';
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import { makeEditor } from '../utils/make-editor';
 import { CommentStoreProvider } from '../stores/comment-store-provider';
-import { useEditorToolbar } from './editor-utils';
+import { useEditorToolbar, shortcutAction } from './editor-utils';
+import { IEditorTool } from '../hooks/use-visibility';
 import copy from 'copy-to-clipboard';
 import { toast } from '@fileverse/ui';
+import { printPagesTab } from '../extensions/pagination/print';
+import { handleContentPrint } from '../utils/handle-print';
+
+vi.mock('../extensions/pagination/print', () => ({
+  printPagesTab: vi.fn().mockResolvedValue(false),
+}));
+const removeLoader = vi.fn();
+const showLoader = vi.fn(() => 'loader');
+vi.mock('../utils/inline-loader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils/inline-loader')>()),
+  inlineLoader: () => ({ showLoader, removeLoader }),
+}));
+vi.mock('../utils/handle-print', () => ({ handleContentPrint: vi.fn() }));
 
 vi.mock('copy-to-clipboard', () => ({ default: vi.fn() }));
 vi.mock('@fileverse/ui', async () => {
@@ -234,5 +249,233 @@ describe('Copy HTML export', () => {
       'Couldn’t copy HTML. Check clipboard permissions and try again.',
     );
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+describe('Print and PDF export in Pages mode', () => {
+  let editor: Editor;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.mocked(printPagesTab).mockReset().mockResolvedValue(false);
+    vi.mocked(handleContentPrint).mockReset();
+    showLoader.mockClear();
+    removeLoader.mockClear();
+  });
+  afterEach(() => {
+    editor?.destroy();
+    vi.useRealTimers();
+  });
+
+  const render = () => {
+    editor = makeEditor('<p>hello</p>');
+    return renderHook(() => useEditorToolbar({ editor, onError: vi.fn() }), {
+      wrapper: ({ children }) => (
+        <CommentStoreProvider editor={editor} initialComments={[]}>
+          {children}
+        </CommentStoreProvider>
+      ),
+    }).result;
+  };
+
+  const run = async (fn: () => void) => {
+    await act(async () => {
+      fn();
+      await vi.runAllTimersAsync();
+    });
+  };
+
+  it('toolbar Print uses printPagesTab in Pages mode and skips the Pageless path', async () => {
+    vi.mocked(printPagesTab).mockResolvedValue(true);
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(printPagesTab).toHaveBeenCalledWith(editor);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+  });
+
+  it('toolbar Print in Pageless calls handleContentPrint exactly as before', async () => {
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(handleContentPrint).mock.calls[0]).toHaveLength(1);
+    expect(vi.mocked(handleContentPrint).mock.calls[0][0]).toContain('hello');
+  });
+
+  it('Export PDF in Pages mode uses printPagesTab and removes the loader', async () => {
+    vi.mocked(printPagesTab).mockResolvedValue(true);
+    const result = render();
+    const pdf = result.current.exportOptions.find(
+      (item) => item?.title === 'PDF document (.pdf)',
+    );
+    await run(() => pdf!.onClick());
+    expect(printPagesTab).toHaveBeenCalledWith(editor);
+    expect(handleContentPrint).not.toHaveBeenCalled();
+    expect(showLoader).toHaveBeenCalledTimes(1);
+    expect(removeLoader).toHaveBeenCalledWith('loader');
+  });
+
+  it('Export PDF falls back, logs and removes the loader when Pages print rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    const result = render();
+    const pdf = result.current.exportOptions.find(
+      (item) => item?.title === 'PDF document (.pdf)',
+    );
+    await run(() => pdf!.onClick());
+    expect(err).toHaveBeenCalled();
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(removeLoader).toHaveBeenCalledWith('loader');
+    err.mockRestore();
+  });
+
+  it('toolbar Print falls back and logs when Pages print rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    const result = render();
+    await run(() => result.current.printHandler());
+    expect(err).toHaveBeenCalled();
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+});
+
+describe('shortcutAction', () => {
+  it.each([
+    [{ key: 'Enter', metaKey: true }, true, 'pageBreak'],
+    [{ key: 'Enter', ctrlKey: true }, false, 'pageBreak'],
+    [{ key: 'Enter', ctrlKey: true }, true, null],
+    [{ key: 'Enter', metaKey: true, shiftKey: true }, true, null],
+    [{ key: 'k', metaKey: true }, true, null],
+    [{ key: 'K', ctrlKey: true }, false, null],
+    [{ key: 'Enter', altKey: true }, true, 'link'],
+  ])('shortcutAction(%o, mac=%s) is %s', (event, isMac, expected) => {
+    expect(
+      shortcutAction(
+        {
+          metaKey: false,
+          ctrlKey: false,
+          altKey: false,
+          shiftKey: false,
+          ...event,
+        },
+        isMac,
+      ),
+    ).toBe(expected);
+  });
+});
+
+describe('page-break and link shortcuts through handleKeyDown', () => {
+  let editor: Editor;
+  let platform: ReturnType<typeof vi.spyOn> | undefined;
+  const mockMac = () => {
+    platform = vi
+      .spyOn(navigator, 'platform', 'get')
+      .mockReturnValue('MacIntel');
+  };
+  afterEach(() => {
+    editor?.destroy();
+    platform?.mockRestore();
+  });
+
+  const mount = () =>
+    renderHook(
+      () =>
+        useEditorToolbar({
+          editor,
+          onError: vi.fn(),
+          setIsPresentationMode: vi.fn(),
+          isPresentationMode: false,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <CommentStoreProvider editor={editor} initialComments={[]}>
+            {children}
+          </CommentStoreProvider>
+        ),
+      },
+    );
+
+  const press = (init: KeyboardEventInit) => {
+    const event = new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    let handled: boolean | undefined;
+    act(() => {
+      handled = editor.view.someProp('handleKeyDown', (f) =>
+        f(editor.view, event),
+      );
+    });
+    return { handled, event };
+  };
+
+  it('⌘+Enter inserts a page break and does not open the link popup', () => {
+    mockMac();
+    editor = makeEditor('<ul><li><p>a</p></li></ul>');
+    const { result } = mount();
+    editor.commands.setTextSelection(4);
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(JSON.stringify(editor.getJSON())).toContain('pageBreak');
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
+  });
+
+  it('⌘+Enter inside a code block falls through', () => {
+    mockMac();
+    editor = makeEditor('<pre><code>code</code></pre>');
+    const { result } = mount();
+    editor.commands.setTextSelection(3);
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBeFalsy();
+    expect(event.defaultPrevented).toBe(false);
+    expect(JSON.stringify(editor.getJSON())).not.toContain('pageBreak');
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
+  });
+
+  it('⌘+Enter with everything selected is swallowed and changes nothing', () => {
+    mockMac();
+    editor = makeEditor('<p>one</p><p>two</p>');
+    mount();
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new AllSelection(editor.state.doc)),
+    );
+    const before = editor.getJSON();
+    const dispatch = vi.spyOn(editor.view, 'dispatch');
+    const { handled, event } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(editor.getJSON()).toEqual(before);
+  });
+
+  it('⌘+Enter with a node-selected block keeps it and adds a break after', () => {
+    mockMac();
+    editor = makeEditor('<p>one</p><hr><p>two</p>');
+    mount();
+    let hr = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'horizontalRule') hr = pos;
+    });
+    const $hr = editor.state.doc.resolve(hr);
+    const at = $hr.depth > 0 ? $hr.before(1) : hr;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, at)),
+    );
+    const { handled } = press({ key: 'Enter', metaKey: true });
+    expect(handled).toBe(true);
+    const json = JSON.stringify(editor.getJSON());
+    expect(json).toContain('horizontalRule');
+    expect(json).toContain('pageBreak');
+    expect(json).toContain('two');
+  });
+
+  it('⌘+K is left to the toolbar link modal listener', () => {
+    mockMac();
+    editor = makeEditor('<p>hello</p>');
+    const { result } = mount();
+    const { event } = press({ key: 'k', metaKey: true });
+    expect(event.defaultPrevented).toBe(false);
+    expect(result.current.toolVisibility).toBe(IEditorTool.NONE);
   });
 });

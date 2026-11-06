@@ -44,6 +44,7 @@ import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
 import { colors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
 import { handleContentPrint } from '../utils/handle-print';
+import { printPagesTab } from '../extensions/pagination/print';
 import { useCommentRefs } from '../stores/comment-store-provider';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../extensions/mardown-paste-handler';
 import { renderMermaidBlocks } from '../extensions/code-block/render-mermaid-html';
@@ -145,6 +146,22 @@ export const IMG_UPLOAD_SETTINGS = {
   },
 };
 
+export function shortcutAction(
+  event: Pick<
+    KeyboardEvent,
+    'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'
+  >,
+  isMac: boolean,
+): 'pageBreak' | 'link' | null {
+  const { key, metaKey, ctrlKey, altKey, shiftKey } = event;
+  const primary = isMac ? metaKey && !ctrlKey : ctrlKey && !metaKey;
+  if (key === 'Enter' && primary && !altKey && !shiftKey) return 'pageBreak';
+  // ⌘/Ctrl+K is not handled here: MobileToolbar's document listener (mounted
+  // at every width) toggles the link modal.
+  if (altKey && key === 'Enter') return 'link';
+  return null;
+}
+
 /**
  * `Editor#setOptions({ editorProps })` replaces the whole `editorProps`
  * object rather than merging it — tiptap merges top-level options but
@@ -239,8 +256,22 @@ export const useEditorToolbar = ({
           return true;
         }
 
-        // Open link popup (Alt/Option + Enter)
-        if ((event.altKey || event.metaKey) && event.key === 'Enter') {
+        const action = shortcutAction(
+          event,
+          navigator.platform.includes('Mac'),
+        );
+        if (action === 'pageBreak') {
+          // Falls through only in a code block (Mod-Enter exits it); with no
+          // place for a break (AllSelection, gap cursor) the key is swallowed.
+          const { $head } = editor.state.selection;
+          if ($head.parent.type.name === 'codeBlock') return false;
+          if (editor.can().insertPageBreakAtCaret()) {
+            editor.commands.insertPageBreakAtCaret();
+          }
+          event.preventDefault();
+          return true;
+        }
+        if (action === 'link') {
           event.preventDefault();
           setToolVisibility(IEditorTool.LINK_POPUP);
           return true;
@@ -691,6 +722,16 @@ export const useEditorToolbar = ({
             );
 
             const loader = showLoader();
+            let printed = false;
+            try {
+              printed = await printPagesTab(editor);
+            } catch (error) {
+              console.error('Pages print failed, using the plain path', error);
+            }
+            if (printed) {
+              removeLoader(loader);
+              return;
+            }
             const originalDoc = editor.state.doc;
             const docWithEmbedImageContent =
               await searchForSecureImageNodeAndEmbedImageContent(
@@ -870,6 +911,11 @@ export const useEditorToolbar = ({
   const printHandler = () => {
     if (editor) {
       const closeAndPrint = async () => {
+        try {
+          if (await printPagesTab(editor)) return;
+        } catch (error) {
+          console.error('Pages print failed, using the plain path', error);
+        }
         const originalDoc = editor.state.doc;
         const docWithEmbedImageContent =
           await searchForSecureImageNodeAndEmbedImageContent(

@@ -137,6 +137,7 @@ const MobileToolbar = ({
     if (!editor) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         if (toolVisibility !== IEditorTool.LINK_POPUP) {

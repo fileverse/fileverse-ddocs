@@ -1745,3 +1745,76 @@ describe('accepted suggestions', () => {
     });
   }
 });
+
+describe.each([1, 2])(
+  'suggestion preview markers in schema v%i',
+  (schemaVersion) => {
+    let editor: Editor | undefined;
+    afterEach(() => editor?.destroy());
+
+    it.each([
+      ['submitted', false],
+      ['draft', true],
+    ])('marks a %s insert widget', (_label, isDraft) => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Hello world</p>');
+      harness.anchors.push({
+        id: 'preview',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'Hello').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        isDraft,
+        suggestionType: 'add',
+        suggestedContent: ' there',
+      });
+      triggerDecorationRebuild(editor);
+
+      const widget = editor.view.dom.querySelector(
+        '[data-suggestion-id="preview"]',
+      );
+      expect(widget).not.toBeNull();
+      expect(widget?.hasAttribute('data-suggestion-preview')).toBe(true);
+      expect(widget?.hasAttribute('data-suggestion-draft')).toBe(isDraft);
+    });
+
+    it('re-renders the widget when a draft is submitted', () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>Hello world</p>');
+      const anchor: CommentAnchor = {
+        id: 'preview',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'Hello').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        isDraft: true,
+        suggestionType: 'add',
+        suggestedContent: ' there',
+      };
+      harness.anchors.push(anchor);
+      triggerDecorationRebuild(editor);
+      const selector = '[data-suggestion-id="preview"]';
+      expect(
+        editor.view.dom
+          .querySelector(selector)
+          ?.hasAttribute('data-suggestion-draft'),
+      ).toBe(true);
+
+      anchor.isDraft = false;
+      triggerDecorationRebuild(editor);
+      expect(
+        editor.view.dom
+          .querySelector(selector)
+          ?.hasAttribute('data-suggestion-draft'),
+      ).toBe(false);
+    });
+  },
+);

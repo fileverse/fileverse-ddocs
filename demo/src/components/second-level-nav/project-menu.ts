@@ -30,7 +30,7 @@ const projectNode = (node: MenuNode, ctx: MenuContext): ProjectedNode | null => 
         kind: node.kind,
         id: node.id,
         label: resolveLabel(node.label, ctx),
-        icon: node.icon,
+        icon: node.icon && resolveLabel(node.icon, ctx),
         disabled:
           node.kind === 'submenu' && node.enabledWhen
             ? !node.enabledWhen(ctx)
@@ -44,7 +44,7 @@ const projectNode = (node: MenuNode, ctx: MenuContext): ProjectedNode | null => 
         kind: 'checkbox',
         id: node.id,
         label: resolveLabel(node.label, ctx),
-        icon: node.icon,
+        icon: node.icon && resolveLabel(node.icon, ctx),
         action: node.action,
         shortcut: node.shortcut,
         disabled: node.enabledWhen ? !node.enabledWhen(ctx) : false,
@@ -56,9 +56,10 @@ const projectNode = (node: MenuNode, ctx: MenuContext): ProjectedNode | null => 
         kind: 'radio',
         id: node.id,
         label: resolveLabel(node.label, ctx),
-        icon: node.icon,
+        icon: node.icon && resolveLabel(node.icon, ctx),
         action: node.action,
         value: node.value,
+        description: node.description,
         disabled: node.enabledWhen ? !node.enabledWhen(ctx) : false,
         checked: node.state(ctx),
       };
@@ -68,7 +69,7 @@ const projectNode = (node: MenuNode, ctx: MenuContext): ProjectedNode | null => 
         kind: 'action',
         id: node.id,
         label: resolveLabel(node.label, ctx),
-        icon: node.icon,
+        icon: node.icon && resolveLabel(node.icon, ctx),
         action: node.action,
         shortcut: node.shortcut,
         comingSoon: node.comingSoon,

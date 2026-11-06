@@ -1,6 +1,16 @@
 import renderMathInElement from 'katex/contrib/auto-render';
 import { getRegisteredFonts, primaryToken } from './font-loader';
-import type { FontDescriptor } from '../types';
+import type { FontDescriptor, PageSetup } from '../types';
+import {
+  getPaperPx,
+  PAGE_MARGIN,
+  PageGrid,
+  PRINT_BOTTOM_SLACK,
+} from '../extensions/pagination/page-grid';
+import {
+  MEDIA_RATIO_VAR,
+  publishMediaRatios,
+} from '../extensions/resizable-media/media-ratio';
 import { applyMarkerFonts } from '../extensions/list-toggle/marker-font';
 
 const A4_HEIGHT_INCHES = 11.69;
@@ -940,27 +950,243 @@ export const handlePrint = (slides: string[]) => {
   printHelper(printContent);
 };
 
-export const handleContentPrint = (content: string) => {
-  const sectionsHtml = getPrintSectionsHtml(
-    splitContentIntoPrintSections(content),
-  );
+export type ContentPrintOptions = {
+  pageSetup?: PageSetup;
+  orientation?: 'portrait' | 'landscape';
+  rootStyle?: Partial<
+    Record<
+      | 'fontFamily'
+      | 'fontSize'
+      | 'lineHeight'
+      | 'letterSpacing'
+      | 'wordSpacing',
+      string
+    >
+  >;
+};
+
+// Pages mode prints with the editor's own CSS (docs/PAGES_MODE.md §4.4): no
+// print typography sheet, so lines wrap as they do on screen.
+const buildPagesPrintStyles = (
+  pageSetup: PageSetup,
+  orientation: ContentPrintOptions['orientation'] = 'portrait',
+) => {
+  const { width } = getPaperPx(pageSetup.paper, orientation);
+  const size = pageSetup.paper === 'a4' ? 'A4' : 'letter';
+  const { textHeight } = new PageGrid(pageSetup.paper, orientation);
+  // Media fits one page and narrows with its ratio, as editor.css does on
+  // screen. An image prints content-box in its screen box's 2px border.
+  const mediaCap = (height: number, border = 0) => `
+    max-height: ${height - border}px;
+    max-width: min(calc(100% - ${border}px), calc(${height - border}px * var(${MEDIA_RATIO_VAR}, 1000)));`;
+  return `
+  ${buildRegisteredFontFaceCss()}
+  .${PRINT_HOST_CLASS} { display: none; }
+  @media print {
+    html, body {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    /* Horizontal margins ride on the root's padding: mobile WebKit honors
+       horizontal @page margins unreliably. */
+    @page {
+      size: ${size} ${orientation};
+      margin: 1in 0 calc(1in - ${PRINT_BOTTOM_SLACK}px) 0;
+    }
+    body > *:not(.${PRINT_HOST_CLASS}) { display: none !important; }
+    .${PRINT_HOST_CLASS} {
+      display: block !important;
+      position: static !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+  }
+  .${PRINT_HOST_CLASS} .print-content-root {
+    box-sizing: border-box;
+    width: ${width}px;
+    padding: 0 ${PAGE_MARGIN}px !important;
+    color-scheme: light;
+    color: #0D0D0D;
+    background: #fff;
+  }
+  /* A page break is a top-level <br>, which cannot become a block: the block
+     after it breaks instead. Hidden, or its line box can spill a blank page. */
+  .${PRINT_HOST_CLASS} [data-page-break='true'] { display: none; }
+  .${PRINT_HOST_CLASS} [data-page-break='true'] + * { break-before: page; }
+  .${PRINT_HOST_CLASS} [data-print-break] { display: block; height: 0; break-before: page; }
+  .${PRINT_HOST_CLASS} [data-print-break-before] { break-before: page; }
+  .${PRINT_HOST_CLASS} .tab-title-page { text-align: left; }
+  .${PRINT_HOST_CLASS} .tab-title-page__text {
+    margin: 0;
+    font-size: 36px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: #0d0d0d;
+    word-break: break-word;
+  }
+  .${PRINT_HOST_CLASS} thead { display: table-header-group; }
+  /* A table split at a row break: margins only around the whole table. */
+  .${PRINT_HOST_CLASS} [data-print-split] { margin-bottom: 0 !important; }
+  .${PRINT_HOST_CLASS} [data-print-continued] { margin-top: 0 !important; }
+  /* WebKit cannot break a page inside a flex or grid item: lists print as
+     blocks with the screen's geometry (buildPrintHtml folds item margins). */
+  .${PRINT_HOST_CLASS} ol { display: flow-root !important; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] { display: flow-root !important; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] > label { float: inline-start; }
+  .${PRINT_HOST_CLASS} li[data-type='taskItem'] > div { display: flow-root; }
+  /* A scroll container cannot break across pages. */
+  .${PRINT_HOST_CLASS} .tableWrapper { overflow: visible !important; }
+  /* On screen, cell content sits in the React node view's pre-wrap content
+     div; ProseMirror's break-spaces would wrap a word earlier. */
+  .${PRINT_HOST_CLASS} :is(td, th) { white-space: pre-wrap; }
+  /* editor.css caps a v1 table block at 90% from 1024px editor width, where
+     Pages is always active; print's @media fallback would test the paper. */
+  .${PRINT_HOST_CLASS} [data-type='d-block'].is-table > [data-node-view-content] {
+    max-width: 90%;
+    margin-inline: auto;
+  }
+  /* The code block node view's box: a bordered pre whose body sits 32px
+     under the overlaid header, 20px lines at the inherited size. */
+  .${PRINT_HOST_CLASS} pre {
+    border: 1px solid hsla(var(--color-border-default));
+    border-radius: 0.5rem;
+    overflow: clip;
+  }
+  .${PRINT_HOST_CLASS} pre > code {
+    display: block;
+    margin-top: 32px;
+    font-size: inherit;
+    line-height: 20px;
+    padding-left: 16px;
+  }
+  .${PRINT_HOST_CLASS} pre[data-word-wrap='false'] > code { white-space: pre; }
+  /* The media node view's box without its editing chrome (§13.5): an image
+     in a 2px transparent border, the caption under it. On screen the caption
+     sits in a caption-styled content div, in a flex column (no collapsing);
+     its line-height is the inherited 1.5, where the print root sets px. */
+  .${PRINT_HOST_CLASS} [data-type='resizable-media'] { border: 0; }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']
+    :is([data-type='media-caption-wrapper'], .media-caption) {
+    display: flow-root;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .${PRINT_HOST_CLASS} :is(iframe, [data-type='resizable-media'] > video) {
+    object-fit: contain;${mediaCap(textHeight)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media'] > img {
+    box-sizing: content-box;
+    border: 2px solid transparent;
+    object-fit: contain;${mediaCap(textHeight, 4)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']:has(.media-caption) > video {${mediaCap(textHeight - 26)}
+  }
+  .${PRINT_HOST_CLASS} [data-type='resizable-media']:has(.media-caption) > img {${mediaCap(textHeight - 26, 4)}
+  }
+  .${PRINT_HOST_CLASS} :is(div[data-tweet-id], div[data-action-node], div[data-type='ai-writer'], svg[id^='mermaid-export-']) {
+    overflow: hidden;
+    max-height: ${textHeight}px;
+  }
+`;
+};
+
+// Kept in its own sheet: engines without page-margin boxes reject the rule,
+// and a stylesheet parser that fails on it must not drop the rest.
+const PAGES_PAGE_NUMBER_STYLES = `@page { @bottom-right { content: counter(page); margin-right: 1in; } }`;
+
+// The light theme's colour tokens as the loaded stylesheets define them on
+// :root. Theme classes (.dark, .theme-*) redefine the same tokens above the
+// print host, and Pages print uses theme-coloured editor rules.
+const readLightThemeTokens = (): Record<string, string> => {
+  const tokens: Record<string, string> = {};
+  Array.from(document.styleSheets).forEach((sheet) => {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      return; // cross-origin sheet
+    }
+    Array.from(rules).forEach((rule) => {
+      if (!(rule instanceof CSSStyleRule) || rule.selectorText !== ':root') {
+        return;
+      }
+      for (const [, name, value] of rule.cssText.matchAll(
+        /(--color-[\w-]+)\s*:\s*([^;}]+)/g,
+      )) {
+        tokens[name] = value.trim();
+      }
+    });
+  });
+  return tokens;
+};
+
+export const mountContentPrintHost = (
+  content: string,
+  options: ContentPrintOptions = {},
+): { cleanup: () => void } => {
+  const isPages = options.pageSetup?.mode === 'pages';
+  // Pages prints flat: section wrappers would break the editor's
+  // `.ProseMirror > block` spacing rules. Page breaks break on their own.
+  const sectionsHtml = isPages
+    ? content
+    : getPrintSectionsHtml(splitContentIntoPrintSections(content));
 
   const styleEl = document.createElement('style');
   styleEl.setAttribute('data-ddoc-print', 'true');
-  styleEl.textContent = buildMainDocumentPrintStyles();
+  styleEl.textContent =
+    isPages && options.pageSetup
+      ? buildPagesPrintStyles(options.pageSetup, options.orientation)
+      : buildMainDocumentPrintStyles();
 
   const host = document.createElement('div');
   host.className = PRINT_HOST_CLASS;
   host.setAttribute('aria-hidden', 'true');
+  if (isPages) {
+    Object.entries(readLightThemeTokens()).forEach(([name, value]) =>
+      host.style.setProperty(name, value),
+    );
+  }
 
   const contentRoot = document.createElement('div');
   contentRoot.className = 'print-content-root';
+  if (isPages) {
+    contentRoot.classList.add('ProseMirror', 'main-doc-editor');
+    contentRoot.setAttribute('data-page-mode', 'pages');
+    Object.assign(contentRoot.style, options.rootStyle);
+  }
   contentRoot.innerHTML = sectionsHtml;
   // Before KaTeX, so the marker vote reads only the serializer's output.
   applyMarkerFonts(contentRoot);
   host.appendChild(contentRoot);
 
   document.head.appendChild(styleEl);
+  let pageNumberEl: HTMLStyleElement | null = null;
+  let stopMediaRatios: (() => void) | null = null;
+  if (isPages) {
+    // renderHTML gives a video an inline full width; on screen it has its
+    // stored width (a CSS !important would drop the width attribute too).
+    contentRoot
+      .querySelectorAll<HTMLElement>("[data-type='resizable-media'] > video")
+      .forEach((video) => video.style.removeProperty('width'));
+    stopMediaRatios = publishMediaRatios(contentRoot);
+    pageNumberEl = document.createElement('style');
+    pageNumberEl.setAttribute('data-ddoc-print', 'page-numbers');
+    pageNumberEl.textContent = PAGES_PAGE_NUMBER_STYLES;
+    document.head.appendChild(pageNumberEl);
+  }
   document.body.appendChild(host);
 
   // KaTeX is bundled with the package, so render math directly against the host
@@ -971,12 +1197,27 @@ export const handleContentPrint = (content: string) => {
     // Math rendering is best-effort; print regardless.
   }
 
+  return {
+    cleanup: () => {
+      if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+      pageNumberEl?.remove();
+      stopMediaRatios?.();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+};
+
+export const handleContentPrint = (
+  content: string,
+  options?: ContentPrintOptions,
+) => {
+  const host = mountContentPrintHost(content, options);
+
   const state: { fallback?: ReturnType<typeof setTimeout> } = {};
   const cleanup = () => {
     window.removeEventListener('afterprint', cleanup);
     if (state.fallback) clearTimeout(state.fallback);
-    if (styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
-    if (host.parentNode) host.parentNode.removeChild(host);
+    host.cleanup();
   };
   window.addEventListener('afterprint', cleanup);
   // Safety net: some mobile browsers don't reliably fire afterprint.

@@ -1,0 +1,272 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`content print, pageless > matches the pre-Pages output 1`] = `
+{
+  "host": "<div class="ddoc-print-host" aria-hidden="true"><div class="print-content-root">
+        <div class="print-page">
+            <h2>Title</h2><p>Body text</p>
+        </div>
+    </div></div>",
+  "style": "
+  
+  .ddoc-print-host { display: none; }
+  
+  .print-content-root {
+    color: #0D0D0D;
+    background: #fff;
+    color-scheme: light;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  /* Longhands, not the margin shorthand: authored spacing arrives as an inline
+     margin-top or margin-bottom, and a shorthand here would keep overriding
+     whichever side the author left unset. */
+  .print-content-root h1 { font-size: 2em; font-weight: 600; line-height: 1.2; margin-top: 0; margin-bottom: 0.67em; color: #0D0D0D; }
+  .print-content-root h2 { font-size: 1.5em; font-weight: 600; line-height: 1.2; margin-top: 0; margin-bottom: 0.83em; color: #0D0D0D; }
+  .print-content-root h3 { font-size: 1.17em; font-weight: 600; line-height: 1.2; margin-top: 0; margin-bottom: 1em; color: #0D0D0D; }
+  .print-content-root h4 { font-size: 1em; font-weight: 600; margin-top: 0; margin-bottom: 1.33em; color: #0D0D0D; }
+  .print-content-root h5 { font-size: 0.83em; font-weight: 600; margin-top: 0; margin-bottom: 1.67em; color: #0D0D0D; }
+  .print-content-root h6 { font-size: 0.67em; font-weight: 600; margin-top: 0; margin-bottom: 2.33em; color: #0D0D0D; }
+  .print-content-root p { margin-top: 0; margin-bottom: 12px; }
+  .print-content-root ul { list-style: disc; }
+  .print-content-root ol { list-style: decimal; }
+  .print-content-root ul, .print-content-root ol { margin-top: 0; margin-bottom: 16px; padding-left: 24px; }
+  .print-content-root li { margin-top: 0; margin-bottom: 4px; --ddoc-marker-font-size: initial; --ddoc-marker-font-family: initial; }
+  .print-content-root li::marker, .print-content-root li > ol > li::before { font-size: var(--ddoc-marker-font-size); font-family: var(--ddoc-marker-font-family); }
+  .print-content-root a { color: #3B82F6; text-decoration: underline; }
+  .print-content-root strong, .print-content-root b { font-weight: 600; }
+  .print-content-root em, .print-content-root i { font-style: italic; }
+  .print-content-root hr { border: none; border-top: 1px solid #E8EBEC; margin: 16px 0; }
+  .print-content-root img { max-width: 100%; height: auto; }
+  .print-content-root code { font-family: monospace; }
+
+  
+  .print-content-root {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .print-content-root img {
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: auto;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .print-content-root [data-type='resizable-media'] {
+    border: none;
+  }
+  .print-content-root [data-type='resizable-media'] > img[width='100%'] {
+    width: auto;
+  }
+  .print-content-root [data-type='resizable-media'][dataalign='start'] > img,
+  .print-content-root [data-type='resizable-media'][dataalign='left'] > img {
+    margin-left: 0;
+  }
+  .print-content-root [data-type='resizable-media'][dataalign='end'] > img,
+  .print-content-root [data-type='resizable-media'][dataalign='right'] > img {
+    margin-right: 0;
+  }
+  .print-content-root h3 {
+    font-weight: 600;
+    color: #0D0D0D;
+    font-size: 20px;
+    line-height: 1.2;
+  }
+  .print-content-root p {
+    line-height: 1.5;
+    color: #0D0D0D;
+    font-size: 16px;
+  }
+  .print-content-root ul,
+  .print-content-root ol {
+    font-size: 16px;
+    line-height: 1.5;
+    /* Longhands so an inline margin-top from authored spacing is not fighting
+       a shorthand that also resets the bottom. */
+    margin-top: 0;
+    margin-bottom: 16px;
+    padding-left: 24px;
+  }
+  .print-content-root input[type='checkbox'] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: #fff;
+    margin: 0;
+    cursor: pointer;
+    width: 1.5em;
+    height: 1.5em;
+    position: relative;
+    border: 2px solid black;
+    margin-right: .5rem;
+    display: grid;
+    place-content: center;
+    font-family: 'Inter', sans-serif;
+  }
+  .print-content-root input[type='checkbox']::before {
+    content: '';
+    width: 1em;
+    height: 1em;
+    transform: scale(0);
+    transition: 120ms transform ease-in-out;
+    box-shadow: inset 1em 1em;
+    transform-origin: center;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  }
+  .print-content-root input[type='checkbox']:checked::before {
+    transform: scale(1);
+  }
+  .print-content-root li:has(input[type="checkbox"]) {
+    list-style-type: none;
+    transform: translateX(-16px);
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+  }
+  .print-content-root ol {
+    list-style-type: decimal;
+  }
+  .print-content-root ol ol {
+    list-style-type: lower-latin;
+  }
+  .print-content-root ol ol ol {
+    list-style-type: lower-roman;
+  }
+  .print-content-root table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 16px;
+  }
+  .print-content-root th {
+    background: #F8F9FA;
+    font-weight: 600;
+    text-align: left;
+  }
+  .print-content-root td,
+  .print-content-root th {
+    border: 1px solid #E8EBEC;
+    padding: 12px;
+  }
+  .print-content-root pre {
+    background: #F8F9FA;
+    padding: 16px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    margin: 16px 0;
+  }
+  .print-content-root blockquote {
+    border-left: 4px solid #E8EBEC;
+    margin: 16px 0;
+    padding-left: 16px;
+    font-style: italic;
+  }
+  .print-content-root [data-type="columns"] {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  .print-content-root .katex {
+    font-size: 1.1em;
+  }
+  .print-content-root .katex-display {
+    margin: 1em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    text-align: center;
+  }
+  .print-content-root .katex-display > .katex {
+    display: inline-block;
+    text-align: initial;
+  }
+  .print-page {
+    page-break-after: always;
+    box-sizing: border-box;
+  }
+  .print-page:last-child {
+    page-break-after: auto;
+  }
+  .print-content-root .tab-title-page {
+    min-height: calc(11.69in - 1.66in);
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+    padding: 0 1rem;
+    box-sizing: border-box;
+  }
+  .print-content-root .tab-title-page__text {
+    margin: 0;
+    font-size: 36px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: #0d0d0d;
+    word-break: break-word;
+  }
+
+  
+  @media print {
+    @page {
+      margin: 0.83in 0.83in;
+    }
+    html {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      margin: 0;
+    }
+    body:before,
+    body:after,
+    head:before,
+    head:after,
+    div:before,
+    div:after,
+    html:before,
+    html:after {
+      content: none !important;
+      display: none !important;
+    }
+  }
+
+  @media print {
+    /* The app shell often pins html/body to the viewport height with
+       overflow hidden; left as-is it clips the printout to a single page and
+       skews the margins. Reset it so content paginates freely. */
+    html, body {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+    /* Mobile WebKit honors @page margins unreliably, so only the vertical
+       (per-page) margins ride on @page. Horizontal margins are applied as
+       container padding, which every page inherits because the content column
+       width is constant across page breaks. */
+    @page { margin: 0.83in 0; }
+    body > *:not(.ddoc-print-host) { display: none !important; }
+    .ddoc-print-host {
+      display: block !important;
+      position: static !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .ddoc-print-host .print-content-root {
+      box-sizing: border-box;
+      padding-left: 0.83in !important;
+      padding-right: 0.83in !important;
+    }
+  }
+",
+}
+`;

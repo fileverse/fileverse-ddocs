@@ -310,3 +310,45 @@ describe('demoMenuTree', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe('page mode items', () => {
+  const project = (mode?: string) => {
+    const ctx = { ...ctxFor('owner'), state: { 'format.pageMode': { current: mode } } };
+    const menus = projectMenu(demoMenuTree, ctx);
+    const children = (id: string) => menus.find((m) => m.id === id)!.children;
+    return {
+      fileIds: children('file').map((n) => n.id),
+      setup: findNode(children('file'), 'file.pageSetup'),
+      toggle: findNode(children('format'), 'format.pageMode.switch'),
+    };
+  };
+
+  it('Page setup follows Print and checks the current mode', () => {
+    const { setup, fileIds } = project('pages');
+    expect(fileIds.slice(-2)).toEqual(['file.print', 'file.pageSetup']);
+    expect(setup?.kind).toBe('submenu');
+    const radios = setup?.kind === 'submenu' ? setup.children : [];
+    expect(radios.map((r) => [r.id, 'checked' in r && r.checked])).toEqual([
+      ['file.pageSetup.pageless', false],
+      ['file.pageSetup.pages', true],
+    ]);
+  });
+
+  it('the Format item names and shows the mode it switches to', () => {
+    expect(project('pages').toggle).toMatchObject({
+      label: 'Switch to pageless mode',
+      icon: 'Maximize',
+    });
+    expect(project(undefined).toggle).toMatchObject({
+      label: 'Switch to pages mode',
+      icon: 'File',
+    });
+  });
+
+  it('is hidden from viewers', () => {
+    const file = projectMenu(demoMenuTree, ctxFor('viewer')).find(
+      (m) => m.id === 'file',
+    )!;
+    expect(findNode(file.children, 'file.pageSetup')).toBeUndefined();
+  });
+});

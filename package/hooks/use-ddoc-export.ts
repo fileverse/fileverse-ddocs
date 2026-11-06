@@ -9,6 +9,11 @@ import { stripFrontmatter } from '../extensions/mardown-paste-handler';
 import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getTemporaryEditor } from '../utils/helpers';
 import { handleContentPrint } from '../utils/handle-print';
+import {
+  buildPrintHtml,
+  getPrintInputs,
+  resolvePrintPlacement,
+} from '../extensions/pagination/print';
 import { htmlToOdt } from 'odf-kit';
 import { preprocessHtml } from '../extensions/odt-export';
 
@@ -114,7 +119,21 @@ const useDdocExport = ({
     if (!editor || !ydoc || tabs.length === 0) return;
     const tempEditors: Editor[] = [];
     try {
-      const allTabPages: string[] = [];
+      const inputs = getPrintInputs(editor);
+      const pagesInputs = inputs?.pageSetup?.mode === 'pages' ? inputs : null;
+      const activeField = editor.extensionManager.extensions.find(
+        (extension) => extension.name === 'collaboration',
+      )?.options?.field;
+      const activeTabId = typeof activeField === 'string' ? activeField : '';
+      const pageBreak =
+        '\n<div data-type="page-break" data-page-break="true"></div>\n';
+
+      const pagelessPages: string[] = [];
+      const pagesPages: string[] = [];
+      let pagesOptions:
+        | Awaited<ReturnType<typeof buildPrintHtml>>['options']
+        | undefined;
+      let pagesFailed = false;
 
       for (const tab of tabs) {
         const tempEditor = createTempEditorForTab(tab.id);
@@ -122,17 +141,38 @@ const useDdocExport = ({
         tempEditors.push(tempEditor);
         const tabTitle = normalizeTabTitle(tab.name);
         const level = getTabHeadingLevel(tab);
-        allTabPages.push(
-          `<section class="tab-title-page"><h${level} class="tab-title-page__text">${escapeHtml(tabTitle)}</h${level}></section>`,
-        );
-        allTabPages.push(tempEditor.getHTML());
+        const titleSection = `<section class="tab-title-page"><h${level} class="tab-title-page__text">${escapeHtml(tabTitle)}</h${level}></section>`;
+        const tabHtml = tempEditor.getHTML();
+        pagelessPages.push(titleSection, tabHtml);
+
+        if (!pagesInputs || pagesFailed) continue;
+        const isActive = tab.id === (activeTabId || 'default');
+        try {
+          const built = await buildPrintHtml(
+            isActive
+              ? {
+                  editor,
+                  ...pagesInputs,
+                  placement: resolvePrintPlacement(
+                    editor,
+                    pagesInputs.isPagesActive,
+                  ),
+                }
+              : { editor: tempEditor, ...pagesInputs, isPagesActive: false },
+          );
+          pagesPages.push(titleSection, built.html);
+          if (isActive || !pagesOptions) pagesOptions = built.options;
+        } catch (error) {
+          console.error('ddoc pages: all-tabs print failed', error);
+          pagesFailed = true;
+        }
       }
 
-      const combinedHtml = allTabPages.join(
-        '\n<div data-type="page-break" data-page-break="true"></div>\n',
-      );
-
-      handleContentPrint(combinedHtml);
+      if (pagesInputs && !pagesFailed) {
+        handleContentPrint(pagesPages.join(pageBreak), pagesOptions);
+      } else {
+        handleContentPrint(pagelessPages.join(pageBreak));
+      }
     } finally {
       tempEditors.forEach((tempEditor) => tempEditor.destroy());
     }

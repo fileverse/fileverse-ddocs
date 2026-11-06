@@ -71,4 +71,4 @@ export {
   resolveImageFetchFn,
 } from './package/utils/storage-adapter';
 export type { IComment } from './package/extensions/comment/comment.ts';
-export type { FontDescriptor } from './package/types';
+export type { FontDescriptor, PageSetup } from './package/types';

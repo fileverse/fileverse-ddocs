@@ -9,6 +9,8 @@ export const ZOOM_PRESET_SCALES: readonly number[] = [
 export const FIT_MIN_SCALE = 0.5;
 export const FIT_MAX_SCALE = 2;
 export const FIT_GUTTER = 24;
+// Pages mode: room for the page number beside the sheet (§12.6).
+export const PAGE_NUMBER_GUTTER = 24;
 // Slot gap (ml-[12px]) + card + the container's right padding.
 export const COMMENT_COLUMN_WIDTH =
   12 + FLOATING_CARD_WIDTH + FLOATING_COMMENT_RIGHT_SPACE;
@@ -122,10 +124,12 @@ export const getFitReservedWidth = ({
   hasLeftRail,
   isCommentColumnVisible,
   isLandscape = false,
+  isPagesMode = false,
 }: {
   hasLeftRail: boolean;
   isCommentColumnVisible: boolean;
   isLandscape?: boolean;
+  isPagesMode?: boolean;
 }) =>
   (hasLeftRail
     ? isLandscape
@@ -134,4 +138,5 @@ export const getFitReservedWidth = ({
     : 0) +
   (isCommentColumnVisible ? COMMENT_COLUMN_WIDTH : 0) +
   (isLandscape ? 2 * LANDSCAPE_ROW_MARGIN : 0) +
+  (isPagesMode ? PAGE_NUMBER_GUTTER : 0) +
   2 * FIT_GUTTER;

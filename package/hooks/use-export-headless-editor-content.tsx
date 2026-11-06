@@ -16,6 +16,8 @@ import { useDdocExport } from './use-ddoc-export';
 import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getTemporaryEditor } from '../utils/helpers';
 import { handleContentPrint } from '../utils/handle-print';
+import { buildPrintHtml, setPrintInputs } from '../extensions/pagination/print';
+import type { PageSetup } from '../types';
 import {
   useHeadlessEditor,
   UseHeadlessEditorProps,
@@ -27,6 +29,10 @@ export interface HeadlessEditorExportOption {
   content: string;
   fileName?: string;
   initialFormat?: HeadlessEditorExportFormat;
+  // The doc's styling; with mode 'pages' the PDF prints on its paper, with
+  // browser breaks (no live layout here).
+  pageSetup?: PageSetup;
+  orientation?: 'portrait' | 'landscape';
 }
 
 interface DdocExportSession {
@@ -36,6 +42,8 @@ interface DdocExportSession {
   activeTabId: string;
   exportName: string;
   initialFormat: HeadlessEditorExportFormat;
+  pageSetup?: PageSetup;
+  orientation?: 'portrait' | 'landscape';
 }
 
 const HEADLESS_EXPORT_FORMATS: HeadlessEditorExportFormat[] = [
@@ -156,12 +164,23 @@ export const useExportHeadlessEditorContent = (
       {
         icon: 'FileExport',
         title: 'PDF document (.pdf)',
-        onClick: () => {
+        onClick: async () => {
           const tempEditor = createTempEditorForActiveTab();
           if (!tempEditor) return;
 
           try {
-            handleContentPrint(tempEditor.getHTML());
+            const { pageSetup, orientation } = ddocExportSession;
+            if (pageSetup?.mode === 'pages') {
+              const { html, options } = await buildPrintHtml({
+                editor: tempEditor,
+                pageSetup,
+                orientation,
+                isPagesActive: false,
+              });
+              handleContentPrint(html, options);
+            } else {
+              handleContentPrint(tempEditor.getHTML());
+            }
           } finally {
             tempEditor.destroy();
           }
@@ -363,7 +382,18 @@ export const useExportHeadlessEditorContent = (
           initialFormat: isSupportedFormat(option.initialFormat)
             ? option.initialFormat
             : 'pdf',
+          pageSetup: option.pageSetup,
+          orientation: option.orientation,
         };
+        // All-tabs PDF finds the setup the way the live editor's does.
+        if (option.pageSetup?.mode === 'pages') {
+          const { pageSetup, orientation } = option;
+          setPrintInputs(editor, () => ({
+            pageSetup,
+            orientation,
+            isPagesActive: false,
+          }));
+        }
 
         setExportSession(nextSession);
         setDdocExportModalOpen(true);

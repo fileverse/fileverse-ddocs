@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { NodeViewWrapper, NodeViewProps } from '@tiptap/react';
 import cn from 'classnames';
 import { LucideIcon, Tooltip } from '@fileverse/ui';
@@ -6,11 +6,18 @@ import { useEditingContext } from '../../hooks/use-editing-context';
 import { useEditorContext } from '../../context/editor-context';
 import { getThemeStyle } from '../../utils/document-styling';
 
+const noSubscribe = () => () => {};
+
 export const PageBreakNodeView: React.FC<NodeViewProps> = ({
   editor,
   deleteNode,
 }) => {
   const { isPreviewMode } = useEditingContext();
+  const store = editor.storage.pagination?.store;
+  const isPages = useSyncExternalStore(
+    store?.subscribe ?? noSubscribe,
+    () => store?.get().enabled ?? false,
+  );
   const { documentStyling, theme, isFocusMode } = useEditorContext();
   const handleDeleteNode = () => {
     editor.commands.unsetPageBreak();
@@ -28,6 +35,11 @@ export const PageBreakNodeView: React.FC<NodeViewProps> = ({
       background: themeBackgroundStyle,
     }),
   };
+
+  // The jump to the next sheet already shows the break.
+  if (isPages) {
+    return <NodeViewWrapper data-page-break-marker="" className="h-0" />;
+  }
 
   return (
     <NodeViewWrapper
