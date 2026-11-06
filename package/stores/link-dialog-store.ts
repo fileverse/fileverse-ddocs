@@ -1,19 +1,19 @@
 import { create } from 'zustand';
 
 type Store = {
-  isLinkDialogRequested: boolean;
-  setLinkDialogRequested: (val: boolean) => void;
+  openDialog: (() => void) | null;
+  setOpenDialog: (open: (() => void) | null) => void;
 };
 
 /**
  * Lets `insert.link` (a host app's menu, outside the editor tree) open the
- * link dialog that MobileToolbar owns and ⌘K toggles. MobileToolbar clears the
- * flag once it has opened the dialog.
+ * link dialog that MobileToolbar owns and ⌘K toggles. The toolbar registers
+ * the opener while mounted, so a request with no toolbar does nothing.
  */
 export const useLinkDialogStore = create<Store>()((set) => ({
-  isLinkDialogRequested: false,
-  setLinkDialogRequested: (val) => set({ isLinkDialogRequested: val }),
+  openDialog: null,
+  setOpenDialog: (openDialog) => set({ openDialog }),
 }));
 
 export const openLinkDialog = () =>
-  useLinkDialogStore.getState().setLinkDialogRequested(true);
+  useLinkDialogStore.getState().openDialog?.();

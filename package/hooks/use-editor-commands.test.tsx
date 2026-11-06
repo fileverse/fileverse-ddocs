@@ -138,14 +138,15 @@ describe('useEditorCommands', () => {
   });
 
   it('insert.link opens the link dialog without a URL and links with one', () => {
-    useLinkDialogStore.setState({ isLinkDialogRequested: false });
+    const openDialog = vi.fn();
+    useLinkDialogStore.setState({ openDialog });
     const { result } = renderHook(() => useEditorCommands(editor));
     act(() => result.current['insert.link'].run());
-    expect(useLinkDialogStore.getState().isLinkDialogRequested).toBe(true);
+    expect(openDialog).toHaveBeenCalledTimes(1);
     expect(editor.isActive('link')).toBe(false);
     act(() => result.current['insert.link'].run('example.com'));
     expect(editor.getAttributes('link').href).toBe('https://example.com');
-    useLinkDialogStore.setState({ isLinkDialogRequested: false });
+    useLinkDialogStore.setState({ openDialog: null });
   });
 
   // The pair the second-level nav renders in its Line height submenu. In

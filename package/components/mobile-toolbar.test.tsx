@@ -7,16 +7,25 @@ import {
   CommentStoreContext,
   createCommentStore,
 } from '../stores/comment-store';
+import { openLinkDialog } from '../stores/link-dialog-store';
 
 // The toolbar only reads refs from the full comment provider.
 vi.mock('../stores/comment-store-provider', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useCommentRefs: () => ({}),
 }));
-import {
-  openLinkDialog,
-  useLinkDialogStore,
-} from '../stores/link-dialog-store';
+
+const renderToolbar = (editor: Editor) =>
+  render(
+    <CommentStoreContext.Provider value={createCommentStore()}>
+      <MobileToolbar
+        editor={editor}
+        isKeyboardVisible={false}
+        isNavbarVisible
+        setIsNavbarVisible={() => {}}
+      />
+    </CommentStoreContext.Provider>,
+  );
 
 describe('MobileToolbar link dialog', () => {
   let editor: Editor;
@@ -24,19 +33,17 @@ describe('MobileToolbar link dialog', () => {
 
   it('opens when insert.link requests it', () => {
     editor = makeEditor('<p>hello</p>');
-    render(
-      <CommentStoreContext.Provider value={createCommentStore()}>
-        <MobileToolbar
-          editor={editor}
-          isKeyboardVisible={false}
-          isNavbarVisible
-          setIsNavbarVisible={() => {}}
-        />
-      </CommentStoreContext.Provider>,
-    );
+    renderToolbar(editor);
     expect(screen.queryByPlaceholderText('Paste URL')).toBeNull();
     act(() => openLinkDialog());
     expect(screen.getByPlaceholderText('Paste URL')).toBeTruthy();
-    expect(useLinkDialogStore.getState().isLinkDialogRequested).toBe(false);
+  });
+
+  it('drops a request made while no toolbar is mounted', () => {
+    editor = makeEditor('<p>hello</p>');
+    renderToolbar(editor).unmount();
+    openLinkDialog();
+    renderToolbar(editor);
+    expect(screen.queryByPlaceholderText('Paste URL')).toBeNull();
   });
 });

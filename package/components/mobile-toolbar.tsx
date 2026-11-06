@@ -133,13 +133,11 @@ const MobileToolbar = ({
     };
   }, [editor, setToolVisibility, toolVisibility]);
 
-  const { isLinkDialogRequested, setLinkDialogRequested } =
-    useLinkDialogStore();
+  const setOpenLinkDialog = useLinkDialogStore((s) => s.setOpenDialog);
   useEffect(() => {
-    if (!isLinkDialogRequested) return;
-    setLinkDialogRequested(false);
-    setToolVisibility(IEditorTool.LINK_POPUP);
-  }, [isLinkDialogRequested, setLinkDialogRequested, setToolVisibility]);
+    setOpenLinkDialog(() => setToolVisibility(IEditorTool.LINK_POPUP));
+    return () => setOpenLinkDialog(null);
+  }, [setOpenLinkDialog, setToolVisibility]);
 
   useEffect(() => {
     if (isKeyboardVisible) {
