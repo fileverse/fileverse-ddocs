@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DynamicModal, TextField } from '@fileverse/ui';
 import type { Editor } from '@tiptap/react';
+import { applyLinkWithText } from '../../../package/utils/apply-link-with-text';
 
 // Mirrors the package's mobile-toolbar link modal (mobile-toolbar.tsx:257):
 // Text + URL fields, validation, selection-aware save.
@@ -50,18 +51,7 @@ export const LinkModal = ({ open, onOpenChange, getEditor, onError }: Props) => 
     }
     finalUrl = finalUrl.trim();
 
-    const { from, to } = editor.state.selection;
-    const isSelected = editor.state.doc.textBetween(from, to).length > 0;
-    const content = {
-      type: 'text',
-      text: text || finalUrl,
-      marks: finalUrl ? [{ type: 'link', attrs: { href: finalUrl } }] : [],
-    };
-    if (isSelected) {
-      editor.chain().focus().deleteSelection().insertContent(content).run();
-    } else {
-      editor.chain().focus().insertContent(content).run();
-    }
+    applyLinkWithText(editor, text || finalUrl, finalUrl);
     onOpenChange(false);
   };
 
