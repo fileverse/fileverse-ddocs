@@ -18,6 +18,7 @@ import {
 import { parseHeadingLink } from '../utils/heading-link';
 import { useMobileToolbarStore } from '../stores/mobile-toolbar-store';
 import { dismissNativeSelection } from '../utils/dismiss-native-selection';
+import { applyLinkWithText } from '../utils/apply-link-with-text';
 
 const MobileToolbar = ({
   editor,
@@ -87,31 +88,7 @@ const MobileToolbar = ({
 
     finalUrl = finalUrl.trim();
 
-    const { from, to } = editor.state.selection;
-    const isSelected = editor.state.doc.textBetween(from, to).length > 0;
-
-    if (isSelected) {
-      editor
-        .chain()
-        .focus()
-        .deleteSelection()
-        .insertContent({
-          type: 'text',
-          text: linkText,
-          marks: finalUrl ? [{ type: 'link', attrs: { href: finalUrl } }] : [],
-        })
-        .run();
-    } else if (linkText) {
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: 'text',
-          text: linkText,
-          marks: finalUrl ? [{ type: 'link', attrs: { href: finalUrl } }] : [],
-        })
-        .run();
-    }
+    applyLinkWithText(editor, linkText, finalUrl);
 
     setIsUrlValid(true);
     setIsTextValid(true);
