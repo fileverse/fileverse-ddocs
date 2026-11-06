@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/react';
 
 /**
  * Applies a link's text and URL to the selection. The text keeps the
- * formatting it replaces (or the caret's), so linking never resets font size.
+ * formatting it replaces (or the caret's), except the colour setLink drops.
  */
 export const applyLinkWithText = (
   editor: Editor,
@@ -16,15 +16,18 @@ export const applyLinkWithText = (
     return;
   }
   if (!text) return;
-  editor
+  const end = from + text.length;
+  const chain = editor
     .chain()
     .focus()
     .command(({ tr, state }) => {
-      const link = state.schema.marks.link;
-      const end = from + text.length;
-      tr.insertText(text, from, to).removeMark(from, end, link);
-      if (href) tr.addMark(from, end, link.create({ href }));
+      tr.insertText(text, from, to).removeMark(
+        from,
+        end,
+        state.schema.marks.link,
+      );
       return true;
-    })
-    .run();
+    });
+  if (href) chain.setTextSelection({ from, to: end }).setLink({ href });
+  chain.setTextSelection(end).run();
 };

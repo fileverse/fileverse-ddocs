@@ -27,6 +27,23 @@ export const CustomLink = Link.extend<CustomLinkOptions>({
     };
   },
 
+  addCommands() {
+    const parent = this.parent!();
+    return {
+      ...parent,
+      // As in Google Docs, a new link drops its text colour so it shows the
+      // link colour; it can be recoloured afterwards.
+      setLink: (attributes) => (props) =>
+        parent.setLink!(attributes)(props) &&
+        (props.tr.selection.empty ||
+          props
+            .chain()
+            .setMark('textStyle', { color: null, 'data-original-color': null })
+            .removeEmptyTextStyle()
+            .run()),
+    };
+  },
+
   addProseMirrorPlugins() {
     const parentPlugins = this.parent?.() ?? [];
     const options = this.options;

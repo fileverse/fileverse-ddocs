@@ -58,8 +58,9 @@ describe('applyLinkWithText', () => {
     expect(linked?.marks.link).toBe(HREF);
     expect(linked?.marks.textStyle).toMatchObject({
       fontSize: '24px',
-      color: 'rgb(255, 0, 0)',
+      color: null,
     });
+    expect(editor.state.selection.empty).toBe(true);
   });
 
   it('inserts link text at the caret with the caret formatting', () => {
