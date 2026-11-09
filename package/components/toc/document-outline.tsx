@@ -1,7 +1,7 @@
 import { DocumentTabsSidebar } from '../tabs/document-tabs-sidebar';
 import { DocumentMobileTabPanel } from '../tabs/document-mobile-tab-panel';
 import { DocumentOutlineProps } from './types';
-import { useEditorMediaQuery } from '../../hooks/use-editor-media-query';
+import { useResponsive } from '../../utils/responsive';
 import { DocumentOutlineTOCPanel } from './document-outline-toc-panel';
 
 export const DocumentOutline = ({
@@ -34,7 +34,7 @@ export const DocumentOutline = ({
   tabPanelSlot,
   ddocId,
 }: DocumentOutlineProps) => {
-  const isMediaMax1280px = useEditorMediaQuery('(max-width:1280px)');
+  const { isBelow1150px } = useResponsive();
 
   if (!tabs.length) {
     return (
@@ -53,7 +53,7 @@ export const DocumentOutline = ({
 
   // A host that gives its own tab column (version history) decides when the
   // column is shown; the sidebar then fills it at every width.
-  return !isMediaMax1280px || tabSectionContainer ? (
+  return !isBelow1150px || tabSectionContainer ? (
     <DocumentTabsSidebar
       tabs={tabs}
       setTabs={setTabs}

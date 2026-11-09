@@ -256,7 +256,7 @@ DdocEditor (forwardRef)
 │
 ├── DocumentOutline (when editor && tabs.length > 0)
 │   │
-│   ├── Desktop (>1280px): DocumentTabsSidebar
+│   ├── Desktop (>1150px): DocumentTabsSidebar
 │   │   ├── DndContext + SortableContext (drag-drop via @dnd-kit)
 │   │   ├── Toggle button (collapsed: tab count, expanded: full panel)
 │   │   ├── "Document tabs" header + "+" create button
@@ -268,7 +268,7 @@ DdocEditor (forwardRef)
 │   │       │   └── TabContextMenu (3-dot popover)
 │   │       └── MemorizedToC (collapsible, shown when tab is active + showOutline)
 │   │
-│   └── Mobile (<=1280px): DocumentMobileTabPanel
+│   └── Mobile (<=1150px): DocumentMobileTabPanel
 │       ├── Expanded (300px bottom sheet): tab list + ToC + X close
 │       └── Collapsed (54px pill): active tab name + tab count + popover menu
 │

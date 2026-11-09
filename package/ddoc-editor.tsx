@@ -383,7 +383,8 @@ const DdocEditor = forwardRef(
     useLayoutEffect(() => {
       setIsContainerQueryRoot(canUseEditorContainerQueries());
     }, []);
-    const { isBelow1280px, isNativeMobile } = useResponsive(editorWidthStore);
+    const { isBelow1150px, isBelow1280px, isNativeMobile } =
+      useResponsive(editorWidthStore);
 
     const [isHiddenTagsVisible, setIsHiddenTagsVisible] = useState(false);
     const tagsContainerRef = useRef(null);
@@ -887,7 +888,7 @@ const DdocEditor = forwardRef(
 
     const leftWidth = shouldRenderDocumentOutline ? 148 : 0;
     // Below 1280px the tabs move to the bottom panel and the rail is empty.
-    const hasLeftRail = shouldRenderDocumentOutline && !isBelow1280px;
+    const hasLeftRail = shouldRenderDocumentOutline && !isBelow1150px;
     const fitReservedWidth = getFitReservedWidth({
       hasLeftRail,
       isCommentColumnVisible,
@@ -1993,7 +1994,7 @@ const DdocEditor = forwardRef(
                   className="ddoc-tab-panel-slot relative shrink-0 w-full z-[9]"
                   style={{
                     height:
-                      isBelow1280px && shouldRenderDocumentOutline ? 50 : 0,
+                      isBelow1150px && shouldRenderDocumentOutline ? 50 : 0,
                   }}
                 />
                 {/* Same layer as the drawer anchor, but outside the scrolling canvas. */}
