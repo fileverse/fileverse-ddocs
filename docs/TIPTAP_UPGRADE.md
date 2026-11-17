@@ -5,10 +5,10 @@
 Move every `@tiptap/*` package from 3.11.0 to 3.34.0 for the upstream bug fixes, performance work and security patches, with **no regression** in our custom layers (list engine, Pages mode, dBlock/flat schemas, comments and suggestions, collaboration, paste/import/export, fonts and caret styles) or in ddocs.new. Delete the custom code the upgrade makes obsolete, each deletion backed by a test that fails if the upstream fix is absent.
 
 - **Goals**: one exact version for every `@tiptap/*` package; every behaviour change listed in §5 pinned by a test before the bump and decided after it; obsolete code (§6) removed; a durable "what we rely on" checklist (§9) for the next upgrade.
-- **Non-goals**: adopting new upstream APIs (Decorations API, `dispatchTransaction`/`transformPastedHTML` hooks, `insertDefaultBlock`, `MappablePosition`, `schemaSpec`, managed suggestion popups, `clearable` marks); refactoring our overrides to look more like upstream; removing unused-but-harmless `@tiptap/*` dependencies other than R3/R4; y-tiptap 3.0.10+; Tiptap 4.
+- **Non-goals**: adopting new upstream APIs (Decorations API, `dispatchTransaction`/`transformPastedHTML` hooks, `insertDefaultBlock`, `MappablePosition`, `schemaSpec`, managed suggestion popups, `clearable` marks); refactoring our overrides to look more like upstream; removing unused-but-harmless `@tiptap/*` dependencies other than R3/R4; Tiptap 4.
 - **Anti-goals**: a green suite that hides a behaviour change nobody decided on; any change to what existing documents contain or how they load (existing Yjs blobs must load and edit exactly as before, both schemas, and the upgrade must not add new Yjs roots to documents); breaking ddocs.new's integration surface (AGENTS.md "Consumer repo").
 
-Decided 2026-11-16: Tiptap 3.34.0, not the ticket's 3.31.0 (3.31.0 lacks 3.31.2's `prosemirror-view` paste XSS fix, GHSA-c8x8-7fp4-3x9w, and 3.31.4's split/undo fixes). y-tiptap 3.0.9 with a vendored resolver (§5.10), not 3.0.12+.
+Decided 2026-11-16: Tiptap 3.34.0, not the ticket's 3.31.0 (3.31.0 lacks 3.31.2's `prosemirror-view` paste XSS fix, GHSA-c8x8-7fp4-3x9w, and 3.31.4's split/undo fixes). y-tiptap 3.3.0 (§5.10); revised 2026-11-17 from "3.0.9 plus a vendored resolver" after 3.3.0 was checked against the two reasons 3.0.10+ had been rejected.
 
 ### Pros and cons
 
@@ -17,29 +17,28 @@ Decided 2026-11-16: Tiptap 3.34.0, not the ticket's 3.31.0 (3.31.0 lacks 3.31.2'
 **Pros**
 - **Security.** The `prosemirror-view` paste XSS fix (crafted pasted HTML could run JavaScript; 3.31.2), `mergeAttributes` no longer lets pasted HTML attributes change an object's prototype (3.30.4), and extra CSS declarations in content are no longer rendered (3.31.4). Paste is a core path for us (docx, Google Docs, Word, markdown).
 - **Bugs fixed upstream that hit us or would.** Pasting editor content no longer adds empty paragraphs (prosemirror-model 1.25.11). Caret placement after Enter in React node views (3.29.1–3.29.2). Freezes and Enter in node views on iOS/Android (3.31.1, 3.31.4). Safari scrolling to top on `focus()` (3.15.3). Inserting a table with an empty cell no longer throws (3.29.0). Checked task items split correctly (3.31.4). Typing spaces after a link no longer extends it (3.31.4).
-- **Collaboration.** y-tiptap 3.0.3–3.0.9 fix remote carets jumping or splitting during drag-and-drop and structural edits, crashes on stale awareness, and an UndoManager memory leak when the Y.Doc outlives the editor (we keep 4 tab editors warm on one Y.Doc). Drag-and-drop no longer leaves a duplicate block when a collaborator edits mid-drag (3.26.1, 3.27.2).
+- **Collaboration.** y-tiptap 3.0.3–3.3.0 fix remote carets jumping or splitting during drag-and-drop and structural edits, crashes on stale awareness, and an UndoManager memory leak when the Y.Doc outlives the editor (we keep 4 tab editors warm on one Y.Doc); 3.3.0 republishes awareness only when the local caret moved. Drag-and-drop no longer leaves a duplicate block when a collaborator edits mid-drag (3.26.1, 3.27.2).
 - **Performance.** Placeholder no longer scans the whole document per transaction (3.23.6–3.27.3), large transactions such as big pastes are faster (3.32.1), React node views cost less on large documents (3.30.6), code highlighting skips selection-only changes (3.32.3).
 - **Custom code we stop owning.** The `removeEmptyTextStyle` backport (R1) and two dead dependencies (R3, R4).
 - **Version hygiene.** One exact `@tiptap/*` version instead of today's mix (3.11.0 pinned, 3.20.2 floated in ddocs.new). The §5 probes and the §9 checklist stay as a regression net, so the next upgrade (and Tiptap 4) is smaller and safer.
 
 **Cons**
 - **Behaviour changes we must neutralise.** Most §5 rules are "Keep", so the upgrade adds code as well as removing it: our own "selection covers node" check in three node views (§5.7), disabling or overriding upstream handlers for keys we do not bind (blockquote Backspace, list Delete, OrderedList paste; §5.16–5.17), possibly a Typography undo fix (§5.12) and memoised menu props (§5.13). Only R1 is a certain removal; R2 is expected to stay.
-- **y-tiptap 3.0.9 is a compromise.** It brings a resolver defect we work around by owning ~55 lines of upstream code (§5.10.1); a remote caret at the very start of a doc may still be hidden. We stay below 3.0.10 until its position-migration map is audited in a follow-up.
-- **New performance risk in collaboration.** 3.0.9 rebuilds every ProseMirror node on each remote update and republishes awareness on each remote change (§5.10.2). Large shared documents could get slower on the receiving side; only the ddocs.new QA (§8.2) can measure it.
+- **y-tiptap 3.3.0 is new and undocumented.** Published 2026-11-10; 3.0.10–3.3.0 have no release notes and rewrite (in TypeScript) the binding internals we reach into (§5.10.3). Mitigated by an exact pin, a 3.0.1 → 3.3.0 source audit before the bump, and the §5.10 probes; live behaviour (remote typing on large shared docs, mixed-version carets) is only measurable in the ddocs.new QA (§8.2).
 - **Changes users will notice even when accepted.** Mod-Z right after an auto-format reverts just the format (§5.12); editing one of two adjacent links no longer rewrites the other (§5.4).
 - **Mixed-version window.** ddocs.new is a PWA, so old and new clients edit the same docs for a while; an old client can drop a pasted link's `title` (§5.14). Cosmetic, but real.
 - **Risk sits in private internals.** y-tiptap binding fields, `pmViewDesc`, plugin key names and upstream plugin specs (§9) carry no compatibility promise; they are exactly what the probes guard.
 - **Cost.** Probes for all 18 §5 rows, most in both schemas, a ProseMirror refresh with its own changelog review, two manual QA rounds (demo, then ddocs.new under React 19 with live collaboration), and a prerelease cycle. Collaboration can only be QA'd in ddocs.new.
 - **Bundle size.** Tiptap and ProseMirror are bundled into our dist, so it grows by whatever 3.34 adds; not yet measured (§7).
 
-**Net.** Worth doing: the paste XSS fix alone justifies it, and the collaboration, mobile and node-view fixes come with it. The cost is the probe and QA work, plus a few new overrides; the one open risk is remote-update performance on large shared docs, gated in §8.2.
+**Net.** Worth doing: the paste XSS fix alone justifies it, and the collaboration, mobile and node-view fixes come with it. The cost is the probe and QA work, plus a few new overrides; the main open risk is the young, undocumented y-tiptap 3.3.0, gated by the §5.10 audit and probes and by §8.2.
 
 ## 2. Versions and dependency changes
 
 | Change | Detail |
 | --- | --- |
 | `@tiptap/*` | Every package pinned to exactly `3.34.0` (today core, pm, react, collaboration, drag-handle, node-range are exact and the rest `^3.11.0`, which already floats; ddocs.new resolves core 3.20.2 today). StarterKit 3.30+ pins its own sub-packages exactly, and 3.34 peers are exact, so the set stays coherent. |
-| `@tiptap/y-tiptap` | 3.0.1 → exactly `3.0.9`, declared in `dependencies` (we import it directly but it is only transitive today; it stays bundled because `isBundled` matches `@tiptap/`). 3.34's collaboration and drag-handle peers want `^3.0.7` and import only exports 3.0.1 already has, but staying on 3.0.1 would leave consumers with an unmet peer. 3.0.10+ is rejected: it writes `__tiptap_position_migrations:<fragment>` root maps into the Y.Doc on local structural edits (a permanent document-format change that syncs to old clients and is never cleaned up), and it is an undocumented TypeScript rewrite of the internals §5.10 reaches into. 3.0.9 has a defect we work around (§5.10.1). Pinning exactly matters: npm would otherwise float the transitive copy. |
+| `@tiptap/y-tiptap` | 3.0.1 → exactly `3.3.0`, declared in `dependencies` (we import it directly but it is only transitive today; it stays bundled because `isBundled` matches `@tiptap/`). 3.34's collaboration and drag-handle packages are tested against 3.3.0 (their devDependency; peer `^3.0.7`), and staying on 3.0.1 would leave consumers with an unmet peer. Rejected: 3.0.6–3.0.9 (positions at the start of a v2 doc resolve to `null`, §5.10.1; full node rebuild on every remote update) and 3.0.10–3.2.x (write `__tiptap_position_migrations:<fragment>` root maps into documents). 3.3.0 has neither (§5.10). Its peers (`yjs ^13.6.13`, `y-protocols ^1.0.1`, `prosemirror-* ^1`) are met here and in ddocs.new. Pinning exactly matters: npm would otherwise float the transitive copy. |
 | ProseMirror | Through `@tiptap/pm` 3.34 (`prosemirror-view ^1.42.6`, `prosemirror-model ^1.25.12`, `prosemirror-tables ^1.8.5`). Against today's registry that resolves view 1.41.3 → 1.42.9, transform 1.10.5 → 1.12.5, schema-list 1.5.1 → 1.6.0, inputrules 1.5.1 → 1.6.0, tables → 1.8.5. Upstream Tiptap notes do not cover these: read each package's changelog for the range and add a §5 row for anything reaching the list engine (schema-list, transform), Pages mode (view) or tables. Record the resolved versions in the PR. |
 | `@_ueberdosis/prosemirror-tables` | **Remove** (and its `isBundled` entry). Nothing imports it. |
 | `@tiptap/markdown` | **Remove**. Nothing imports it; markdown runs on `tiptap-markdown` and `extensions/mardown-paste-handler/`. |
@@ -61,11 +60,11 @@ Branch `TEC-3019`. One commit per step; the full suite runs after each of steps 
 
 1. **Probes on 3.11.** Add the tests in §5 (v1 and v2 case wherever the schema matters). They assert today's behaviour and pass on 3.11.
 2. **ProseMirror refresh on 3.11.** Update `prosemirror-*` within 3.11's own ranges to the versions §2 lists (lockfile only). This ships the XSS fix independently and makes any ProseMirror regression attributable.
-3. **y-tiptap 3.0.9 + vendored resolver** (§5.10.1), still on Tiptap 3.11.
+3. **y-tiptap 3.3.0** (§5.10), still on Tiptap 3.11, after the 3.0.1 → 3.3.0 source audit.
 4. **Tiptap 3.34.0** and the remaining §2 changes. `npm ls` single-copy check, `npx tsc`, `npm test`, `npm run build`.
 5. **Decide.** For each probe that failed in steps 2–4, apply its row's rule: **Keep** = adapt our code so today's behaviour holds; **Accept** = take upstream's and update the probe to assert it. A probe never just gets deleted.
 6. **Removals** (§6), one commit each, test first.
-7. **Docs.** §9 lives here. `LIST_TOGGLE.md` §7: change "Verified on 3.11.0" to 3.34.0, point to §9, and correct "Anchors resolve through `y-prosemirror`" (they resolve through our vendored resolver over `@tiptap/y-tiptap`'s binding).
+7. **Docs.** §9 lives here. `LIST_TOGGLE.md` §7: change "Verified on 3.11.0" to 3.34.0, point to §9, and correct "Anchors resolve through `y-prosemirror`" (they resolve through `@tiptap/y-tiptap`).
 8. **Manual QA in the demo** (§8.1), both schemas.
 9. **Prerelease** per AGENTS.md "Release" (e.g. `7.2.4-tiptap.0`, published with `--tag`), repinned in a ddocs.new worktree, then **QA in ddocs.new** (§8.2). Merge only after both pass.
 
@@ -129,26 +128,35 @@ Rule: **Accept** if visible placeholders match today; **Keep** otherwise.
 - `table-of-contents.ts:80-116` re-wraps TOC's `appendTransaction`; upstream fixed a duplicate `onUpdate` (3.22.5), skips IME composition (3.13.0), and uses `uuid` v4 (§2). Probe: one `onUpdate` per heading edit; `data-toc-id` stable and unique across edits. Rule: **Keep** ours.
 - `supercharged-table/` imports nothing from `@tiptap/extension-table`, so that package's changes cannot reach us; the exposure is `prosemirror-tables` 1.8.x (cell selection, column resizing, `fixTables`). Probe: existing table suites; CellSelection, column resize, row/column insert and delete, merge/split. Rule: **Keep**.
 
-### 5.10 Collaboration binding (y-tiptap 3.0.1 → 3.0.9)
+### 5.10 Collaboration binding (y-tiptap 3.0.1 → 3.3.0)
 
-#### 5.10.1 Resolver defect and the vendored resolver
+3.3.0 (published 2026-11-10) is what Tiptap 3.34's collaboration and drag-handle packages are tested against. 3.0.10–3.3.0 have no release notes and are a TypeScript rewrite, so before the bump the builder diffs the 3.0.1 and 3.3.0 sources for every internal named in this section and records what changed in the PR.
 
-From 3.0.6 to 3.0.9 `relativePositionToAbsolutePosition` returns `null` for an item-based position that resolves to absolute position ≤ 1 (`isMisresolvedTextPosition`). Position 1 is the first text position of a v2 doc whose first block is a textblock (v1 starts at 2). Reproduced: a comment on "ello" of "Hello" resolves `from` to `null` after "H" is deleted, and an `assoc = 1` point anchor at the doc start (`createCommentAnchorPointFromEditor`) resolves to `null`; 3.0.1 and 3.0.10+ resolve both. Our resolvers treat `null` as unresolvable, so the highlight disappears and undo can drop the anchor.
-Fix: vendor 3.0.1's `relativePositionToAbsolutePosition` (about 55 lines, pure: `Y.createAbsolutePositionFromRelativePosition` plus a walk over `binding.mapping`) into `package/utils/`, adding only 3.0.5's guard (a missing `mapping` entry returns `null` instead of throwing), and use it at all 7 of our call sites: `comment-decoration-plugin.ts:97,103,140,1507,1513`, `tab-position-memory.ts:120,126`. Upstream's own uses stay on 3.0.9's version: remote carets (cursor plugin) and the drag handle's anchor restore.
-Probes (v2 and v1): the two reproduced cases; a comment spanning the first character; suggestion add point at doc start; tab switch away and back with the caret at doc start; remote caret at position 1 (accept hidden if upstream hides it, record it); multi-block drag starting at the first block with a collaborator edit mid-drag.
+#### 5.10.1 Positions at the start of a document
 
-#### 5.10.2 Other 3.0.1 → 3.0.9 changes
+3.0.6–3.0.9 return `null` from `relativePositionToAbsolutePosition` for an item-based position that resolves to absolute position ≤ 1 (`isMisresolvedTextPosition`); position 1 is the first text position of a v2 doc (v1 starts at 2). 3.3.0 replaced that check with "the decoded type's item is deleted" and resolves both reproduced cases, verified against the published 3.3.0 dist on 2026-11-17: a comment on "ello" of "Hello" after "H" is deleted resolves to 1–5 (v2 shape) and 2–6 (wrapped), and an `assoc = 1` point anchor at the doc start (`createCommentAnchorPointFromEditor`) resolves to 1 / 2. Our 7 call sites (`comment-decoration-plugin.ts:97,103,140,1507,1513`, `tab-position-memory.ts:120,126`) keep importing it from `@tiptap/y-tiptap`; upstream's own uses (remote carets, drag-handle anchor restore) get the same fix.
+Probes (v2 and v1): the two cases above; a comment spanning the first character; suggestion add point at doc start; tab switch away and back with the caret at doc start; remote caret at position 1; multi-block drag starting at the first block with a collaborator edit mid-drag.
+Rule: **Keep** (every one resolves as on 3.0.1).
 
-- **Full rebuild on remote update.** `_typeChanged` now calls `this.mapping.clear()`, so every remote update rebuilds every ProseMirror node: `findDiffStart` in `pagination/meta.ts:34-36` deep-compares, and every React node view (all table cells) receives an `update()`.
-- **Write path.** `updateYFragment` gained `reconcileMappedChildren` for reorders.
-- **Awareness.** The cursor plugin view republishes local awareness on every remote doc change.
-- **Undo.** `addToHistory` is read only from doc-changing transactions; focus/blur handling in the undo plugin changed (3.0.9).
-- **Cursor rebuild.** `use-tab-editor.tsx:2046-2096` rebuilds y-tiptap's `yCursorPlugin` from its `spec.state.init/apply`, `props` and `view` and matches `awarenessUpdated`; it stays compatible (it never reaches the new hide-on-structural-change branch), assert it.
+#### 5.10.2 Position-migration maps
 
-Our other internals: `utils/y-prosemirror-cleanup.ts:44-110` mutates binding fields (`mapping`, `isOMark`, `beforeTransactionSelection`, `_domSelectionInView`) and UndoManager fields (`restore`, `undoStack`, `redoStack`), all still present in 3.0.9 (confirm meaning in the 3.0.1 → 3.0.9 diff); `comment-decoration-plugin.ts:1751` uses `ySyncPluginKey` as a Yjs origin, `:1709` widens the undo scope, `:1175` reads `isChangeOrigin`; `hooks/use-tab-manager.ts:486` reads `undoManager.undoStack`; `utils/upload-images.tsx:47` reads `isChangeOrigin`; string matches on `'y-sync$'` in `dblock-media-plugin.ts:147`, `suggestion-tracking-extension.ts:290`, `undo-selection.ts:55`. PluginKey names get `$`, `$1`… in creation order, and y-prosemirror (bundled for export/diff) also creates a `'y-sync'` key.
+3.0.10–3.2.x wrote `__tiptap_position_migrations:<fragment>` root maps into the Y.Doc on local structural edits. 3.3.0 writes none: on view init and after every transaction it clears any such map that already exists and is non-empty (`addToHistory: false`). Our documents never had them, so nothing is written; a document once edited by a 3.0.10–3.2.x client elsewhere would get one clearing write.
+Probe: after each T1 fixture loads, and after a block reorder and a multi-block drag, `[...ydoc.share.keys()]` is unchanged and the Yjs update count matches 3.11 (explicit).
+Rule: **Keep**.
+
+#### 5.10.3 Other 3.0.1 → 3.3.0 changes
+
+- **Remote updates.** `_typeChanged` deletes only the changed types from `mapping`, as 3.0.1 does (3.0.9's full rebuild on every remote update is gone).
+- **Write path.** `updateYFragment` reconciles reordered children (`reconcileMappedChildren`).
+- **Cursor recovery.** Structural transactions are detected (`isStructuralTransaction`) and positions recovered (`findAbsolutePositionAfterStructuralChange`); the cursor plugin view sets local awareness only when the local cursor changed.
+- **Undo.** `addToHistory` is read only from doc-changing transactions; the UndoManager's `captureTransaction` skips `addToHistory: false`.
+- **Binding lifecycle.** `beforeTransactionSelection` is set by a Y.Doc `beforeAllTransactions` listener and cleared by `afterAllTransactions`; an `afterTransaction` listener clears migration maps; invalid content is tracked in `_invalidContentError`. Our cleanup nulls `beforeTransactionSelection` (harmless, since the listener clears it anyway); confirm destroy removes all three listeners when our cleanup runs.
+- **Cursor rebuild.** `use-tab-editor.tsx:2046-2096` rebuilds y-tiptap's `yCursorPlugin` from its `spec.state.init/apply`, `props` and `view` and matches `awarenessUpdated`; 3.3.0 keeps that shape. Assert it.
+
+Our other internals: `utils/y-prosemirror-cleanup.ts:44-110` mutates binding fields (`mapping`, `isOMark`, `beforeTransactionSelection`, `_domSelectionInView`) and UndoManager fields (`restore`, `undoStack`, `redoStack`), all present by name in 3.3.0 (confirm meaning in the source diff); `comment-decoration-plugin.ts:1751` uses `ySyncPluginKey` as a Yjs origin, `:1709` widens the undo scope, `:1175` reads `isChangeOrigin`; `hooks/use-tab-manager.ts:486` reads `undoManager.undoStack`; `utils/upload-images.tsx:47` reads `isChangeOrigin`; string matches on `'y-sync$'` in `dblock-media-plugin.ts:147`, `suggestion-tracking-extension.ts:290`, `undo-selection.ts:55`. PluginKey names get `$`, `$1`… in creation order, and y-prosemirror (bundled for export/diff) also creates a `'y-sync'` key.
 
 Probes (jsdom; live checks are in §8.2): (a) `ySyncPluginKey.key === 'y-sync$'` in the jsdom editor **and** in the built `dist` (a node script importing the built entry); (b) two-client harness (two editors on two Y.Docs exchanging updates): remote edit, remote reorder/drag of a block above the caret, undo/redo, and after every operation both docs' JSON are identical and comment anchors resolve at the Yjs layer (`resolveCommentAnchorRangeInState`, not decorations); (c) remote caret renders and follows edits; (d) undo step counts around our `addToHistory: false` maintenance writes (BlockId, paragraph spacing, caret-marks, pagination meta) and around a remote edit; (e) Pages mode's steps-less pagination transaction does not split the user's undo group; (f) awareness updates per remote keystroke stay at one (check `sync-local` throttling).
-Rule: **Keep** today's behaviour everywhere; adapt the cleanup or cursor rebuild if a field changed meaning. Performance of (a full rebuild per remote update) is gated in §8.2.
+Rule: **Keep** today's behaviour everywhere; adapt the cleanup or cursor rebuild if a field changed meaning. Remote-typing performance on large shared docs is gated in §8.2.
 
 Not affected: `enableContentCheck` / `onContentError` changes (3.22, 3.25, 3.33); we do not enable the check.
 
@@ -157,7 +165,7 @@ Not affected: `enableContentCheck` / `onContentError` changes (3.22, 3.25, 3.33)
 Pages mode leans hardest on view internals (§9): `pmViewDesc.contentDOM`, `coordsAtPos`/`posAtCoords` per line, widget decorations with `key`/`side`/`marks: []`, a steps-less meta transaction refused by `filterTransaction` when it carries steps, `view.dom.style.minHeight`, `isChangeOrigin`, y-tiptap's remote replace. Upstream changes reaching it:
 - React node views no longer render synchronously: `flushSync` is gone and rendering is queued by microtask (`ReactRenderer.tsx`, `EditorContent.tsx`). Reaches pagination measurement of cells, media and code blocks; the first-open position of the slash and emoji popups (`slash-comand.tsx:235-249`, `emoji.tsx:84-92`); jsdom tests that assert node-view content synchronously.
 - `EditorContent` mount and unmount now move **every** child of the content host (`append(...view.dom.parentNode.childNodes)`), and `PageSheets` portals the sheet-edge masks into that host (`page-sheets.tsx:145-147,273-279`): recreating the active editor in Pages mode may make React throw `removeChild` NotFoundError.
-- 3.22.1 re-renders node views when only their position changes; 3.28.0 batches portal notifications; 3.30.6 reduces node-view overhead; §5.10.2's rebuild on remote update.
+- 3.22.1 re-renders node views when only their position changes; 3.28.0 batches portal notifications; 3.30.6 reduces node-view overhead.
 
 Probes: the `extensions/pagination/*.test.ts` suites pass unchanged; pagination dispatches for one keystroke in a long doc stay 0 or 1; placement is identical for a fixture with tables, media and code blocks (measured after node views render); switch schema/tab/remount the editor while in Pages mode (no throw, masks present); slash and emoji popup first-open position.
 Rule: **Keep**.
@@ -177,7 +185,7 @@ Rule: **Keep** (memoise `options` and closures where the count is not 0).
 ### 5.14 Schema attributes and mixed-version collaboration
 
 The only attribute 3.34 adds to our schema is `link.title` (3.19.0, parsed from `<a title>`; `custom-link` defines none). `orderedList.type` already exists at 3.11; what is new is parsing it from CSS `list-style-type` (the Google Docs pattern) and the plain-text paste handler that creates typed lists (§5.17). Our `list-decimal` class renders every ordered list as `1.`. Table cell `align` (3.22.0) does not reach us (`supercharged-table` defines its own cells). Both values default to `null`, so existing docs and Yjs blobs are unchanged.
-ddocs.new is a PWA (Serwist precache): after release, 7.2.x (3.11) and new clients edit the same docs. The Yjs wire format is the same and no new Yjs roots are written (§2). An old client ignores `link.title` and may drop it when it rewrites that node: **accepted** (cosmetic, transient). Remote carets between y-tiptap 3.0.1 and 3.0.9 clients must render both ways (§8.2).
+ddocs.new is a PWA (Serwist precache): after release, 7.2.x (3.11) and new clients edit the same docs. The Yjs wire format is the same and no new Yjs roots are written (§2). An old client ignores `link.title` and may drop it when it rewrites that node: **accepted** (cosmetic, transient). Remote carets between y-tiptap 3.0.1 and 3.3.0 clients must render both ways (§8.2).
 Probe: paste `<a title="x" href>` and a Google Docs list with `list-style-type: lower-alpha`; assert the stored attributes, how the list renders, and that markdown/ODT/docx export succeeds.
 Rule: **Accept** `link.title`. For typed ordered lists, **Keep** today's rendering (`1.`) unless the user-facing decision is made to render types; record the observed behaviour in the PR.
 
@@ -186,7 +194,7 @@ Rule: **Accept** `link.title`. For typed ordered lists, **Keep** today's renderi
 Checked in `../ddocs.new` (2026-11-16). It is affected only in these ways:
 - **Types.** It imports `JSONContent`/`Editor` types from `@tiptap/core` and `@tiptap/react` without declaring them, resolved through our transitive dependencies: two copies today (`@tiptap/core` 3.20.2 hoisted and 3.11.0 nested), one 3.34.0 copy after the exact pins. Both repos use `skipLibCheck`. Its `tsc` and `next build` must pass on the prerelease.
 - **Its own tests mount our editor under React 19**: `npm run test:unit` (vitest; e.g. `legacy-content-initialization.test.tsx` counts `.node-resizableMedia`, a class 3.34 keeps) and the Playwright suites in `tests/e2e` (page objects for toolbar, slash commands, pages mode, export).
-- **Not affected**: no runtime Tiptap or ProseMirror import (markdown goes through our `exportMarkdownFile`); no server-side import of the package; `useEditor`'s Next.js `immediatelyRender` change (3.23.5) does not apply (we build editors with `new Editor`, and the one `useEditor` passes `false`); its `yjs`/`y-protocols` overrides satisfy y-tiptap 3.0.9's peers; its CSS targets no Tiptap class names; the version-history diff compares two snapshots built the same way.
+- **Not affected**: no runtime Tiptap or ProseMirror import (markdown goes through our `exportMarkdownFile`); no server-side import of the package; `useEditor`'s Next.js `immediatelyRender` change (3.23.5) does not apply (we build editors with `new Editor`, and the one `useEditor` passes `false`); its `yjs`/`y-protocols` overrides satisfy y-tiptap 3.3.0's peers; its CSS targets no Tiptap class names; the version-history diff compares two snapshots built the same way.
 
 ### 5.16 Upstream handlers that delete and re-insert content
 
@@ -254,7 +262,7 @@ Run by both the user and Claude (Claude drives Chrome, the user covers what Clau
 - **Automated first**: in a ddocs.new worktree pinned to the prerelease, `npx tsc --noEmit`, `npm run build`, `npm run test:unit`, then the Playwright suites touching the editor (§5.15).
 - **Mixed versions** (§5.14): one window on production (7.2.x), one on the prerelease, same doc: typing both ways, remote carets visible both ways, comment anchors, a link with a title.
 - **Collaboration** (two windows or two accounts): remote carets render and follow edits; remote drag of a block above the caret; undo/redo on both sides; comment anchors (including one on the doc's first characters) after remote edits; suggestion accept by the owner while a collaborator types; tab switch away and back.
-- **Remote-typing performance** (§5.10.2): a long doc (tables and media, Pages mode on and off) while a collaborator types continuously; no visible lag or dropped input on the receiving side; compare against production.
+- **Remote-typing performance** (§5.10.3): a long doc (tables and media, Pages mode on and off) while a collaborator types continuously; no visible lag or dropped input on the receiving side; compare against production.
 - **Repeat under React 19**: §8.1's Pages mode, Drag (including R2's childless blocks, now with a collaborator connected) and Block views sections.
 - **Integration surface**: `PreviewDdocEditor` and version history, headless conversions (template insert, import, duplicate, markdown zip export), export modal, print.
 
@@ -269,10 +277,10 @@ For the next upgrade: read this table and `LIST_TOGGLE.md` §7, run the listed s
 | `preventDispatch` meta stops a `false` command dispatching | `list-toggle/shared.ts:85` | `list-toggle-wrap` |
 | Core `splitBlock`/`splitListItem` and `getSplittedAttributes` semantics | `caret-marks.ts:254,263`, `list-toggle` Enter, suggestion Accept split | `list-toggle-enter`, §5.1 probe |
 | Input rules' transaction shape (separate typed-character transaction, `closeHistory`, `inputRule` meta) | caret-marks, BlockId, suggestion tracking, undo grouping | §5.12 probes |
-| Vendored 3.0.1 resolver over y-tiptap's `binding.mapping` (Y type → PM node) | `utils/` resolver, 7 call sites | §5.10.1 probes |
-| y-tiptap private binding and UndoManager fields | `utils/y-prosemirror-cleanup.ts` | §5.10.2 |
-| y-tiptap `yCursorPlugin` spec shape and `awarenessUpdated` meta | `use-tab-editor.tsx:2046-2096` | §5.10.2(c) |
-| `ySyncPluginKey.key === 'y-sync$'` | `dblock-media-plugin.ts:147`, `suggestion-tracking-extension.ts:290`, `undo-selection.ts:55` | §5.10.2(a) |
+| y-tiptap `relativePositionToAbsolutePosition` resolves positions at the start of a v2 doc (broken in 3.0.6–3.0.9) | comments, tab position memory (7 call sites) | §5.10.1 probes |
+| y-tiptap private binding and UndoManager fields | `utils/y-prosemirror-cleanup.ts` | §5.10.3 |
+| y-tiptap `yCursorPlugin` spec shape and `awarenessUpdated` meta | `use-tab-editor.tsx:2046-2096` | §5.10.3(c) |
+| `ySyncPluginKey.key === 'y-sync$'` | `dblock-media-plugin.ts:147`, `suggestion-tracking-extension.ts:290`, `undo-selection.ts:55` | §5.10.3(a) |
 | Remote changes and Yjs undo arrive as one whole-doc replace with `isChangeOrigin` | pagination `meta.ts`, BlockId, comments, paragraph spacing, caret-marks, upload images | pagination suites, `list-toggle-anchors` |
 | Private `tr.meta` / `appendedTransaction` / `pointer` metas | `undo-selection.ts:27-35`, `caret-marks/dispatch-context.ts:38`, `comment-store-provider.tsx:648` | `undo-selection`, caret-marks suites |
 | View internals: `pmViewDesc.contentDOM`, `nodeDOM`, `coordsAtPos`, widget decorations, `view.dragging` | pagination, `dblock-drag-handle.tsx`, `dblock-node-view.ts:28-36` | pagination suites, manual drag |
@@ -288,4 +296,4 @@ For the next upgrade: read this table and `LIST_TOGGLE.md` §7, run the listed s
 
 ## 10. Left to the builder
 
-Probe file names and layout (next to the code they cover); exact fixture wording; how the dist key check in §5.10.2(a) is scripted; whether §5 probes identical to an existing test are folded into it; the vendored resolver's file name; how upstream handlers are disabled where a rule says so; commit wording.
+Probe file names and layout (next to the code they cover); exact fixture wording; how the dist key check in §5.10.3(a) is scripted; whether §5 probes identical to an existing test are folded into it; how upstream handlers are disabled where a rule says so; commit wording.
