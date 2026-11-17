@@ -21,6 +21,7 @@ interface PreviewModeExportTriggerProps {
   onHtmlExport?: DdocProps['onHtmlExport'];
   onTxtExport?: DdocProps['onTxtExport'];
   onOdtExport?: DdocProps['onOdtExport'];
+  onExportError?: DdocProps['onExportError'];
   ipfsImageFetchFn?: DdocProps['ipfsImageFetchFn'];
   onDocxImport?: DdocProps['onDocxImport'];
   fetchV1ImageFn?: DdocProps['fetchV1ImageFn'];
@@ -40,6 +41,7 @@ const PreviewModeExportTrigger = ({
   onHtmlExport,
   onTxtExport,
   onOdtExport,
+  onExportError,
   ipfsImageFetchFn,
   onDocxImport,
   fetchV1ImageFn,
@@ -57,6 +59,7 @@ const PreviewModeExportTrigger = ({
     onHtmlExport,
     onTxtExport,
     onOdtExport,
+    onExportError,
     ipfsImageFetchFn,
     onDocxImport,
     fetchV1ImageFn,
@@ -75,6 +78,7 @@ const PreviewModeExportTrigger = ({
         ydoc={ydoc}
         copyAo3Html={copyAo3Html}
         onRegisterExportTrigger={onRegisterExportTrigger}
+        onExportError={onExportError}
       />
     </div>
   );
