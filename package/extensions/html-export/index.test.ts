@@ -32,6 +32,14 @@ describe('sanitizeHtmlExportBody', () => {
     expect(html).toContain('line-height: 138%');
   });
 
+  // DOMPurify keeps the text of a tag it drops, so a missing entry does not
+  // show up as lost content: `x<sup>2</sup>` silently exports as `x2`.
+  it('preserves superscript and subscript', () => {
+    expect(
+      sanitizeHtmlExportBody('<p>E = mc<sup>2</sup> and H<sub>2</sub>O</p>'),
+    ).toBe('<p>E = mc<sup>2</sup> and H<sub>2</sub>O</p>');
+  });
+
   it('preserves Mermaid SVG paths', () => {
     const html = sanitizeHtmlExportBody(
       '<svg viewBox="0 0 10 10"><path d="M0 0 L10 10"></path></svg>',

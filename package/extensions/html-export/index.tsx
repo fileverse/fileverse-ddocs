@@ -73,6 +73,8 @@ export const sanitizeHtmlExportBody = (html: string): string =>
       'u',
       's',
       'mark',
+      'sup',
+      'sub',
       'span',
       'br',
       'hr',
