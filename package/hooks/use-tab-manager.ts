@@ -56,6 +56,22 @@ export const getNewTabId = () => {
   return fromUint8Array(generateRandomBytes(5), true);
 };
 
+const getNextDefaultTabName = (
+  tabNodes: ReturnType<typeof getTabsYdocNodes>,
+) => {
+  let largestNumber = 0;
+
+  tabNodes.order.toArray().forEach((tabId) => {
+    const name = tabNodes.nameById.get(tabId);
+    const match = /^Tab (\d+)$/.exec(name ?? '');
+    if (!match) return;
+
+    largestNumber = Math.max(largestNumber, Number(match[1]));
+  });
+
+  return `Tab ${largestNumber + 1}`;
+};
+
 // A deep-linked tab that no longer exists must not become the active tab.
 // An empty list means the tabs are not known yet, so the id is kept.
 const resolveDefaultTabId = (
@@ -387,7 +403,7 @@ export const useTabManager = ({
 
     const tabId = getNewTabId();
     const newTab: Tab = {
-      name: `Tab ${tabOrder.length + 1}`,
+      name: getNextDefaultTabName(tabNodes),
       emoji: null,
       id: tabId,
     };
