@@ -299,7 +299,8 @@ export const getSuggestionItems = ({
       searchTerms: ['col', 'column', '2', 'layout'],
       icon: <LucideIcon name="Columns2" size={'md'} />,
       image: '',
-      command: ({ editor }: CommandProps) => insertCommands.columns2(editor),
+      command: ({ editor, range }: CommandProps) =>
+        insertCommands.columns2(editor, range),
     },
     {
       title: '3 Columns',
@@ -307,7 +308,8 @@ export const getSuggestionItems = ({
       searchTerms: ['col', 'column', '3', 'layout'],
       icon: <LucideIcon name="Columns3" size={'md'} />,
       image: '',
-      command: ({ editor }: CommandProps) => insertCommands.columns3(editor),
+      command: ({ editor, range }: CommandProps) =>
+        insertCommands.columns3(editor, range),
     },
   ];
   return items.filter((item) => {
