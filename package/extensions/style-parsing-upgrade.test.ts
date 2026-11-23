@@ -148,6 +148,28 @@ describe('paste colour clean-up of hex greys, §5.6', () => {
     expect(cleanUp(color)).toBe(expected);
   });
 
+  // 3.11 stored the browser's rgb() form of any authored colour; non-hex
+  // formats are normalised before the same rgb rule (rgba with alpha < 1 stays
+  // rgba(...) and is kept, as the browser kept it).
+  const OTHER_FORMATS = [
+    ['hsl(0,0%,5%)', 'rgb(13, 13, 13)', 'stripped'],
+    ['hsl(0, 0%, 98%)', 'rgb(250, 250, 250)', 'stripped'],
+    ['hsl(0, 0%, 50%)', 'rgb(128, 128, 128)', 'stripped'],
+    ['hsl(210, 60%, 40%)', 'rgb(41, 102, 163)', 'kept'],
+    ['rgba(0,0,0,1)', 'rgb(0, 0, 0)', 'stripped'],
+    ['rgba(0,0,0,0.5)', 'rgba(0, 0, 0, 0.5)', 'kept'],
+    ['RGB(20,20,20)', 'rgb(20, 20, 20)', 'stripped'],
+    ['rgb(20 20 20)', 'rgb(20, 20, 20)', 'stripped'],
+    ['rgb(51, 51, 51)', 'rgb(51, 51, 51)', 'kept'],
+  ] as const;
+
+  it.each(OTHER_FORMATS)('%s cleans up as %s', (authored, rgb, expected) => {
+    const cleanUp = (c: string) =>
+      isPastedBlackOrWhiteShade(c) ? 'stripped' : 'kept';
+    expect(cleanUp(authored)).toBe(cleanUp(rgb));
+    expect(cleanUp(authored)).toBe(expected);
+  });
+
   it('the dark-mode load clean-up still strips the listed hex greys', () => {
     expect(
       ['#efefef', '#d9d9d9', '#cccccc', '#b7b7b7'].map(isBlackOrWhiteShade),
