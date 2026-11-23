@@ -23,6 +23,8 @@ import {
   encodeAwarenessUpdate,
 } from 'y-protocols/awareness';
 import type { DecorationSet } from '@tiptap/pm/view';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { renderHook } from '@testing-library/react';
 import { NodeRangeSelection } from '@tiptap/extension-node-range';
 import {
   caretTo,
@@ -56,6 +58,8 @@ import {
   insertSiblingTabsInDoc,
 } from './components/tabs/utils/tab-operations';
 import { destroyEditorWithYSyncCleanup } from './utils/y-prosemirror-cleanup';
+import { useExtensionSyncWithCollaboration } from './hooks/use-tab-editor';
+import type { CollaborationProps } from './sync-local/types';
 
 // Probes for TIPTAP_UPGRADE.md §5.10 (y-tiptap 3.0.1 -> 3.3.0) and Review
 // Focus 3. Undo grouping uses a one-minute captureTimeout (lib0 reads a
@@ -226,11 +230,10 @@ describe.each([1, 2])('schema v%i', (version) => {
   });
 
   describe('remote caret', () => {
-    // §5.10.1: B's caret right after "A" is item-based; deleting "A" leaves
-    // it at the first text position (2 in v1, 1 in v2), which 3.0.6-3.0.9
-    // resolved to null.
-    it('renders B’s caret on A at the first text position', async () => {
-      const { a, b } = twoClients(version);
+    /** Two clients whose awareness flows B -> A, as sync-local relays it. */
+    const awarenessPair = (version: number) => {
+      const clients = twoClients(version);
+      const { a, b } = clients;
       const docOf = (editor: Editor) =>
         ySyncPluginKey.getState(editor.state).doc as Y.Doc;
       const awA = new Awareness(docOf(a));
@@ -250,8 +253,6 @@ describe.each([1, 2])('schema v%i', (version) => {
           );
         },
       );
-      a.registerPlugin(yCursorPlugin(awA));
-
       // What B's yCursorPlugin publishes while B has focus (jsdom has none).
       const publishCaret = (pos: number) => {
         const sync = ySyncPluginKey.getState(b.state);
@@ -266,6 +267,17 @@ describe.each([1, 2])('schema v%i', (version) => {
         (yCursorPluginKey.getState(a.state) as DecorationSet)
           .find(undefined, undefined, (spec) => spec.key === `${awB.clientID}`)
           .map((decoration) => decoration.from);
+      return { ...clients, awA, awB, publishCaret, caretsOnA };
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    // §5.10.1: B's caret right after "A" is item-based; deleting "A" leaves
+    // it at the first text position (2 in v1, 1 in v2), which 3.0.6-3.0.9
+    // resolved to null.
+    it('renders B’s caret on A at the first text position', async () => {
+      const { a, b, awA, awB, publishCaret, caretsOnA } =
+        awarenessPair(version);
+      a.registerPlugin(yCursorPlugin(awA));
 
       const first = startOf(b, 'Alpha');
       awB.setLocalStateField('user', { name: 'B', color: '#30bced' });
@@ -277,6 +289,133 @@ describe.each([1, 2])('schema v%i', (version) => {
       nativeDelete(b, first, first + 1);
       expect(blockTexts(a)).toBe('lpha / Beta / Gamma / Delta');
       expect(caretsOnA()).toEqual([first]);
+    });
+
+    // §5.10.3 cursor rebuild: use-tab-editor rebuilds yCursorPlugin from its
+    // spec.state.init/apply, props and view and only re-runs apply when a
+    // remote cursor changed (awarenessUpdated meta).
+    it('renders B’s caret through use-tab-editor’s rebuilt cursor plugin', async () => {
+      const { a, b, umA, awA, awB, publishCaret, caretsOnA } =
+        awarenessPair(version);
+      const observers = (awareness: Awareness) =>
+        (awareness as unknown as { _observers: Map<string, Set<unknown>> })
+          ._observers;
+      const changeListeners = () => observers(awA).get('change')?.size ?? 0;
+      const baseline = changeListeners();
+      const cleanupRef = { current: () => {} };
+      const collaboration = {
+        enabled: true,
+        session: { username: 'A' },
+      } as unknown as CollaborationProps;
+      const { unmount } = renderHook(() =>
+        useExtensionSyncWithCollaboration({
+          editor: a,
+          isReady: true,
+          awareness: awA,
+          collaboration,
+          collaborationCleanupRef: cleanupRef,
+        }),
+      );
+      const cursorPlugins = () =>
+        a.state.plugins.filter((plugin) =>
+          String((plugin as unknown as { key: string }).key).startsWith(
+            'yjs-cursor$',
+          ),
+        ).length;
+      expect(cursorPlugins()).toBe(1);
+      expect(changeListeners()).toBe(baseline + 1);
+      expect(awA.getLocalState()?.user?.name).toBe('A');
+
+      const first = startOf(b, 'Alpha');
+      awB.setLocalStateField('user', { name: 'B', color: '#30bced' });
+      publishCaret(first + 1);
+      await tick();
+      expect(caretsOnA()).toEqual([first + 1]);
+      const caret = a.view.dom.querySelector('.collaboration-cursor__caret');
+      expect(caret?.textContent).toBe('B');
+
+      // An awareness change that moves no cursor keeps the same decorations.
+      const before = yCursorPluginKey.getState(a.state);
+      awB.setLocalStateField('socketId', 'probe');
+      await tick();
+      expect(yCursorPluginKey.getState(a.state)).toBe(before);
+
+      // Remote edits only map the decorations (our apply skips the
+      // isChangeOrigin re-render), so a caret inside a replaced range is
+      // dropped until B's cursor moves.
+      const shown: string[] = [];
+      nativeDelete(b, first, first + 1);
+      shown.push(`B deletes the char before its caret: ${caretsOnA()}`);
+      const gamma = endOf(b, 'Gamma');
+      publishCaret(gamma);
+      await tick();
+      shown.push(`B moves to the end of Gamma (${gamma}): ${caretsOnA()}`);
+      caretTo(b, endOf(b, 'Beta'));
+      type(b, 'x');
+      shown.push(`B types in Beta: ${caretsOnA()}`);
+      expect(shown).toMatchSnapshot();
+
+      // registerPlugin re-created every plugin view; A's undo still works.
+      caretTo(a, endOf(a, 'Gamma'));
+      type(a, '!');
+      umA.stopCapturing();
+      expect(blockTexts(a)).toBe('lpha / Betax / Gamma! / Delta');
+      mod(a, 'z');
+      expect(blockTexts(a)).toBe('lpha / Betax / Gamma / Delta');
+
+      unmount();
+      expect(cursorPlugins()).toBe(0);
+      expect(changeListeners()).toBe(baseline);
+      expect(yCursorPluginKey.getState(a.state)).toBeUndefined();
+      // Fields left in A's awareness after the plugin view is destroyed.
+      expect(Object.keys(awA.getLocalState() ?? {}).sort()).toMatchSnapshot();
+    });
+  });
+
+  describe('binding lifecycle', () => {
+    const listenerCounts = (ydoc: Y.Doc, fragment: Y.XmlFragment) => {
+      const observers = (
+        ydoc as unknown as { _observers: Map<string, Set<unknown>> }
+      )._observers;
+      const counts: Record<string, number> = {};
+      observers.forEach((set, name) => {
+        if (set.size > 0) counts[name] = set.size;
+      });
+      const deep = (fragment as unknown as { _dEH: { l: unknown[] } })._dEH.l;
+      return { ...counts, observeDeep: deep.length };
+    };
+
+    // §5.10.3: our cleanup (tab eviction) must leave no y-tiptap listener on
+    // the shared Y.Doc, also after registerPlugin re-created the plugin views.
+    it('destroyEditorWithYSyncCleanup returns Y.Doc listeners to baseline', () => {
+      const ydoc = new Y.Doc();
+      const fragment = ydoc.getXmlFragment('default');
+      const baseline = listenerCounts(ydoc, fragment);
+      const editor = makeEditor(version, '<p>abc</p>', { ydoc });
+      expect(ySyncPluginKey.getState(editor.state).type).toBe(fragment);
+      const key = new PluginKey('lifecycleProbe');
+      editor.registerPlugin(new Plugin({ key }));
+      editor.unregisterPlugin(key);
+
+      destroyEditorWithYSyncCleanup(editor);
+      (editor.options.element as Element).remove();
+      const after = listenerCounts(ydoc, fragment);
+      const names = [
+        'beforeAllTransactions',
+        'afterAllTransactions',
+        'afterTransaction',
+        'observeDeep',
+      ] as const;
+      names.forEach((name) => {
+        expect([name, after[name] ?? 0]).toEqual([name, baseline[name] ?? 0]);
+      });
+      // Any other listener left behind (name: count above baseline).
+      const leftover = Object.fromEntries(
+        Object.entries(after)
+          .map(([name, count]) => [name, count - (baseline[name] ?? 0)])
+          .filter(([, delta]) => delta !== 0),
+      );
+      expect(leftover).toMatchSnapshot();
     });
   });
 

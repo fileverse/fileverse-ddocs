@@ -160,8 +160,8 @@ function getSuggestionAddPointOverrides(
 ): Y.Map<Uint8Array> | null {
   const syncState = ySyncPluginKey.getState(state);
   if (!syncState?.binding) return null;
-  const field = [...syncState.doc.share].find(
-    ([, sharedType]) => sharedType === syncState.type,
+  const field = [...syncState.doc.share].find(([, sharedType]) =>
+    Object.is(sharedType, syncState.type),
   )?.[0];
   if (!field) return null;
   const root = syncState.doc.getMap(SUGGESTION_ADD_POINT_OVERRIDES) as Y.Map<
@@ -218,7 +218,7 @@ export function resolveSuggestionAddPointInState(
     return null;
   const acceptedPoint: Uint8Array | undefined = ySyncPluginKey
     .getState(state)
-    ?.doc.getMap(ACCEPTED_BREAK_POINTS)
+    ?.doc.getMap<Uint8Array>(ACCEPTED_BREAK_POINTS)
     .get(parent.id);
   if (acceptedPoint) {
     return resolveCommentAnchorPointInState(

@@ -2017,7 +2017,7 @@ interface UseExtensionSyncWithCollaborationArgs {
   collaborationCleanupRef: MutableRefObject<() => void>;
 }
 
-const useExtensionSyncWithCollaboration = ({
+export const useExtensionSyncWithCollaboration = ({
   editor,
   isReady,
   awareness,
@@ -2044,7 +2044,8 @@ const useExtensionSyncWithCollaboration = ({
     awareness.setLocalStateField('user', user);
 
     const originalPlugin = yCursorPlugin(awareness, {
-      cursorBuilder: getCursor,
+      cursorBuilder: ({ name, color, isEns }) =>
+        getCursor({ name, color, isEns: !!isEns }),
     });
     // Track last known cursor positions per client to avoid unnecessary
     // decoration recreation (which causes cursor DOM flicker).

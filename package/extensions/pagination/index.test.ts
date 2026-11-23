@@ -283,13 +283,29 @@ describe.each([
     expect(() => paragraphAt(LONG)).not.toThrow();
   });
 
-  it('control: a transaction with addToHistory false would split the undo step', () => {
+  // Controls for the test above: y-tiptap splits the user's undo group only
+  // for an addToHistory-false transaction that changes the document.
+  it('control: a doc-changing addToHistory false transaction splits the undo step', () => {
+    const end = paragraphAt('one') + 4;
+    typeAt(end, 'A');
+    editor.view.dispatch(
+      editor.state.tr
+        .insertText('X', paragraphAt('two') + 4)
+        .setMeta('addToHistory', false),
+    );
+    typeAt(end + 1, 'B');
+    editor.commands.undo();
+    expect(() => paragraphAt('oneA')).not.toThrow();
+    expect(() => paragraphAt('twoX')).not.toThrow();
+  });
+
+  it('control: a steps-less addToHistory false transaction does not split the undo step', () => {
     const end = paragraphAt('one') + 4;
     typeAt(end, 'A');
     editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false));
     typeAt(end + 1, 'B');
     editor.commands.undo();
-    expect(() => paragraphAt('oneA')).not.toThrow();
+    expect(() => paragraphAt('one')).not.toThrow();
   });
 
   it('enabled:false clears spacers in one step-less transaction', () => {
