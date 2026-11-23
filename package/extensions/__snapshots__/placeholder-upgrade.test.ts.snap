@@ -2,7 +2,6 @@
 
 exports[`Placeholder classes (§5.8) > schema v1 > empty document 1`] = `
 [
-  "div[is-empty is-editor-empty]",
   "div>div>p[is-empty is-editor-empty]",
 ]
 `;
@@ -11,7 +10,6 @@ exports[`Placeholder classes (§5.8) > schema v1 > empty heading under the caret
 {
   "away": [],
   "under": [
-    "div[is-empty]",
     "div>div>h2[is-empty]",
   ],
 }
@@ -21,9 +19,6 @@ exports[`Placeholder classes (§5.8) > schema v1 > empty paragraph in a list ite
 {
   "away": [],
   "under": [
-    "div[is-empty]",
-    "div>div>ul[is-empty]",
-    "div>div>ul>li[is-empty]",
     "div>div>ul>li>p[is-empty]",
   ],
 }
@@ -33,7 +28,6 @@ exports[`Placeholder classes (§5.8) > schema v1 > empty paragraph in a second l
 {
   "away": [],
   "under": [
-    "div>div>ul>li[is-empty]",
     "div>div>ul>li>p[is-empty]",
   ],
 }
@@ -43,8 +37,7 @@ exports[`Placeholder classes (§5.8) > schema v1 > empty paragraph in a table ce
 {
   "away": [],
   "under": [
-    "div>div>div>table>tbody>tr>td[is-empty]",
-    "div>div>div>table>tbody>tr>td>p[is-empty]",
+    "div>div>div>table>tbody>tr>td>div>p[is-empty]",
   ],
 }
 `;
@@ -53,7 +46,6 @@ exports[`Placeholder classes (§5.8) > schema v1 > empty paragraph under the car
 {
   "away": [],
   "under": [
-    "div[is-empty]",
     "div>div>p[is-empty]",
   ],
 }
@@ -78,8 +70,6 @@ exports[`Placeholder classes (§5.8) > schema v2 > empty paragraph in a list ite
 {
   "away": [],
   "under": [
-    "ul[is-empty]",
-    "ul>li[is-empty]",
     "ul>li>p[is-empty]",
   ],
 }
@@ -89,7 +79,6 @@ exports[`Placeholder classes (§5.8) > schema v2 > empty paragraph in a second l
 {
   "away": [],
   "under": [
-    "ul>li[is-empty]",
     "ul>li>p[is-empty]",
   ],
 }
@@ -99,8 +88,7 @@ exports[`Placeholder classes (§5.8) > schema v2 > empty paragraph in a table ce
 {
   "away": [],
   "under": [
-    "div>table>tbody>tr>td[is-empty]",
-    "div>table>tbody>tr>td>p[is-empty]",
+    "div>table>tbody>tr>td>div>p[is-empty]",
   ],
 }
 `;

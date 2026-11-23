@@ -9,7 +9,7 @@ exports[`pagination upgrade probes, schema v1 > dispatches at most one spacer tr
 
 exports[`pagination upgrade probes, schema v1 > keeps one mask per page boundary when the editor prop is swapped 1`] = `
 {
-  "flushSyncWarning": true,
+  "flushSyncWarning": false,
 }
 `;
 
@@ -63,7 +63,7 @@ exports[`pagination upgrade probes, schema v2 > dispatches at most one spacer tr
 
 exports[`pagination upgrade probes, schema v2 > keeps one mask per page boundary when the editor prop is swapped 1`] = `
 {
-  "flushSyncWarning": true,
+  "flushSyncWarning": false,
 }
 `;
 

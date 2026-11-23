@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Node, mergeAttributes, ReactNodeViewRenderer } from '@tiptap/react';
+import { Node, mergeAttributes } from '@tiptap/react';
+import { CoverSelectionNodeViewRenderer } from '../cover-selection-node-view';
 import { AIWriterNodeView } from './ai-writer-node-view';
 
 export interface AIWriterOptions {
@@ -72,7 +73,7 @@ export const AIWriter = Node.create<AIWriterOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(AIWriterNodeView);
+    return CoverSelectionNodeViewRenderer(AIWriterNodeView);
   },
 
   addCommands() {

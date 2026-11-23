@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core';
-import { ReactNodeViewRenderer } from '@tiptap/react';
+import { CoverSelectionNodeViewRenderer } from '../cover-selection-node-view';
 import { getResizableMediaNodeView } from './resizable-media-node-view';
 import { getMediaPasteDropPlugin } from './media-paste-drop-plugin';
 import UploadImagesPlugin from '../../utils/upload-images';
@@ -381,7 +381,7 @@ export const ResizableMedia = Node.create<MediaOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(
+    return CoverSelectionNodeViewRenderer(
       getResizableMediaNodeView(
         this.options.ipfsImageFetchFn,
         this.options.fetchV1ImageFn,

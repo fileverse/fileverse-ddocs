@@ -2,6 +2,7 @@ import { Editor } from '@tiptap/react';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 import { DecorationSet } from '@tiptap/pm/view';
 import { collectLeaves, SPACER_CLASS } from './collect-leaves';
+import { mountEditorContent } from '../../utils/mount-editor-content';
 import type { Spacer } from './place';
 import {
   buildSpacerDecorations,
@@ -113,6 +114,8 @@ describe.each([1, 2])('row spacers, schema v%i', (schemaVersion) => {
       extensions: getHeadlessExtensions({ schemaVersion }),
     });
     editor.commands.setContent(TABLE(header));
+    // Table cells are React node views (mount-editor-content.ts).
+    mountEditorContent(editor);
   };
   afterEach(() => editor.destroy());
 

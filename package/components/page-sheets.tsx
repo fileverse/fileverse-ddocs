@@ -81,6 +81,14 @@ const alignDesk = (
 
 const noop = () => () => {};
 
+const createMasksLayer = () => {
+  if (typeof document === 'undefined') return null;
+  const layer = document.createElement('div');
+  layer.className = 'ddoc-page-masks';
+  layer.setAttribute('aria-hidden', 'true');
+  return layer;
+};
+
 // el's unscaled offset within `layer`, summed along the offsetParent chain.
 const offsetWithin = (el: HTMLElement, layer: HTMLElement | null) => {
   let top = 0;
@@ -122,7 +130,9 @@ export function PageSheets({
   );
   const { scale } = useZoom();
   const ref = useRef<HTMLDivElement>(null);
-  const masksRef = useRef<HTMLDivElement>(null);
+  // EditorContent moves every child of view.dom's parent on mount and unmount,
+  // so React must not own the masks' node there; it only renders into it.
+  const [masksLayer] = useState(createMasksLayer);
   const [origin, setOrigin] = useState(0);
   // The masks live in view.dom's parent: it is a stacking context (index.css),
   // and the drag handle, media toolbar and carets stack inside it.
@@ -135,6 +145,14 @@ export function PageSheets({
   const cycle = grid.height + PAGE_GAP;
   const hasDesk = !!deskStyle;
   const deskKey = deskStyle ? JSON.stringify(deskStyle) : '';
+
+  const showMasks = !!editor && !!pageCount && !!host;
+  useLayoutEffect(() => {
+    if (!masksLayer) return;
+    if (!showMasks || !host) masksLayer.remove();
+    else if (masksLayer.parentNode !== host) host.appendChild(masksLayer);
+  });
+  useLayoutEffect(() => () => masksLayer?.remove(), [masksLayer]);
 
   const measure = useCallback(() => {
     const layer = ref.current?.parentElement ?? null;
@@ -150,7 +168,7 @@ export function PageSheets({
       setHostLeft(at.left);
     }
     const scroller = getEditorScrollContainer({ targetElement: dom });
-    if (hasDesk) alignDesk(masksRef.current, scroller, scale);
+    if (hasDesk) alignDesk(masksLayer, scroller, scale);
     if (!scroller) {
       setFirst(0);
       setLast(pageCount - 1);
@@ -170,7 +188,7 @@ export function PageSheets({
     });
     setFirst(a);
     setLast(b);
-  }, [editor, pageCount, scale, cycle, hasDesk]);
+  }, [editor, pageCount, scale, cycle, hasDesk, masksLayer]);
 
   useLayoutEffect(() => {
     if (!pageCount || !editor || editor.isDestroyed) return;
@@ -205,11 +223,22 @@ export function PageSheets({
     if (!deskKey || !editor || editor.isDestroyed) return;
     const dom = editor.view.dom as HTMLElement;
     alignDesk(
-      masksRef.current,
+      masksLayer,
       getEditorScrollContainer({ targetElement: dom }),
       scale,
     );
-  }, [deskKey, editor, scale, first, last, origin, host, hostTop, startKinds]);
+  }, [
+    deskKey,
+    editor,
+    scale,
+    first,
+    last,
+    origin,
+    host,
+    hostTop,
+    startKinds,
+    masksLayer,
+  ]);
 
   if (!editor || !pageCount) return null;
 
@@ -269,13 +298,7 @@ export function PageSheets({
       <div ref={ref} className="ddoc-page-sheets" aria-hidden="true">
         {sheets}
       </div>
-      {host &&
-        createPortal(
-          <div ref={masksRef} className="ddoc-page-masks" aria-hidden="true">
-            {masks}
-          </div>,
-          host,
-        )}
+      {showMasks && masksLayer && createPortal(masks, masksLayer)}
     </>
   );
 }

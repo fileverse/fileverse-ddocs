@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { cleanup } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import { Selection } from '@tiptap/pm/state';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -10,6 +11,7 @@ import {
 } from '../caret-marks/test-helpers';
 import { shape } from '../list-toggle/test-helpers';
 import { CustomCodeBlockLowlight } from './custom-code-block-lowlight';
+import { mountEditorContent as mounted } from '../../utils/mount-editor-content';
 
 // Probes for TIPTAP_UPGRADE.md §5.9 (the lowlight wrapper) and the §5.18 code
 // block ArrowUp row. CustomCodeBlockLowlight wraps the upstream lowlight
@@ -73,6 +75,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  cleanup();
   destroyTracked();
   restore?.();
   restore = null;
@@ -111,7 +114,7 @@ const defineSuite = (version: number) => {
   describe(`schema v${version}`, () => {
     it('typing 50 blocks away never enters the upstream apply', () => {
       countUpstreamApply();
-      const editor = track(makeEditor(version, CODE + FILLER));
+      const editor = track(mounted(makeEditor(version, CODE + FILLER)));
       const before = tokens(editor);
       expect(before.length).toBeGreaterThan(0);
       upstreamCalls = 0;
@@ -126,7 +129,7 @@ const defineSuite = (version: number) => {
 
     it('typing inside the code block enters the upstream apply and keeps highlights', () => {
       countUpstreamApply();
-      const editor = track(makeEditor(version, CODE + FILLER));
+      const editor = track(mounted(makeEditor(version, CODE + FILLER)));
       upstreamCalls = 0;
 
       const at = endOfText(editor, 'const a = 1;');
@@ -140,9 +143,11 @@ const defineSuite = (version: number) => {
     it('a language change re-highlights', () => {
       countUpstreamApply();
       const editor = track(
-        makeEditor(
-          version,
-          '<pre><code class="language-javascript">def f(): pass</code></pre><p>tail</p>',
+        mounted(
+          makeEditor(
+            version,
+            '<pre><code class="language-javascript">def f(): pass</code></pre><p>tail</p>',
+          ),
         ),
       );
       const before = tokens(editor);
@@ -166,7 +171,7 @@ const defineSuite = (version: number) => {
 
     it('inserting a code block enters the upstream apply and highlights it', () => {
       countUpstreamApply();
-      const editor = track(makeEditor(version, '<p>head</p>'));
+      const editor = track(mounted(makeEditor(version, '<p>head</p>')));
       upstreamCalls = 0;
 
       editor.commands.insertContentAt(editor.state.doc.content.size, {
@@ -184,7 +189,7 @@ const defineSuite = (version: number) => {
       ['the end of a paragraph', '<p>head</p>'],
     ])('pasting a code block into %s', async (_name, start) => {
       countUpstreamApply();
-      const editor = track(makeEditor(version, start));
+      const editor = track(mounted(makeEditor(version, start)));
       editor.commands.setTextSelection(
         Selection.atStart(editor.state.doc).$from.end(),
       );
@@ -207,7 +212,7 @@ const defineSuite = (version: number) => {
 
     it('a selection-only change enters the upstream apply 0 times', () => {
       countUpstreamApply();
-      const editor = track(makeEditor(version, CODE + FILLER));
+      const editor = track(mounted(makeEditor(version, CODE + FILLER)));
       upstreamCalls = 0;
 
       editor.commands.setTextSelection(endOfText(editor, 'const a = 1;'));

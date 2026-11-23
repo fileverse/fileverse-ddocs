@@ -1,5 +1,5 @@
 import { mergeAttributes, Node } from '@tiptap/core';
-import { ReactNodeViewRenderer } from '@tiptap/react';
+import { CoverSelectionNodeViewRenderer } from '../../cover-selection-node-view';
 
 import { TableCellNodeView } from '../extension-table-cell/table-cell-node-view';
 
@@ -55,7 +55,7 @@ export const TableHeader = Node.create<TableHeaderOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(TableCellNodeView, {
+    return CoverSelectionNodeViewRenderer(TableCellNodeView, {
       as: 'th',
       className: 'relative',
     });

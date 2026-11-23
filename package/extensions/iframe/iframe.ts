@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Node, mergeAttributes } from '@tiptap/core';
-import { ReactNodeViewRenderer } from '@tiptap/react';
+import { CoverSelectionNodeViewRenderer } from '../cover-selection-node-view';
 import { getResizableMediaNodeView } from '../resizable-media/resizable-media-node-view';
 import { IpfsImageFetchPayload } from '../../types';
 import { isAllowedEmbedSrc } from '../../utils/is-allowed-embed-src';
@@ -93,7 +93,7 @@ export const Iframe = Node.create<IframeOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(
+    return CoverSelectionNodeViewRenderer(
       getResizableMediaNodeView(
         this.options.ipfsImageFetchFn,
         this.options.fetchV1ImageFn,

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
+import { mountEditorContent } from '../utils/mount-editor-content';
 import {
   destroyTracked,
   makeEditor,
@@ -14,7 +16,10 @@ import {
 // presentation-mode.tsx), so a snapshot of which elements carry them is what
 // the visible placeholders depend on.
 
-afterEach(destroyTracked);
+afterEach(() => {
+  cleanup();
+  destroyTracked();
+});
 
 const PLACEHOLDER = /^is-(editor-)?empty$/;
 
@@ -48,8 +53,9 @@ const emptyBlockPos = (editor: Editor) => {
   return found;
 };
 
+// Mounted, so the React table cell renders its content (mount-editor-content.ts).
 const probe = (version: number, html: string) => {
-  const editor = track(makeEditor(version, html));
+  const editor = mountEditorContent(track(makeEditor(version, html)));
   const inside = emptyBlockPos(editor);
   caretIn(editor, inside);
   const under = marked(editor);
