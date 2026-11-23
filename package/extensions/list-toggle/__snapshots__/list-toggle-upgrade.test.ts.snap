@@ -175,6 +175,30 @@ exports[`list Backspace, §5.2 (schema v1) > at the start of a non-first item, w
 }
 `;
 
+exports[`list Backspace, §5.2 (schema v1) > reaching upstream: a range spanning two items 1`] = `
+{
+  "anchors": "caa:a ccc:cc",
+  "handled": true,
+  "shape": "D(ul(li(p("ab")) li(p("cc")))) D(p())",
+}
+`;
+
+exports[`list Backspace, §5.2 (schema v1) > reaching upstream: offset 0 of a paragraph right after a list 1`] = `
+{
+  "anchors": "caa:aa cbb:bb",
+  "handled": true,
+  "shape": "D(ul(li(p("aa")) li(p("bbpp")))) D(p())",
+}
+`;
+
+exports[`list Backspace, §5.2 (schema v1) > reaching upstream: offset 0 of a second paragraph in a non-first item 1`] = `
+{
+  "anchors": "caa:aa cbb:bb",
+  "handled": true,
+  "shape": "D(ul(li(p("aa")) li(p("bbcc")))) D(p())",
+}
+`;
+
 exports[`list Backspace, §5.2 (schema v2) > at the start of a non-first item, last item after a sublist 1`] = `
 {
   "handled": true,
@@ -193,6 +217,30 @@ exports[`list Backspace, §5.2 (schema v2) > at the start of a non-first item, w
 {
   "handled": true,
   "shape": "ul(li(p("aa"))) p("bb") ul(li(p("cc"))) p()",
+}
+`;
+
+exports[`list Backspace, §5.2 (schema v2) > reaching upstream: a range spanning two items 1`] = `
+{
+  "anchors": "caa:a ccc:cc",
+  "handled": true,
+  "shape": "ul(li(p("ab")) li(p("cc"))) p()",
+}
+`;
+
+exports[`list Backspace, §5.2 (schema v2) > reaching upstream: offset 0 of a paragraph right after a list 1`] = `
+{
+  "anchors": "caa:aa cbb:bb",
+  "handled": true,
+  "shape": "ul(li(p("aa")) li(p("bbpp"))) p()",
+}
+`;
+
+exports[`list Backspace, §5.2 (schema v2) > reaching upstream: offset 0 of a second paragraph in a non-first item 1`] = `
+{
+  "anchors": "caa:aa",
+  "handled": true,
+  "shape": "ul(li(p("aa"))) p("bb") p("cc") p()",
 }
 `;
 

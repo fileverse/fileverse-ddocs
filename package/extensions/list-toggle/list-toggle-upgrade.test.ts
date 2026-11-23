@@ -118,6 +118,47 @@ describe.each([1, 2])('list Backspace, §5.2 (schema v%i)', (version) => {
     expect({ handled, shape: shape(editor) }).toMatchSnapshot();
     expectValid(editor, version);
   });
+
+  // Our Backspace handler only takes offset 0 of an item's first paragraph, so
+  // these reach upstream's handleBackspace; anchors are the §5.16 check.
+  it.each([
+    [
+      'offset 0 of a second paragraph in a non-first item',
+      '<ul><li><p>aa</p></li><li><p>bb</p><p>cc</p></li></ul>',
+      (editor: Editor) => caretAtStart(editor, 'cc'),
+    ],
+    [
+      'a range spanning two items',
+      LIST3,
+      (editor: Editor) =>
+        editor.commands.setTextSelection({
+          from: endOf(editor, 'aa') - 1,
+          to: startOf(editor, 'bb') + 1,
+        }),
+    ],
+    [
+      'offset 0 of a paragraph right after a list',
+      '<ul><li><p>aa</p></li><li><p>bb</p></li></ul><p>pp</p>',
+      (editor: Editor) => caretAtStart(editor, 'pp'),
+    ],
+  ])('reaching upstream: %s', (_name, html, place) => {
+    const h = makeListEditor(version, html);
+    ['aa', 'bb', 'cc', 'pp'].forEach((text) => {
+      try {
+        addComment(h, `c${text}`, text);
+      } catch {
+        // text not in this fixture
+      }
+    });
+    place(h.editor);
+    const handled = pressKey(h.editor, 'Backspace');
+    expect({
+      handled,
+      shape: shape(h.editor),
+      anchors: resolvedAnchors(h),
+    }).toMatchSnapshot();
+    expectValid(h.editor, version);
+  });
 });
 
 describe.each([1, 2])('list Delete, §5.2 and §5.16 (schema v%i)', (version) => {
