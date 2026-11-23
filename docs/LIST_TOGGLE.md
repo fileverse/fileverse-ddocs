@@ -175,6 +175,10 @@ a caret inside the text, a paragraph after a list). `ListToggle` is
 registered after StarterKit, so its keymap runs before `ListKeymap`'s. v1's
 dBlock Backspace list branch is gone; its page-break case stays.
 
+Right after a list shortcut (`- `, `1. `, `[ ] `), Backspace first runs
+`undoInputRule`, so the typed marker comes back as plain text in a paragraph,
+caret after it, as headings and quotes do on Tiptap 3.34.
+
 ### 3.9 Markers follow the item's font (TEC-3110)
 
 Markers are the browser's `::marker` (bullets, top-level numbers) and
