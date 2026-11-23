@@ -23,16 +23,16 @@ exports[`schema v1 (dBlock) > bold ("**bold**") > retype, then undoInputRule dir
   "afterType": "doc(dBlock(paragraph("bold"[bold])))",
   "afterUndoInputRule": "doc(dBlock(paragraph("**bold**")))",
   "handled": true,
-  "undoSteps": 1,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > bold ("**bold**") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(paragraph("bold"[bold])))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("**bold**")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -47,24 +47,24 @@ exports[`schema v1 (dBlock) > bullet list ("- ") > retype, then Backspace 1`] = 
 exports[`schema v1 (dBlock) > bullet list ("- ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(dBlock(bulletList(listItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndoInputRule": "doc(dBlock(bulletList(listItem(paragraph()))) dBlock(paragraph()))",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(dBlock(paragraph("- ")))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > bullet list ("- ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(bulletList(listItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("- ")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > heading ("# ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(dBlock(paragraph()) dBlock(paragraph()))",
+  "afterBackspace": "doc(dBlock(paragraph("# ")))",
   "afterType": "doc(dBlock(heading1()) dBlock(paragraph()))",
   "backspaceHandled": true,
 }
@@ -73,18 +73,18 @@ exports[`schema v1 (dBlock) > heading ("# ") > retype, then Backspace 1`] = `
 exports[`schema v1 (dBlock) > heading ("# ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(dBlock(heading1()) dBlock(paragraph()))",
-  "afterUndoInputRule": "doc(dBlock(heading1()) dBlock(paragraph()))",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(dBlock(paragraph("# ")))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > heading ("# ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(heading1()) dBlock(paragraph()))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("# ")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -99,18 +99,18 @@ exports[`schema v1 (dBlock) > ordered list ("1. ") > retype, then Backspace 1`] 
 exports[`schema v1 (dBlock) > ordered list ("1. ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(dBlock(orderedList(listItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndoInputRule": "doc(dBlock(orderedList(listItem(paragraph()))) dBlock(paragraph()))",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(dBlock(paragraph("1. ")))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > ordered list ("1. ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(orderedList(listItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("1. ")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -183,7 +183,7 @@ exports[`schema v1 (dBlock) > paste > pasting inline content at the end of a bol
 
 exports[`schema v1 (dBlock) > quote ("> ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(dBlock(paragraph()) dBlock(paragraph()))",
+  "afterBackspace": "doc(dBlock(paragraph("> ")))",
   "afterType": "doc(dBlock(blockquote(paragraph())) dBlock(paragraph()))",
   "backspaceHandled": true,
 }
@@ -192,18 +192,18 @@ exports[`schema v1 (dBlock) > quote ("> ") > retype, then Backspace 1`] = `
 exports[`schema v1 (dBlock) > quote ("> ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(dBlock(blockquote(paragraph())) dBlock(paragraph()))",
-  "afterUndoInputRule": "doc(dBlock(blockquote(paragraph())) dBlock(paragraph()))",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(dBlock(paragraph("> ")))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > quote ("> ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(blockquote(paragraph())) dBlock(paragraph()))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("> ")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -230,18 +230,18 @@ exports[`schema v1 (dBlock) > task list ("[ ] ") > retype, then Backspace 1`] = 
 exports[`schema v1 (dBlock) > task list ("[ ] ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(dBlock(taskList(taskItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndoInputRule": "doc(dBlock(taskList(taskItem(paragraph()))) dBlock(paragraph()))",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(dBlock(paragraph("[ ] ")))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v1 (dBlock) > task list ("[ ] ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(dBlock(taskList(taskItem(paragraph()))) dBlock(paragraph()))",
-  "afterUndo": "doc(dBlock(paragraph()))",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(dBlock(paragraph("[ ] ")))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -268,16 +268,16 @@ exports[`schema v2 (flat) > bold ("**bold**") > retype, then undoInputRule direc
   "afterType": "doc(paragraph("bold"[bold]))",
   "afterUndoInputRule": "doc(paragraph("**bold**"))",
   "handled": true,
-  "undoSteps": 1,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > bold ("**bold**") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(paragraph("bold"[bold]))",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("**bold**"))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -292,24 +292,24 @@ exports[`schema v2 (flat) > bullet list ("- ") > retype, then Backspace 1`] = `
 exports[`schema v2 (flat) > bullet list ("- ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(bulletList(listItem(paragraph())) paragraph())",
-  "afterUndoInputRule": "doc(bulletList(listItem(paragraph())) paragraph())",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(paragraph("- "))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > bullet list ("- ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(bulletList(listItem(paragraph())) paragraph())",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("- "))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > heading ("# ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(paragraph() paragraph())",
+  "afterBackspace": "doc(paragraph("# "))",
   "afterType": "doc(heading1() paragraph())",
   "backspaceHandled": true,
 }
@@ -318,18 +318,18 @@ exports[`schema v2 (flat) > heading ("# ") > retype, then Backspace 1`] = `
 exports[`schema v2 (flat) > heading ("# ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(heading1() paragraph())",
-  "afterUndoInputRule": "doc(heading1() paragraph())",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(paragraph("# "))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > heading ("# ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(heading1() paragraph())",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("# "))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -344,18 +344,18 @@ exports[`schema v2 (flat) > ordered list ("1. ") > retype, then Backspace 1`] = 
 exports[`schema v2 (flat) > ordered list ("1. ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(orderedList(listItem(paragraph())) paragraph())",
-  "afterUndoInputRule": "doc(orderedList(listItem(paragraph())) paragraph())",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(paragraph("1. "))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > ordered list ("1. ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(orderedList(listItem(paragraph())) paragraph())",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("1. "))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -428,7 +428,7 @@ exports[`schema v2 (flat) > paste > pasting inline content at the end of a bold 
 
 exports[`schema v2 (flat) > quote ("> ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(paragraph() paragraph())",
+  "afterBackspace": "doc(paragraph("> "))",
   "afterType": "doc(blockquote(paragraph()) paragraph())",
   "backspaceHandled": true,
 }
@@ -437,18 +437,18 @@ exports[`schema v2 (flat) > quote ("> ") > retype, then Backspace 1`] = `
 exports[`schema v2 (flat) > quote ("> ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(blockquote(paragraph()) paragraph())",
-  "afterUndoInputRule": "doc(blockquote(paragraph()) paragraph())",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(paragraph("> "))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > quote ("> ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(blockquote(paragraph()) paragraph())",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("> "))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;
 
@@ -475,17 +475,17 @@ exports[`schema v2 (flat) > task list ("[ ] ") > retype, then Backspace 1`] = `
 exports[`schema v2 (flat) > task list ("[ ] ") > retype, then undoInputRule directly (upstream path) 1`] = `
 {
   "afterType": "doc(taskList(taskItem(paragraph())) paragraph())",
-  "afterUndoInputRule": "doc(taskList(taskItem(paragraph())) paragraph())",
-  "handled": false,
-  "undoSteps": 1,
+  "afterUndoInputRule": "doc(paragraph("[ ] "))",
+  "handled": true,
+  "undoSteps": 2,
 }
 `;
 
 exports[`schema v2 (flat) > task list ("[ ] ") > type, then Mod-Z 1`] = `
 {
   "afterType": "doc(taskList(taskItem(paragraph())) paragraph())",
-  "afterUndo": "doc(paragraph())",
-  "undoStackAfter": 0,
-  "undoSteps": 1,
+  "afterUndo": "doc(paragraph("[ ] "))",
+  "undoStackAfter": 1,
+  "undoSteps": 2,
 }
 `;

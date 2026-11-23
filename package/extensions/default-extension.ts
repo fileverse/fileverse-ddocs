@@ -39,7 +39,7 @@ import { Plugin } from '@tiptap/pm/state';
 import { type Editor, InputRule } from '@tiptap/core';
 import { actionButton } from './action-button';
 import { Markdown } from 'tiptap-markdown';
-import Typography from '@tiptap/extension-typography';
+import { Typography } from './typography';
 import MarkdownPasteHandler from './mardown-paste-handler';
 import HtmlExportExtension from './html-export';
 import TextExportExtension from './text-export';

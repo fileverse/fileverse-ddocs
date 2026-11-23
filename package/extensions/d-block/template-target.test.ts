@@ -77,13 +77,15 @@ describe.each([1, 2])(
       ).toBeNull();
 
       pressBackspace(editor);
-      // Backspace turns the heading back into a paragraph, but nothing removes
-      // the trailing residue: the doc stays at two blank paragraphs.
+      // Since Tiptap 3.34 Backspace undoes the input rule: one paragraph with
+      // the literal `# ` (3.11 left two blank paragraphs). Delete it as the
+      // browser would; jsdom has no native Backspace.
       expect(docShape(editor)).toEqual(
-        schemaVersion >= 2
-          ? ['paragraph', 'paragraph']
-          : ['dBlock(paragraph)', 'dBlock(paragraph)'],
+        schemaVersion >= 2 ? ['paragraph'] : ['dBlock(paragraph)'],
       );
+      expect(editor.state.doc.textContent).toBe('# ');
+      const { from } = editor.state.selection;
+      editor.view.dispatch(editor.state.tr.delete(from - 2, from));
 
       // The regression: hint placeholder is back but the template target is not.
       expect(
