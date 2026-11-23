@@ -215,6 +215,52 @@ function Pages({ editor }: { editor: Editor }) {
   );
 }
 
+type Entry = { tabId: string; editor: Editor };
+
+// As ddoc-editor.tsx: one PageSheets for the active editor, and one
+// EditorContent per warm cache entry (keyed by tab, inactive ones hidden).
+function PagesTabs({
+  entries,
+  activeId,
+  keyedSheets,
+}: {
+  entries: Entry[];
+  activeId: string;
+  keyedSheets: boolean;
+}) {
+  const active = entries.find((e) => e.tabId === activeId)!.editor;
+  usePaginationSync(active, {
+    pageSetup: A4,
+    orientation: 'portrait',
+    zoom: 1,
+    isPagesMode: true,
+    printInputs: () => PRINT,
+  });
+  return (
+    <EditingProvider isPreviewMode={false}>
+      <div data-ddoc-zoom-layer="" className="relative isolate">
+        <PageSheets
+          key={keyedSheets ? activeId : undefined}
+          editor={active}
+          grid={GRID}
+        />
+        <div>
+          {entries.map((entry) => (
+            <div
+              key={entry.tabId}
+              style={{
+                visibility: entry.tabId === activeId ? 'visible' : 'hidden',
+              }}
+            >
+              <EditorContent editor={entry.editor} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </EditingProvider>
+  );
+}
+
 const editors: Editor[] = [];
 const build = (
   version: number,
@@ -361,58 +407,143 @@ describe.each([1, 2])('pagination upgrade probes, schema v%i', (version) => {
     expect(container.querySelector('td p')).toBeTruthy();
     expect(container.querySelector('img')).toBeTruthy();
     expect(container.querySelector('pre')).toBeTruthy();
-    const settled = placementShape(editor);
-    expect(settled).toMatchSnapshot();
-    expect(JSON.parse(early)).toEqual(settled);
+    // Both go in the snapshot: on 3.34 a late node-view render shows up as
+    // `early` differing from `settled`.
+    expect({
+      early: JSON.parse(early),
+      settled: placementShape(editor),
+    }).toMatchSnapshot();
     expect(spacerTrs(log).length).toBeGreaterThan(0);
   });
 
-  it('keeps one mask per page boundary through a tab switch and a recreate', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const a = build(version, FIXTURE);
-    const b = build(version, paras(0, 60), a.ydoc, 'tabB');
-    const { rerender } = render(<Pages editor={a.editor} />);
-    await settle(a.editor);
+  // React's flushSync-in-lifecycle warning is 3.11 noise that 3.34 drops; a
+  // failed DOM removal is what the probe asserts is absent.
+  const watchErrors = () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    return {
+      summary: () => {
+        const messages = spy.mock.calls.map((c) => String(c[0]));
+        return {
+          removeChildErrors: messages.filter((m) =>
+            /removeChild|NotFoundError|not a child/i.test(m),
+          ),
+          flushSyncWarning: messages.some((m) => /flushSync/.test(m)),
+        };
+      },
+      restore: () => spy.mockRestore(),
+    };
+  };
+  const layers = () => document.querySelectorAll('.ddoc-page-masks').length;
+  const pagesOf = (editor: Editor) =>
+    editor.storage.pagination.store.get().pageCount!;
 
-    const pageCount = () =>
-      b.editor.storage.pagination.store.get().pageCount ?? 0;
-    const pagesA = a.editor.storage.pagination.store.get().pageCount!;
-    expect(pagesA).toBeGreaterThan(1);
-    // A mask sits on each boundary between two sheets, not on each page.
-    expect(masksIn(a.editor)).toBe(pagesA - 1);
-    expect(
-      a.editor.view.dom.parentElement!.querySelectorAll('.ddoc-page-masks'),
-    ).toHaveLength(1);
+  it('keeps one mask per page boundary when the editor prop is swapped', async () => {
+    const errors = watchErrors();
+    try {
+      const a = build(version, FIXTURE);
+      const b = build(version, paras(0, 60), a.ydoc, 'tabB');
+      const { rerender } = render(<Pages editor={a.editor} />);
+      await settle(a.editor);
 
-    rerender(<Pages editor={b.editor} />);
-    await settle(b.editor);
-    expect(masksIn(b.editor)).toBe(pageCount() - 1);
+      const pagesA = pagesOf(a.editor);
+      expect(pagesA).toBeGreaterThan(1);
+      // A mask sits on each boundary between two sheets, not on each page.
+      expect(masksIn(a.editor)).toBe(pagesA - 1);
+      expect(layers()).toBe(1);
 
-    rerender(<Pages editor={a.editor} />);
-    await settle(a.editor);
-    expect(a.editor.storage.pagination.running).toBe(true);
-    expect(b.editor.storage.pagination.running).toBe(false);
-    expect(masksIn(a.editor)).toBe(pagesA - 1);
+      rerender(<Pages editor={b.editor} />);
+      await settle(b.editor);
+      expect(masksIn(b.editor)).toBe(pagesOf(b.editor) - 1);
 
-    // The tab editor is destroyed and rebuilt on the same Y.Doc (cache evict).
-    a.editor.destroy();
-    const again = build(version, null, a.ydoc);
-    rerender(<Pages editor={again.editor} />);
-    await settle(again.editor);
-    const pagesAgain = again.editor.storage.pagination.store.get().pageCount!;
-    expect(pagesAgain).toBe(pagesA);
-    expect(masksIn(again.editor)).toBe(pagesAgain - 1);
-    expect(
-      again.editor.view.dom.parentElement!.querySelectorAll('.ddoc-page-masks'),
-    ).toHaveLength(1);
-    expect(again.editor.storage.pagination.failed).toBe(false);
-    // 3.11 also logs React's flushSync-in-lifecycle warning here; 3.34 drops
-    // flushSync, so only a failed DOM removal is asserted on.
-    const removals = errors.mock.calls
-      .map((c) => String(c[0]))
-      .filter((m) => /removeChild|NotFoundError|not a child/i.test(m));
-    expect(removals).toEqual([]);
-    errors.mockRestore();
+      rerender(<Pages editor={a.editor} />);
+      await settle(a.editor);
+      expect(a.editor.storage.pagination.running).toBe(true);
+      expect(b.editor.storage.pagination.running).toBe(false);
+      expect(masksIn(a.editor)).toBe(pagesA - 1);
+
+      a.editor.destroy();
+      const again = build(version, null, a.ydoc);
+      rerender(<Pages editor={again.editor} />);
+      await settle(again.editor);
+      expect(pagesOf(again.editor)).toBe(pagesA);
+      expect(masksIn(again.editor)).toBe(pagesA - 1);
+      expect(layers()).toBe(1);
+      expect(again.editor.storage.pagination.failed).toBe(false);
+      const summary = errors.summary();
+      expect(summary.removeChildErrors).toEqual([]);
+      expect({ flushSyncWarning: summary.flushSyncWarning }).toMatchSnapshot();
+    } finally {
+      errors.restore();
+    }
+  });
+
+  // Production keeps one EditorContent per warm tab: a switch toggles which
+  // entry is active, and an evicted tab that returns is a fresh mount.
+  describe.each([
+    ['PageSheets kept across switches (as ddoc-editor.tsx)', false],
+    ['PageSheets keyed per editor', true],
+  ])('mounted per tab, %s', (_label, keyedSheets) => {
+    it('keeps one mask per boundary through switch, evict and rebuild', async () => {
+      const errors = watchErrors();
+      try {
+        const a = build(version, FIXTURE);
+        const b = build(version, paras(0, 60), a.ydoc, 'tabB');
+        const entry = (tabId: string, editor: Editor): Entry => ({
+          tabId,
+          editor,
+        });
+        const tree = (entries: Entry[], activeId: string) => (
+          <PagesTabs
+            entries={entries}
+            activeId={activeId}
+            keyedSheets={keyedSheets}
+          />
+        );
+        const { rerender } = render(tree([entry('a', a.editor)], 'a'));
+        await settle(a.editor);
+        const pagesA = pagesOf(a.editor);
+        expect(masksIn(a.editor)).toBe(pagesA - 1);
+        expect(layers()).toBe(1);
+
+        // Tab b opens: a new EditorContent mounts next to the warm one.
+        rerender(tree([entry('a', a.editor), entry('b', b.editor)], 'b'));
+        await settle(b.editor);
+        expect(masksIn(b.editor)).toBe(pagesOf(b.editor) - 1);
+        expect(layers()).toBe(1);
+
+        rerender(tree([entry('a', a.editor), entry('b', b.editor)], 'a'));
+        await settle(a.editor);
+        expect(a.editor.storage.pagination.running).toBe(true);
+        expect(b.editor.storage.pagination.running).toBe(false);
+        expect(masksIn(a.editor)).toBe(pagesA - 1);
+        expect(layers()).toBe(1);
+
+        // a is evicted while b is active: its EditorContent unmounts.
+        rerender(tree([entry('b', b.editor)], 'b'));
+        a.editor.destroy();
+        await settle(b.editor);
+        expect(masksIn(b.editor)).toBe(pagesOf(b.editor) - 1);
+        expect(layers()).toBe(1);
+
+        // a comes back as a rebuilt editor and a fresh EditorContent mount.
+        const again = build(version, null, a.ydoc);
+        rerender(tree([entry('b', b.editor), entry('a', again.editor)], 'a'));
+        await settle(again.editor);
+        expect(pagesOf(again.editor)).toBe(pagesA);
+        expect(masksIn(again.editor)).toBe(pagesA - 1);
+        expect(layers()).toBe(1);
+        expect(again.editor.storage.pagination.failed).toBe(false);
+        expect(b.editor.storage.pagination.running).toBe(false);
+
+        const summary = errors.summary();
+        expect(summary.removeChildErrors).toEqual([]);
+        expect({
+          flushSyncWarning: summary.flushSyncWarning,
+        }).toMatchSnapshot();
+      } finally {
+        errors.restore();
+      }
+    });
   });
 });
 

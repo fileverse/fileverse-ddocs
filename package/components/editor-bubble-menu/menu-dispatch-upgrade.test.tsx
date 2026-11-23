@@ -1,4 +1,4 @@
-import { Profiler, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { EditorContent, type Editor } from '@tiptap/react';
 import * as Y from 'yjs';
@@ -16,6 +16,22 @@ import {
 } from '../../extensions/caret-marks/test-helpers';
 import { EditorBubbleMenu } from './editor-bubble-menu';
 
+// Every BubbleMenu render the hosts cause, with the props it received: a
+// memoised host that bails out never gets here, so it cannot fake a re-render.
+const bubbleRenders = vi.hoisted(() => ({
+  all: [] as Record<string, unknown>[],
+}));
+vi.mock('@tiptap/react/menus', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@tiptap/react/menus')>();
+  const { createElement, forwardRef } = await import('react');
+  const Original = mod.BubbleMenu as React.ElementType;
+  const Spy = forwardRef<unknown, Record<string, unknown>>((props, ref) => {
+    bubbleRenders.all.push(props);
+    return createElement(Original, { ...props, ref });
+  });
+  return { ...mod, BubbleMenu: Spy };
+});
+
 // Probe for TIPTAP_UPGRADE.md §5.13. 3.34's BubbleMenu dispatches an
 // `updateOptions` transaction whenever a prop's identity changes, and all four
 // hosts pass inline `options`. Each case re-renders the host and counts the
@@ -24,12 +40,16 @@ import { EditorBubbleMenu } from './editor-bubble-menu';
 
 type Host = {
   name: string;
+  // EditorBubbleMenu is React.memo: a parent re-render never reaches it, only
+  // its own store subscriptions do.
+  rendersWith: 'parent' | 'store';
   render: (editor: Editor, appendTo: React.RefObject<HTMLElement>) => ReactNode;
 };
 
 const hosts: Host[] = [
   {
     name: 'EditorBubbleMenu',
+    rendersWith: 'store',
     render: (editor) => (
       <EditorBubbleMenu
         editor={editor}
@@ -41,12 +61,14 @@ const hosts: Host[] = [
   },
   {
     name: 'ColumnsMenu',
+    rendersWith: 'parent',
     render: (editor, appendTo) => (
       <ColumnsMenu editor={editor} appendTo={appendTo} />
     ),
   },
   {
     name: 'CommentBubbleCard',
+    rendersWith: 'parent',
     render: (editor) => (
       <CommentBubbleCard
         editor={editor}
@@ -58,6 +80,7 @@ const hosts: Host[] = [
   },
   {
     name: 'PasteAsMenu',
+    rendersWith: 'parent',
     render: (editor) => <PasteAsMenu editor={editor} />,
   },
 ];
@@ -80,7 +103,6 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
       const ydoc = new Y.Doc();
       const editor = track(makeEditor(version, '<p>hello world</p>', { ydoc }));
       const storeApiRef: { current: StoreApi | null } = { current: null };
-      const commits = { host: 0 };
       const register = vi.spyOn(editor, 'registerPlugin');
       const unregister = vi.spyOn(editor, 'unregisterPlugin');
 
@@ -105,9 +127,7 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
               >
                 <div data-round={round}>
                   <EditorContent editor={props.editor} />
-                  <Profiler id="host" onRender={() => (commits.host += 1)}>
-                    {host.render(props.editor, appendTo)}
-                  </Profiler>
+                  {host.render(props.editor, appendTo)}
                 </div>
               </CommentStoreProvider>
             </EditingProvider>
@@ -121,7 +141,7 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
       expect(register).toHaveBeenCalled();
       register.mockClear();
       unregister.mockClear();
-      commits.host = 0;
+      bubbleRenders.all.length = 0;
 
       let transactions = 0;
       editor.on('transaction', () => (transactions += 1));
@@ -130,7 +150,7 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
         rerender(<Tree round={round} />);
         await flush();
       }
-      const parentCommits = commits.host;
+      const parentRenders = bubbleRenders.all.splice(0);
 
       // A state change inside the host's own subtree re-renders it as well.
       for (let i = 0; i < 3; i++) {
@@ -142,8 +162,15 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
         await flush();
       }
 
-      expect(commits.host).toBeGreaterThan(0);
-      expect(parentCommits).toBeGreaterThan(0);
+      const storeRenders = bubbleRenders.all.splice(0);
+
+      // Each re-render hands BubbleMenu a new `options` object, the identity
+      // change that makes 3.34 dispatch `updateOptions`.
+      const proving =
+        host.rendersWith === 'parent' ? parentRenders : storeRenders;
+      expect(proving.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(proving.map((p) => p.options)).size).toBe(proving.length);
+      if (host.rendersWith === 'store') expect(parentRenders).toHaveLength(0);
       expect(transactions).toBe(0);
       // Not a transaction, but the same churn: ColumnsMenu's plugin key holds
       // a fresh uuid on every render and 3.11 keeps the one it mounted with.
