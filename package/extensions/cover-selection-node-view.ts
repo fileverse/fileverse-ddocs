@@ -41,12 +41,9 @@ export function CoverSelectionNodeViewRenderer(
   options?: Partial<ReactNodeViewRendererOptions>,
 ): NodeViewRenderer {
   const placeholder = ReactNodeViewRenderer(component, options);
-  return (props) =>
-    'contentComponent' in props.editor && props.editor.contentComponent
-      ? (new CoverSelectionNodeView(
-          component,
-          props,
-          options,
-        ) as unknown as ReturnType<NodeViewRenderer>)
-      : placeholder(props);
+  return (props) => {
+    if (!('contentComponent' in props.editor && props.editor.contentComponent))
+      return placeholder(props);
+    return new CoverSelectionNodeView(component, props, options);
+  };
 }
