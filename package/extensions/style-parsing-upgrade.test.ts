@@ -1,7 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Editor } from '@tiptap/react';
 import { makeEditor, destroyTracked, track } from './caret-marks/test-helpers';
-import { isBlackOrWhiteShade } from '../utils/color-utils';
+import {
+  isBlackOrWhiteShade,
+  isPastedBlackOrWhiteShade,
+} from '../utils/color-utils';
 
 // Probe for TIPTAP_UPGRADE.md §5.6: Color, FontFamily, Highlight, FontSize and
 // LineHeight store the authored value instead of the browser-normalised one.
@@ -108,7 +111,7 @@ describe('paste colour clean-up input, §5.6', () => {
     expect({
       storedColor: color?.color ?? null,
       cleanUp: color?.color
-        ? isBlackOrWhiteShade(color.color)
+        ? isPastedBlackOrWhiteShade(color.color)
           ? 'stripped'
           : 'kept'
         : 'no colour stored',
@@ -117,8 +120,8 @@ describe('paste colour clean-up input, §5.6', () => {
 });
 
 // 3.34 stores a pasted hex colour as authored, where a browser on 3.11 stored
-// its rgb() form; the clean-up must treat each hex grey as it treated that form
-// (Task 13, Keep: isBlackOrWhiteShade normalises hex greys).
+// its rgb() form; the paste clean-up must treat each hex as it treated that
+// form, hex list included (Task 13, Keep: isPastedBlackOrWhiteShade).
 describe('paste colour clean-up of hex greys, §5.6', () => {
   const HEX_GREYS = [
     ['#141414', 'rgb(20, 20, 20)', 'stripped'],
@@ -126,8 +129,12 @@ describe('paste colour clean-up of hex greys, §5.6', () => {
     ['#fafafa', 'rgb(250, 250, 250)', 'stripped'],
     ['#333', 'rgb(51, 51, 51)', 'kept'],
     ['#fff', 'rgb(255, 255, 255)', 'stripped'],
+    ['#efefef', 'rgb(239, 239, 239)', 'kept'],
+    ['#d9d9d9', 'rgb(217, 217, 217)', 'kept'],
+    ['#cccccc', 'rgb(204, 204, 204)', 'kept'],
+    ['#b7b7b7', 'rgb(183, 183, 183)', 'kept'],
     ['#808080ff', 'rgb(128, 128, 128)', 'stripped'],
-    ['#80808080', 'rgba(128, 128, 128, 0.5)', 'kept'],
+    ['#80808080', 'rgba(128, 128, 128, 0.502)', 'kept'],
   ] as const;
 
   it.each(HEX_GREYS)('%s cleans up as %s', (hex, rgb, expected) => {
@@ -135,9 +142,15 @@ describe('paste colour clean-up of hex greys, §5.6', () => {
     const color = (stored(editor)[0].marks.textStyle as { color: string })
       .color;
     const cleanUp = (c: string) =>
-      isBlackOrWhiteShade(c) ? 'stripped' : 'kept';
+      isPastedBlackOrWhiteShade(c) ? 'stripped' : 'kept';
     expect(color).toBe(hex);
     expect(cleanUp(color)).toBe(cleanUp(rgb));
     expect(cleanUp(color)).toBe(expected);
+  });
+
+  it('the dark-mode load clean-up still strips the listed hex greys', () => {
+    expect(
+      ['#efefef', '#d9d9d9', '#cccccc', '#b7b7b7'].map(isBlackOrWhiteShade),
+    ).toEqual([true, true, true, true]);
   });
 });
