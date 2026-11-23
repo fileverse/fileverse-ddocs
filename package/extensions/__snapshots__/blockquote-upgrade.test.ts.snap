@@ -1,0 +1,228 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`blockquote Backspace, §5.16 (schema v1) > at the start of a list right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [],
+  "shape": "D(bq(p("qq"))) D(p("ll")) D(p())",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > at the start of a non-first child inside a quote 1`] = `
+{
+  "anchors": "c-q1:q1",
+  "handled": true,
+  "headings": [],
+  "shape": "D(bq(p("q1q2"))) D(p())",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > at the start of a paragraph right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [],
+  "shape": "D(bq(p("qqpp"))) D(p())",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > at the start of an H2 right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [],
+  "shape": "D(bq(p("qqhh"))) D(p())",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > at the start of the first child inside a quote 1`] = `
+{
+  "anchors": "c-q1:q1 c-q2:q2",
+  "handled": false,
+  "headings": [],
+  "shape": "D(bq(p("q1") p("q2"))) D(p())",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > which keymap takes Backspace at the start of a list right after a quote 1`] = `
+[
+  "dBlock:Backspace=false",
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > which keymap takes Backspace at the start of a non-first child inside a quote 1`] = `
+[
+  "dBlock:Backspace=false",
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > which keymap takes Backspace at the start of a paragraph right after a quote 1`] = `
+[
+  "dBlock:Backspace=false",
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > which keymap takes Backspace at the start of an H2 right after a quote 1`] = `
+[
+  "dBlock:Backspace=false",
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v1) > which keymap takes Backspace at the start of the first child inside a quote 1`] = `
+[
+  "dBlock:Backspace=false",
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=false",
+  "unhandled",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > at the start of a list right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [],
+  "shape": "bq(p("qq")) p("ll") p()",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > at the start of a non-first child inside a quote 1`] = `
+{
+  "anchors": "c-q1:q1",
+  "handled": true,
+  "headings": [],
+  "shape": "bq(p("q1q2")) p()",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > at the start of a paragraph right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [],
+  "shape": "bq(p("qq") p("pp")) p()",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > at the start of an H2 right after a quote 1`] = `
+{
+  "anchors": "c-qq:qq",
+  "handled": true,
+  "headings": [
+    "2:hh",
+  ],
+  "shape": "bq(p("qq") h("hh")) p()",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > at the start of the first child inside a quote 1`] = `
+{
+  "anchors": "c-q2:q2",
+  "handled": true,
+  "headings": [],
+  "shape": "p("q1") bq(p("q2")) p()",
+}
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > which keymap takes Backspace at the start of a list right after a quote 1`] = `
+[
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "listNormalization:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > which keymap takes Backspace at the start of a non-first child inside a quote 1`] = `
+[
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "listNormalization:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > which keymap takes Backspace at the start of a paragraph right after a quote 1`] = `
+[
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "listNormalization:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > which keymap takes Backspace at the start of an H2 right after a quote 1`] = `
+[
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "listNormalization:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
+
+exports[`blockquote Backspace, §5.16 (schema v2) > which keymap takes Backspace at the start of the first child inside a quote 1`] = `
+[
+  "pageBreak:Backspace=false",
+  "inlineMath:Backspace=false",
+  "table:Backspace=false",
+  "listNormalization:Backspace=false",
+  "mediaCaption:Backspace=false",
+  "listToggle:Backspace=false",
+  "codeBlock:Backspace=false",
+  "listKeymap:Backspace=false",
+  "keymap:Backspace=true",
+]
+`;
