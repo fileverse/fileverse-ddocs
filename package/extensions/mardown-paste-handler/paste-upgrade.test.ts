@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension, JSONContent } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { getHeadlessExtensions } from '../../hooks/use-headless-editor';
 
 // Probes for TIPTAP_UPGRADE.md §5.14 (link title, typed ordered lists) and
@@ -239,6 +240,82 @@ describe.each([1, 2])(
 
       const odt = await editor.commands.exportOdtFile({ title: 'probe' });
       expect(typeof odt).toBe('string');
+    });
+  },
+);
+
+// Clipboard parsing in prosemirror-view (1.42.0 inlines simple <style> rules
+// before parsing; 1.42.3/1.43.0 touch slice context and schema mismatches).
+const shapeOf = (node: ProseMirrorNode, flat: boolean): string => {
+  if (node.isText) {
+    const marks = node.marks.map((mark) => {
+      const attrs = Object.entries(mark.attrs).filter(([, v]) => v != null);
+      return attrs.length
+        ? `${mark.type.name}${JSON.stringify(Object.fromEntries(attrs))}`
+        : mark.type.name;
+    });
+    return `"${node.text}"${marks.length ? `[${marks.join(',')}]` : ''}`;
+  }
+  const kids: string[] = [];
+  node.forEach((child) => kids.push(shapeOf(child, flat)));
+  if (flat && node.type.name === 'dBlock') return kids.join(',');
+  return `${node.type.name}(${kids.join(',')})`;
+};
+const docShape = (editor: Editor) =>
+  shapeOf(editor.state.doc, true)
+    .replace(/^doc\(/, '')
+    .replace(/\)$/, '');
+
+const STYLE_BLOCK =
+  '<style>.c1{font-weight:bold}.c2{color:#d93025}</style><p class="c1">bold</p><p><span class="c2">red</span></p>';
+
+const STYLE_INLINE =
+  '<p style="font-weight:bold">bold</p><p><span style="color:#d93025">red</span></p>';
+
+describe.each([1, 2])(
+  'pasted HTML through the view clipboard parser (schema v%i)',
+  (version) => {
+    // jsdom builds no stylesheet for the detached document view uses, so its
+    // 1.42.0 inlining cannot run here and the class rules stay unapplied.
+    // The inline-style control is what the inlining should produce.
+    it('class-based <style> block (Word / Docs export)', async () => {
+      const editor = mount(version);
+      await pasteHtml(editor, STYLE_BLOCK, 'bold\nred');
+      expect(docShape(editor)).toMatchSnapshot();
+    });
+
+    it('control: the same content with inline styles', async () => {
+      const editor = mount(version);
+      await pasteHtml(editor, STYLE_INLINE, 'bold\nred');
+      expect(docShape(editor)).toMatchSnapshot();
+    });
+
+    it('slice with open start and end (middle of two list items) into a paragraph', async () => {
+      const source = mount(version);
+      source.commands.setContent(
+        '<ul><li><p>alpha one</p></li><li><p>beta two</p></li></ul>',
+      );
+      let from = -1;
+      let to = -1;
+      source.state.doc.descendants((node, pos) => {
+        if (!node.isText) return;
+        if (node.text === 'alpha one') from = pos + 3;
+        if (node.text === 'beta two') to = pos + 4;
+      });
+      source.commands.setTextSelection({ from, to });
+      const slice = source.state.selection.content();
+      const { dom, text } = source.view.serializeForClipboard(slice);
+      const html = dom.innerHTML;
+
+      const target = mount(version);
+      target.commands.setContent('<p>xy</p>');
+      target.commands.setTextSelection(2);
+      await pasteHtml(target, html, text);
+      expect({
+        slice: { openStart: slice.openStart, openEnd: slice.openEnd },
+        context: /data-pm-slice="([^"]*)"/.exec(html)?.[1],
+        pasted: docShape(target),
+      }).toMatchSnapshot();
     });
   },
 );

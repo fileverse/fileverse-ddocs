@@ -130,6 +130,36 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > ordered list: type attribu
 }
 `;
 
+exports[`pasted HTML through the view clipboard parser (schema v1) > class-based <style> block (Word / Docs export) 1`] = `"paragraph("bold"),paragraph("red")"`;
+
+exports[`pasted HTML through the view clipboard parser (schema v1) > control: the same content with inline styles 1`] = `"paragraph("bold"[bold]),paragraph("red"[textStyle{"fontFamily":"","color":"#d93025"}])"`;
+
+exports[`pasted HTML through the view clipboard parser (schema v1) > slice with open start and end (middle of two list items) into a paragraph 1`] = `
+{
+  "context": "3 3 [&quot;dBlock&quot;,null]",
+  "pasted": "bulletList(listItem(paragraph("ha one")),listItem(paragraph("betaxy"))),paragraph()",
+  "slice": {
+    "openEnd": 4,
+    "openStart": 4,
+  },
+}
+`;
+
+exports[`pasted HTML through the view clipboard parser (schema v2) > class-based <style> block (Word / Docs export) 1`] = `"paragraph("bold"),paragraph("red")"`;
+
+exports[`pasted HTML through the view clipboard parser (schema v2) > control: the same content with inline styles 1`] = `"paragraph("bold"[bold]),paragraph("red"[textStyle{"fontFamily":"","color":"#d93025"}])"`;
+
+exports[`pasted HTML through the view clipboard parser (schema v2) > slice with open start and end (middle of two list items) into a paragraph 1`] = `
+{
+  "context": "3 3 []",
+  "pasted": "paragraph("x"),bulletList(listItem(paragraph("ha one")),listItem(paragraph("beta"))),paragraph("y")",
+  "slice": {
+    "openEnd": 3,
+    "openStart": 3,
+  },
+}
+`;
+
 exports[`plain-text paste, §5.17 (schema v1) > TEC-2677 literal tildes 1`] = `
 {
   "attrs": {
