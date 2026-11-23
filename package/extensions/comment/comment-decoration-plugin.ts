@@ -1504,32 +1504,29 @@ export function applyAcceptedSuggestion(
   const { doc, type, binding } = syncState;
 
   try {
-    let from = relativePositionToAbsolutePosition(
-      doc,
-      type,
-      anchor.anchorFrom,
-      binding.mapping,
-    );
-    let to = relativePositionToAbsolutePosition(
-      doc,
-      type,
-      anchor.anchorTo,
-      binding.mapping,
-    );
+    // An Add's stored anchor can sit in deleted text (null since y-tiptap
+    // 3.3.0); its logical point falls back to the saved overrides.
+    const from =
+      anchor.suggestionType === 'add'
+        ? resolveSuggestionAddPointInState(anchor, state, relatedAnchors)
+        : relativePositionToAbsolutePosition(
+            doc,
+            type,
+            anchor.anchorFrom,
+            binding.mapping,
+          );
+    const to =
+      anchor.suggestionType === 'add'
+        ? from
+        : relativePositionToAbsolutePosition(
+            doc,
+            type,
+            anchor.anchorTo,
+            binding.mapping,
+          );
 
     if (from === null || to === null) return false;
     if (from < 0 || to > state.doc.content.size) return false;
-
-    if (anchor.suggestionType === 'add') {
-      const logicalPoint = resolveSuggestionAddPointInState(
-        anchor,
-        state,
-        relatedAnchors,
-      );
-      if (logicalPoint === null) return false;
-      from = logicalPoint;
-      to = logicalPoint;
-    }
 
     const { suggestionType, suggestedContent } = anchor;
 
