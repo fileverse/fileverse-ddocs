@@ -1,0 +1,63 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`table commands (prosemirror-tables refresh) > schema v1 > inserts and deletes rows and columns 1`] = `
+{
+  "grown": "a1 |  | b1 | c1 / a2 |  | b2 | c2 /  |  |  |  / a3 |  | b3 | c3",
+  "shrunk": "a1 |  | b1 / a2 |  | b2 /  |  | ",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v1 > keeps a CellSelection over a merged cell after a row insert 1`] = `
+{
+  "grid": "a1b1a2b2[2x3] | c1 /  / c2 / a3 | b3 | c3",
+  "selection": "cell",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v1 > merges a rectangle and splits it again 1`] = `
+{
+  "merged": "a1b1a2b2[2x2] | c1 / c2 / a3 | b3 | c3",
+  "split": "a1b1a2b2 |  | c1 /  |  | c2 / a3 | b3 | c3",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v1 > merges a selection that touches an already merged cell 1`] = `
+{
+  "after": "a1b1a2b2[2x2] | c1 / c2 / a3 | b3 | c3",
+  "before": "a1b1[2x1] | c1 / a2 | b2 | c2 / a3 | b3 | c3",
+  "canMerge": true,
+  "merged": true,
+  "selection": "cell",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v2 > inserts and deletes rows and columns 1`] = `
+{
+  "grown": "a1 |  | b1 | c1 / a2 |  | b2 | c2 /  |  |  |  / a3 |  | b3 | c3",
+  "shrunk": "a1 |  | b1 / a2 |  | b2 /  |  | ",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v2 > keeps a CellSelection over a merged cell after a row insert 1`] = `
+{
+  "grid": "a1b1a2b2[2x3] | c1 /  / c2 / a3 | b3 | c3",
+  "selection": "cell",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v2 > merges a rectangle and splits it again 1`] = `
+{
+  "merged": "a1b1a2b2[2x2] | c1 / c2 / a3 | b3 | c3",
+  "split": "a1b1a2b2 |  | c1 /  |  | c2 / a3 | b3 | c3",
+}
+`;
+
+exports[`table commands (prosemirror-tables refresh) > schema v2 > merges a selection that touches an already merged cell 1`] = `
+{
+  "after": "a1b1a2b2[2x2] | c1 / c2 / a3 | b3 | c3",
+  "before": "a1b1[2x1] | c1 / a2 | b2 | c2 / a3 | b3 | c3",
+  "canMerge": true,
+  "merged": true,
+  "selection": "cell",
+}
+`;
