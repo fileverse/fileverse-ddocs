@@ -238,9 +238,9 @@ exports[`list Backspace, §5.2 (schema v2) > reaching upstream: offset 0 of a pa
 
 exports[`list Backspace, §5.2 (schema v2) > reaching upstream: offset 0 of a second paragraph in a non-first item 1`] = `
 {
-  "anchors": "caa:aa",
+  "anchors": "caa:aa cbb:bb",
   "handled": true,
-  "shape": "ul(li(p("aa"))) p("bb") p("cc") p()",
+  "shape": "ul(li(p("aa")) li(p("bbcc"))) p()",
 }
 `;
 
@@ -264,7 +264,7 @@ exports[`list Delete, §5.2 and §5.16 (schema v1) > with a selection starting a
 {
   "anchors": "ca:aa cc:cc",
   "handled": true,
-  "shape": "D(ul(li(p("aabb")) li(p("cc")))) D(p())",
+  "shape": "D(ul(li(p("aab")) li(p("cc")))) D(p())",
 }
 `;
 
@@ -288,7 +288,7 @@ exports[`list Delete, §5.2 and §5.16 (schema v2) > with a selection starting a
 {
   "anchors": "ca:aa cc:cc",
   "handled": true,
-  "shape": "ul(li(p("aabb")) li(p("cc"))) p()",
+  "shape": "ul(li(p("aab")) li(p("cc"))) p()",
 }
 `;
 
@@ -301,8 +301,8 @@ exports[`list Enter, §5.1 (schema v1) > Enter at the start of a task item (chec
 
 exports[`list Enter, §5.1 (schema v1) > Enter at the start of a task item (checked=true) gives each half its own checked 1`] = `
 [
-  "(empty):true",
-  "aa:false",
+  "(empty):false",
+  "aa:true",
 ]
 `;
 
@@ -326,8 +326,8 @@ exports[`list Enter, §5.1 (schema v2) > Enter at the start of a task item (chec
 
 exports[`list Enter, §5.1 (schema v2) > Enter at the start of a task item (checked=true) gives each half its own checked 1`] = `
 [
-  "(empty):true",
-  "aa:false",
+  "(empty):false",
+  "aa:true",
 ]
 `;
 

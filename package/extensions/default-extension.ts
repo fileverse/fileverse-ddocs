@@ -26,6 +26,8 @@ import { PasteAs } from './paste-as/paste-as-candidate';
 import { BlockId } from './block-id';
 import { ListNormalization } from './list-normalization';
 import { TabIndent } from './tab-indent';
+import { Blockquote } from './blockquote';
+import { OrderedList } from './ordered-list';
 import { UndoSelection } from './undo-selection';
 import { AiWriterSpaceTrigger } from './ai-writer/ai-writer-space-trigger';
 import { SuperchargedTableExtensions } from './supercharged-table';
@@ -280,17 +282,8 @@ export const defaultExtensions = ({
         class: 'select-text pointer-events-auto transition-all',
       },
     },
-    orderedList: {
-      HTMLAttributes: {
-        class: 'flex flex-col items-start list-decimal list-outside',
-      },
-    },
-    blockquote: {
-      HTMLAttributes: {
-        class:
-          'pl-4 border-l-4 color-border-default italic color-text-secondary my-2',
-      },
-    },
+    orderedList: false,
+    blockquote: false,
     code: {
       HTMLAttributes: {
         class:
@@ -310,6 +303,17 @@ export const defaultExtensions = ({
     // v1 uses the custom dBlock-aware TrailingNode registered below; the
     // flat v2 schema uses StarterKit's stock one (schema-agnostic).
     trailingNode: schemaVersion >= 2 ? undefined : false,
+  }),
+  OrderedList.configure({
+    HTMLAttributes: {
+      class: 'flex flex-col items-start list-decimal list-outside',
+    },
+  }),
+  Blockquote.configure({
+    HTMLAttributes: {
+      class:
+        'pl-4 border-l-4 color-border-default italic color-text-secondary my-2',
+    },
   }),
   CommonMarkBold.configure({
     HTMLAttributes: {

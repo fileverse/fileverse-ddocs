@@ -7,6 +7,7 @@ exports[`pasted HTML attributes, §5.14 (schema v1) > keeps a link title 1`] = `
     "href": "https://x.dev",
     "rel": "noopener noreferrer",
     "target": "_blank",
+    "title": "t",
   },
 ]
 `;
@@ -18,13 +19,13 @@ exports[`pasted HTML attributes, §5.14 (schema v1) > ordered list: Google Docs 
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": null,
+      "type": "a",
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": null,
+    "type": "a",
   },
 }
 `;
@@ -36,13 +37,13 @@ exports[`pasted HTML attributes, §5.14 (schema v1) > ordered list: list-style-t
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": null,
+      "type": "i",
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": null,
+    "type": "i",
   },
 }
 `;
@@ -72,6 +73,7 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > keeps a link title 1`] = `
     "href": "https://x.dev",
     "rel": "noopener noreferrer",
     "target": "_blank",
+    "title": "t",
   },
 ]
 `;
@@ -83,13 +85,13 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > ordered list: Google Docs 
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": null,
+      "type": "a",
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": null,
+    "type": "a",
   },
 }
 `;
@@ -101,13 +103,13 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > ordered list: list-style-t
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": null,
+      "type": "i",
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": null,
+    "type": "i",
   },
 }
 `;
