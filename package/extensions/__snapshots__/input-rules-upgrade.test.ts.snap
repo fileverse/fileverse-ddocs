@@ -1,5 +1,13 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`schema v1 (dBlock) > Typography sentence > Backspace right after a smart quote restores the straight quote 1`] = `
+{
+  "afterBackspace": "It'",
+  "afterType": "It’",
+  "handled": true,
+}
+`;
+
 exports[`schema v1 (dBlock) > Typography sentence > typed text, undo steps and one Mod-Z 1`] = `
 {
   "afterOneUndo": "",
@@ -242,6 +250,14 @@ exports[`schema v1 (dBlock) > task list ("[ ] ") > type, then Mod-Z 1`] = `
   "afterUndo": "doc(dBlock(paragraph("[ ] ")))",
   "undoStackAfter": 1,
   "undoSteps": 2,
+}
+`;
+
+exports[`schema v2 (flat) > Typography sentence > Backspace right after a smart quote restores the straight quote 1`] = `
+{
+  "afterBackspace": "It'",
+  "afterType": "It’",
+  "handled": true,
 }
 `;
 

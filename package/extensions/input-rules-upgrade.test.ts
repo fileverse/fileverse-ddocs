@@ -153,6 +153,27 @@ const body = (version: number) => {
       typeChars(editor, 'plain words only');
       expect(um.undoStack.length).toBe(1);
     });
+
+    it('an ordinal replacement stays in the same undo step', () => {
+      const { editor, um } = harness(version);
+      typeChars(editor, 'the 1st place ok');
+      expect(editor.state.doc.textContent).toBe('the 1ˢᵗ place ok');
+      expect(um.undoStack.length).toBe(1);
+      mod(editor, 'z');
+      expect(editor.state.doc.textContent).toBe('');
+    });
+
+    it('Backspace right after a smart quote restores the straight quote', () => {
+      const { editor } = harness(version);
+      typeChars(editor, "It'");
+      const afterType = editor.state.doc.textContent;
+      const handled = pressKey(editor, 'Backspace');
+      expect({
+        afterType,
+        handled,
+        afterBackspace: editor.state.doc.textContent,
+      }).toMatchSnapshot();
+    });
   });
 
   describe.each(SHORTCUTS)('%s (%j)', (_name, typed) => {
