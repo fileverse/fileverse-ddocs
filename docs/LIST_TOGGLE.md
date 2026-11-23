@@ -308,7 +308,8 @@ through a mapping and mangles multi-step transactions.
 - `dBlock` is `group: 'dBlock'` and cannot sit inside a list item; a v1
   `column` holds `dBlock+`.
 - Mark and attr steps have empty step maps. A remote Yjs update and a Yjs undo
-  arrive as one whole-document `ReplaceStep`.
+  arrive as a `ReplaceStep` over the changed top-level range (y-tiptap 3.3.0;
+  3.0.1 replaced the whole document).
 - Parsed HTML stores unset `textStyle` attrs as `''`; the legacy paragraph
   parser strips family quotes, the mark keeps them.
 - Tiptap builds plugins from the reversed extension list, so a later-registered
@@ -316,9 +317,10 @@ through a mapping and mangles multi-step transactions.
 
 ## 7. Tiptap upgrade
 
-Verified on `@tiptap/*` 3.11.0 (`core`, `pm` and `extension-collaboration`
-pinned exactly). The engine leans on these behaviours; after a bump, run
-`npx vitest run package/extensions/list-toggle` first.
+Verified on `@tiptap/*` 3.34.0 (every package pinned exactly) with
+`@tiptap/y-tiptap` 3.3.0. The engine leans on these behaviours; after a bump,
+run `npx vitest run package/extensions/list-toggle` first. The editor-wide
+checklist is `docs/TIPTAP_UPGRADE.md` §9.
 
 | Relies on | Where | Fails first |
 | --- | --- | --- |
@@ -329,7 +331,7 @@ pinned exactly). The engine leans on these behaviours; after a bump, run
 | Stock `splitListItem` exits a nested list with default item attrs; `liftListItem` uses `liftToOuterList` only for a matching outer item | §3.10, §6 | `list-toggle-enter` |
 | Any step clears `storedMarks`, so the Enter split restores the typing style after `setNodeMarkup` | §3.10 | `list-toggle-enter` (PR597-2) |
 | `Decoration.node` style lands on the `<li>` | §3.9 | `list-toggle-marker` editor-DOM suite |
-| `@tiptap/y-tiptap`: a remote update or Yjs undo is one whole-document `ReplaceStep`; a node type change re-creates the subtree (TEC-3181). Anchors resolve through `y-prosemirror`, a separate dependency | §2, §3.9 | `list-toggle-marker` (collaborator, undo), `list-toggle-anchors` |
+| `@tiptap/y-tiptap`: a remote update or Yjs undo is a `ReplaceStep` over the changed top-level range (`replaceChangedChildren`); a node type change re-creates the subtree (TEC-3181). Anchors resolve through `@tiptap/y-tiptap` | §2, §3.9 | `list-toggle-marker` (collaborator, undo), `list-toggle-anchors` |
 
 A newer Tiptap that fixes stock `toggleList`'s spacing or comment loss does not
 make the override removable: it also unifies v1/v2 and the refusals (§2).
