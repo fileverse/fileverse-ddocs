@@ -1754,6 +1754,58 @@ describe('accepted suggestions', () => {
       }
     }
 
+    it(`keeps a following Add resolvable after the owner retypes the block (v${schemaVersion})`, () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>ABCold</p><p>DEF</p>');
+      const range = findRange(editor, 'old');
+      const replace: CommentAnchor = {
+        id: 'replace',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'replace',
+        originalContent: 'old',
+        suggestedContent: '\n',
+        multilineStructure: {
+          version: 1,
+          insertedTexts: ['', ''],
+          structureType: ['block'],
+        },
+      };
+      const add: CommentAnchor = {
+        id: 'add',
+        ...createCommentAnchorPointFromEditor(editor, range.to)!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: 'yyy',
+        followsSuggestionId: replace.id,
+      };
+      const anchors = [replace, add];
+      expect(applyAcceptedSuggestion(editor, replace)).toBe(true);
+      replace.resolved = true;
+      editor.commands.setTextSelection(findRange(editor, 'ABC').from + 1);
+      expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+      expect(editor.state.doc.firstChild?.type.name).toBe(
+        schemaVersion === 1 ? 'dBlock' : 'heading',
+      );
+
+      const point = resolveSuggestionAddPointInState(
+        add,
+        editor.state,
+        anchors,
+      );
+      expect(point).not.toBeNull();
+      expect(hasResolvableCommentAnchorInState(add, editor.state)).toBe(true);
+      expect(applyAcceptedSuggestion(editor, add, anchors)).toBe(true);
+      expect(
+        editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n'),
+      ).toContain('yyy');
+    });
+
     it(`keeps a following Add after a Replace at the document end in v${schemaVersion}`, () => {
       const harness = makeCommentEditor(schemaVersion);
       editor = harness.editor;

@@ -191,22 +191,41 @@ function resolveSuggestionAddPointOverride(
   }
 }
 
+/** Undefined when the parent break has no persisted position. */
+function resolveAcceptedBreakPoint(
+  anchor: Pick<CommentAnchor, 'anchorFrom' | 'anchorTo'>,
+  parentId: string,
+  state: EditorState,
+): number | null | undefined {
+  const encoded: Uint8Array | undefined = ySyncPluginKey
+    .getState(state)
+    ?.doc.getMap<Uint8Array>(ACCEPTED_BREAK_POINTS)
+    .get(parentId);
+  if (!encoded) return undefined;
+  return resolveCommentAnchorPointInState(
+    { ...anchor, anchorFrom: Y.decodeRelativePosition(encoded) },
+    state,
+  );
+}
+
 /** Resolve following Adds against the accepted break's persisted Yjs position. */
 export function resolveSuggestionAddPointInState(
   anchor: CommentAnchor,
   state: EditorState,
   anchors: CommentAnchor[] | ReadonlyMap<string, CommentAnchor>,
 ): number | null {
-  const point =
-    (anchor.followsSuggestionId
-      ? null
-      : resolveSuggestionAddPointOverride(anchor, state)) ??
-    resolveCommentAnchorPointInState(anchor, state);
-  if (point === null || !anchor.followsSuggestionId) return point;
+  if (!anchor.followsSuggestionId) {
+    return (
+      resolveSuggestionAddPointOverride(anchor, state) ??
+      resolveCommentAnchorPointInState(anchor, state)
+    );
+  }
   const parent = Array.isArray(anchors)
     ? anchors.find((entry) => entry.id === anchor.followsSuggestionId)
     : anchors.get(anchor.followsSuggestionId);
-  if (!parent?.resolved || !parent.multilineStructure) return point;
+  if (!parent?.resolved || !parent.multilineStructure) {
+    return resolveCommentAnchorPointInState(anchor, state);
+  }
   if (
     !validMultilineStructure(
       parent.suggestedContent,
@@ -216,17 +235,11 @@ export function resolveSuggestionAddPointInState(
     parent.multilineStructure.structureType.length !== 1
   )
     return null;
-  const acceptedPoint: Uint8Array | undefined = ySyncPluginKey
-    .getState(state)
-    ?.doc.getMap<Uint8Array>(ACCEPTED_BREAK_POINTS)
-    .get(parent.id);
-  if (acceptedPoint) {
-    return resolveCommentAnchorPointInState(
-      { ...anchor, anchorFrom: Y.decodeRelativePosition(acceptedPoint) },
-      state,
-    );
-  }
+  const acceptedPoint = resolveAcceptedBreakPoint(anchor, parent.id, state);
+  if (acceptedPoint !== undefined) return acceptedPoint;
   // Compatibility for breaks accepted before their positions were persisted.
+  // The anchor's own point must still resolve for this legacy path.
+  if (resolveCommentAnchorPointInState(anchor, state) === null) return null;
   const parentPoint = resolveCommentAnchorPointInState(parent, state);
   if (parentPoint === null) return null;
   const kind = parent.multilineStructure.structureType[0];
@@ -251,11 +264,26 @@ export function resolveSuggestionAddPointInState(
 export function hasResolvableCommentAnchorInState(
   anchor: Pick<
     CommentAnchor,
-    'id' | 'anchorFrom' | 'anchorTo' | 'isSuggestion' | 'suggestionType'
+    | 'id'
+    | 'anchorFrom'
+    | 'anchorTo'
+    | 'isSuggestion'
+    | 'suggestionType'
+    | 'followsSuggestionId'
   >,
   state: EditorState,
 ): boolean {
   if (anchor.isSuggestion && anchor.suggestionType === 'add') {
+    // A block retype can drop the stored anchor but not the accepted break.
+    if (
+      anchor.followsSuggestionId &&
+      typeof resolveAcceptedBreakPoint(
+        anchor,
+        anchor.followsSuggestionId,
+        state,
+      ) === 'number'
+    )
+      return true;
     // The saved override outlives a stored anchor in deleted text.
     return (
       (resolveSuggestionAddPointOverride(anchor, state) ??
