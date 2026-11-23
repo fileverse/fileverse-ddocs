@@ -2,7 +2,7 @@ import { Button, LucideIcon } from '@fileverse/ui';
 import { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   embedPasteAsCandidate,
   getPasteAsCandidate,
@@ -16,6 +16,12 @@ const markFloatingMenu = (node: HTMLDivElement | null) =>
 interface PasteAsMenuProps {
   editor: Editor;
 }
+
+// Shown while the paste is armed (see PasteAs); any edit or caret move
+// disarms it. No show-once flag: BubbleMenu re-runs this on every editor
+// focus event, and one always follows a paste in the app.
+const shouldShow = ({ editor }: { editor: Editor }) =>
+  editor.isEditable && getPasteAsCandidate(editor.state) !== null;
 
 const EMBED_OPTION: Record<
   PasteAsCandidate['kind'],
@@ -40,12 +46,6 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
     editor,
     selector: ({ editor }) => getPasteAsCandidate(editor.state)?.kind ?? null,
   });
-
-  // Shown while the paste is armed (see PasteAs); any edit or caret move
-  // disarms it. No show-once flag: BubbleMenu re-runs this on every editor
-  // focus event, and one always follows a paste in the app.
-  const shouldShow = ({ editor }: { editor: Editor }) =>
-    editor.isEditable && getPasteAsCandidate(editor.state) !== null;
 
   // Every action re-checks the candidate: BubbleMenu debounces hiding for a
   // range selection, so these handlers can outlive the paste by ~250ms.
@@ -118,23 +118,30 @@ export const PasteAsMenu = ({ editor }: PasteAsMenuProps) => {
     [editor, handleEmbed, handleKeepAsUrl],
   );
 
+  // Stable identity: Tiptap 3.34's BubbleMenu dispatches an `updateOptions`
+  // transaction whenever `options` changes identity.
+  const options = useMemo(
+    () => ({
+      placement: 'bottom' as const,
+      onShow: () => {
+        document.addEventListener('keydown', handleKeyDown, true);
+        document.addEventListener('mousedown', handleOutsideClick);
+      },
+      onHide: () => {
+        document.removeEventListener('keydown', handleKeyDown, true);
+        document.removeEventListener('mousedown', handleOutsideClick);
+      },
+    }),
+    [handleKeyDown, handleOutsideClick],
+  );
+
   const option = EMBED_OPTION[kind ?? 'image'];
   return (
     <BubbleMenu
       ref={markFloatingMenu}
       pluginKey="pasteAsMenu"
       editor={editor}
-      options={{
-        placement: 'bottom',
-        onShow: () => {
-          document.addEventListener('keydown', handleKeyDown, true);
-          document.addEventListener('mousedown', handleOutsideClick);
-        },
-        onHide: () => {
-          document.removeEventListener('keydown', handleKeyDown, true);
-          document.removeEventListener('mousedown', handleOutsideClick);
-        },
-      }}
+      options={options}
       shouldShow={shouldShow}
       className="p-2 border color-border-default shadow-elevation-3 color-bg-default rounded-lg"
     >

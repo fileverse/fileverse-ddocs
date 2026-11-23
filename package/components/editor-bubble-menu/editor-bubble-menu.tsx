@@ -79,6 +79,33 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   counterScaleRef.current = { isBelow1280px, scale };
   const getCounterScale = () =>
     counterScaleRef.current.isBelow1280px ? counterScaleRef.current.scale : 1;
+  // Stable identities: Tiptap 3.34's BubbleMenu dispatches an `updateOptions`
+  // transaction whenever `appendTo` or `options` changes identity.
+  const getAppendTo = useCallback(
+    () =>
+      (counterScaleRef.current.isBelow1280px
+        ? editor.view.dom.parentElement
+        : document.getElementById('editor-canvas')) ??
+      editor.view.dom.parentElement ??
+      document.body,
+    [editor],
+  );
+  const bubbleMenuOptions = useMemo(
+    () => ({
+      placement: 'top',
+      flip: ({ rects }) => ({
+        padding: counterScaledPadding(getCounterScale(), rects.floating.height),
+      }),
+      shift: ({ rects }) => ({
+        padding: counterScaledPadding(getCounterScale(), rects.floating.width),
+      }),
+      offset: ({ rects }) =>
+        counterScaledOffset(8, getCounterScale(), rects.floating.height),
+    }),
+    // getCounterScale reads only counterScaleRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const shouldUseFloatingComments = !isBelow1280px && !isNativeMobile;
   const { toolRef, setToolVisibility, toolVisibility } = useEditorToolbar({
     editor: editor ?? null,
@@ -310,30 +337,8 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
       ref={handleBubbleMenuRef}
       editor={editor}
       data-editor-bubble-menu=""
-      appendTo={() =>
-        (counterScaleRef.current.isBelow1280px
-          ? editor.view.dom.parentElement
-          : document.getElementById('editor-canvas')) ??
-        editor.view.dom.parentElement ??
-        document.body
-      }
-      options={{
-        placement: 'top',
-        flip: ({ rects }) => ({
-          padding: counterScaledPadding(
-            getCounterScale(),
-            rects.floating.height,
-          ),
-        }),
-        shift: ({ rects }) => ({
-          padding: counterScaledPadding(
-            getCounterScale(),
-            rects.floating.width,
-          ),
-        }),
-        offset: ({ rects }) =>
-          counterScaledOffset(8, getCounterScale(), rects.floating.height),
-      }}
+      appendTo={getAppendTo}
+      options={bubbleMenuOptions}
       shouldShow={handleBubbleMenuShouldShow}
       className={cn(
         'flex gap-2 overflow-hidden rounded-lg min-w-fit w-full p-1 border color-bg-default items-center shadow-elevation-3',

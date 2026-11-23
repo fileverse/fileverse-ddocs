@@ -164,12 +164,12 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
 
       const storeRenders = bubbleRenders.all.splice(0);
 
-      // Each re-render hands BubbleMenu a new `options` object, the identity
-      // change that makes 3.34 dispatch `updateOptions`.
+      // Every re-render reaches BubbleMenu with the same `options` object: on
+      // 3.11 it was new each time; 3.34 dispatches `updateOptions` when it changes.
       const proving =
         host.rendersWith === 'parent' ? parentRenders : storeRenders;
       expect(proving.length).toBeGreaterThanOrEqual(3);
-      expect(new Set(proving.map((p) => p.options)).size).toBe(proving.length);
+      expect(new Set(proving.map((p) => p.options)).size).toBe(1);
       if (host.rendersWith === 'store') expect(parentRenders).toHaveLength(0);
       expect(transactions).toBe(0);
       // Not a transaction, but the same churn: ColumnsMenu's plugin key holds
