@@ -1,0 +1,130 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`code block arrow keys (§5.18) > our shortcut map 1`] = `
+[
+  "Backspace",
+  "Enter",
+  "Shift-Tab",
+  "Tab",
+]
+`;
+
+exports[`code block arrow keys (§5.18) > schema v2 > ArrowDown at the end of a code block that is the last node 1`] = `
+{
+  "caretInCode": true,
+  "handled": false,
+  "shape": "p("before") codeBlock("x") p()",
+}
+`;
+
+exports[`code block arrow keys (§5.18) > schema v2 > ArrowUp at the start of a code block after a paragraph (control) 1`] = `
+{
+  "caretInCode": true,
+  "handled": false,
+  "shape": "p("before") codeBlock("x") p("after")",
+}
+`;
+
+exports[`code block arrow keys (§5.18) > schema v2 > ArrowUp at the start of a code block that is the first node 1`] = `
+{
+  "caretInCode": true,
+  "handled": false,
+  "shape": "codeBlock("x") p("after")",
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v1 > a language change re-highlights 1`] = `
+{
+  "after": [
+    "def:hljs-keyword",
+    "f:hljs-title function_",
+    "pass:hljs-keyword",
+  ],
+  "before": [
+    "f:hljs-title function_",
+  ],
+  "upstreamEntered": true,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v1 > inserting a code block enters the upstream apply and highlights it 1`] = `
+[
+  "let:hljs-keyword",
+  "2:hljs-number",
+]
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v1 > pasting a code block into an empty paragraph 1`] = `
+{
+  "shape": "D(codeBlock("let c = 3;")) D(p())",
+  "tokens": [
+    "let:hljs-keyword",
+    "3:hljs-number",
+  ],
+  "upstreamEntered": true,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v1 > pasting a code block into the end of a paragraph 1`] = `
+{
+  "shape": "D(p("headlet c = 3;"))",
+  "tokens": [],
+  "upstreamEntered": false,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v1 > typing inside the code block enters the upstream apply and keeps highlights 1`] = `
+[
+  "const:hljs-keyword",
+  "1:hljs-number",
+  "let:hljs-keyword",
+]
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v2 > a language change re-highlights 1`] = `
+{
+  "after": [
+    "def:hljs-keyword",
+    "f:hljs-title function_",
+    "pass:hljs-keyword",
+  ],
+  "before": [
+    "f:hljs-title function_",
+  ],
+  "upstreamEntered": true,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v2 > inserting a code block enters the upstream apply and highlights it 1`] = `
+[
+  "let:hljs-keyword",
+  "2:hljs-number",
+]
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v2 > pasting a code block into an empty paragraph 1`] = `
+{
+  "shape": "codeBlock("let c = 3;") p()",
+  "tokens": [
+    "let:hljs-keyword",
+    "3:hljs-number",
+  ],
+  "upstreamEntered": true,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v2 > pasting a code block into the end of a paragraph 1`] = `
+{
+  "shape": "p("headlet c = 3;")",
+  "tokens": [],
+  "upstreamEntered": false,
+}
+`;
+
+exports[`lowlight wrapper (§5.9) > schema v2 > typing inside the code block enters the upstream apply and keeps highlights 1`] = `
+[
+  "const:hljs-keyword",
+  "1:hljs-number",
+  "let:hljs-keyword",
+]
+`;

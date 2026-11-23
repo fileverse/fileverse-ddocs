@@ -1,0 +1,747 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`React node view selected chrome (§5.7) > schema v1 > CellSelection over the first cell 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "cell",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > CellSelection over two cells 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "cell",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > NodeSelection on the ai-writer 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "node",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > NodeSelection on the media 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "node",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > TextSelection across both cells 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > TextSelection across the ai-writer 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > TextSelection across the media 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > TextSelection across the whole table 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > TextSelection inside one cell 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > caret in a paragraph 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v1 > select all 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "all",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > CellSelection over the first cell 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "cell",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > CellSelection over two cells 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": true,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "cell",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > NodeSelection on the ai-writer 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "node",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > NodeSelection on the media 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "node",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > TextSelection across both cells 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > TextSelection across the ai-writer 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > TextSelection across the media 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > TextSelection across the whole table 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > TextSelection inside one cell 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > caret in a paragraph 1`] = `
+{
+  "aiWriter": {
+    "selectednode": false,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 0,
+    },
+  ],
+  "media": {
+    "border": "transparent",
+    "corners": 0,
+    "selectednode": false,
+  },
+  "selection": "text",
+}
+`;
+
+exports[`React node view selected chrome (§5.7) > schema v2 > select all 1`] = `
+{
+  "aiWriter": {
+    "selectednode": true,
+  },
+  "cells": [
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+    {
+      "selectedCell": false,
+      "selectednode": false,
+      "trigger": 1,
+    },
+  ],
+  "media": {
+    "border": "selected",
+    "corners": 4,
+    "selectednode": true,
+  },
+  "selection": "all",
+}
+`;
+
+exports[`TaskItem node view (§5.18) > schema v1 > nested task items HTML and its round-trip 1`] = `"<div dir="auto" iscorrupted="false" data-type="d-block"><ul class="not-prose !ml-0" dir="auto" data-type="taskList"><li class="grid task-item" dir="auto" data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">a</p><ul class="not-prose !ml-0" dir="auto" data-type="taskList"><li class="grid task-item" dir="auto" data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">b</p></div></li></ul></div></li><li class="grid task-item" dir="auto" data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">c</p></div></li></ul></div><div dir="auto" iscorrupted="false" data-type="d-block"><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">tail</p></div>"`;
+
+exports[`TaskItem node view (§5.18) > schema v1 > toggling a task item and a nested one 1`] = `
+[
+  {
+    "dom": [
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "a",
+      },
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti(p("a") tl(ti{checked=true}(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "a",
+      },
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti{checked=true}(p("a") tl(ti{checked=true}(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "a",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti{checked=true}(p("a") tl(ti(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "a",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti(p("a") tl(ti(p("b")))) ti(p("c"))) p("tail")",
+  },
+]
+`;
+
+exports[`TaskItem node view (§5.18) > schema v2 > nested task items HTML and its round-trip 1`] = `"<ul class="not-prose !ml-0" dir="auto" data-block-id="<id>" data-type="taskList"><li class="grid task-item" dir="auto" data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">a</p><ul class="not-prose !ml-0" dir="auto" data-type="taskList"><li class="grid task-item" dir="auto" data-checked="true" data-type="taskItem"><label><input type="checkbox" checked="checked"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">b</p></div></li></ul></div></li><li class="grid task-item" dir="auto" data-checked="false" data-type="taskItem"><label><input type="checkbox"><span></span></label><div><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;">c</p></div></li></ul><p class="select-text pointer-events-auto transition-all" dir="auto" style="line-height: 138%;" data-block-id="<id>">tail</p>"`;
+
+exports[`TaskItem node view (§5.18) > schema v2 > toggling a task item and a nested one 1`] = `
+[
+  {
+    "dom": [
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "a",
+      },
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti(p("a") tl(ti{checked=true}(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "a",
+      },
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti{checked=true}(p("a") tl(ti{checked=true}(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": true,
+        "dataChecked": "true",
+        "text": "a",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti{checked=true}(p("a") tl(ti(p("b")))) ti(p("c"))) p("tail")",
+  },
+  {
+    "dom": [
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "a",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "b",
+      },
+      {
+        "checkbox": false,
+        "dataChecked": "false",
+        "text": "c",
+      },
+    ],
+    "shape": "tl(ti(p("a") tl(ti(p("b")))) ti(p("c"))) p("tail")",
+  },
+]
+`;
