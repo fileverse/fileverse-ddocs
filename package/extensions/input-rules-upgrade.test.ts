@@ -218,6 +218,21 @@ const body = (version: number) => {
     });
   });
 
+  describe.each(SHORTCUTS.slice(0, 3))('%s (%j)', (_name, typed) => {
+    it('Backspace right after the shortcut restores the typed marker', () => {
+      const { editor } = harness(version);
+      typeChars(editor, typed);
+      expect(pressKey(editor, 'Backspace')).toBe(true);
+      const blocks = textblocks(editor);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].node.type.name).toBe('paragraph');
+      expect(blocks[0].node.textContent).toBe(typed);
+      const { from, empty } = editor.state.selection;
+      expect(empty).toBe(true);
+      expect(from).toBe(blocks[0].pos + 1 + typed.length);
+    });
+  });
+
   describe('suggestion mode', () => {
     const suggestionEditor = () => {
       const ydoc = new Y.Doc();

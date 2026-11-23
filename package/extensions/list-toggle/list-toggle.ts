@@ -34,6 +34,9 @@ export const ListToggle = Extension.create({
         if (!isListItemNode(item) || $from.index($from.depth - 1) !== 0) {
           return false;
         }
+        // Right after `- ` / `1. ` / `[ ] `, restore the typed marker as the
+        // core keymap does for `# ` and `> `.
+        if (editor.commands.undoInputRule()) return true;
         const list = $from.node($from.depth - 2);
         // An empty nested item with items after it is deleted, caret to the
         // line above (LIST_TOGGLE §3.8). Outdenting would re-parent those

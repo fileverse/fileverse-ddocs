@@ -46,7 +46,7 @@ exports[`schema v1 (dBlock) > bold ("**bold**") > type, then Mod-Z 1`] = `
 
 exports[`schema v1 (dBlock) > bullet list ("- ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(dBlock(paragraph()) dBlock(paragraph()))",
+  "afterBackspace": "doc(dBlock(paragraph("- ")))",
   "afterType": "doc(dBlock(bulletList(listItem(paragraph()))) dBlock(paragraph()))",
   "backspaceHandled": true,
 }
@@ -98,7 +98,7 @@ exports[`schema v1 (dBlock) > heading ("# ") > type, then Mod-Z 1`] = `
 
 exports[`schema v1 (dBlock) > ordered list ("1. ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(dBlock(paragraph()) dBlock(paragraph()))",
+  "afterBackspace": "doc(dBlock(paragraph("1. ")))",
   "afterType": "doc(dBlock(orderedList(listItem(paragraph()))) dBlock(paragraph()))",
   "backspaceHandled": true,
 }
@@ -229,7 +229,7 @@ exports[`schema v1 (dBlock) > suggestion mode > the Typography sentence and a ma
 
 exports[`schema v1 (dBlock) > task list ("[ ] ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(dBlock(paragraph()) dBlock(paragraph()))",
+  "afterBackspace": "doc(dBlock(paragraph("[ ] ")))",
   "afterType": "doc(dBlock(taskList(taskItem(paragraph()))) dBlock(paragraph()))",
   "backspaceHandled": true,
 }
@@ -299,7 +299,7 @@ exports[`schema v2 (flat) > bold ("**bold**") > type, then Mod-Z 1`] = `
 
 exports[`schema v2 (flat) > bullet list ("- ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(paragraph() paragraph())",
+  "afterBackspace": "doc(paragraph("- "))",
   "afterType": "doc(bulletList(listItem(paragraph())) paragraph())",
   "backspaceHandled": true,
 }
@@ -351,7 +351,7 @@ exports[`schema v2 (flat) > heading ("# ") > type, then Mod-Z 1`] = `
 
 exports[`schema v2 (flat) > ordered list ("1. ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(paragraph() paragraph())",
+  "afterBackspace": "doc(paragraph("1. "))",
   "afterType": "doc(orderedList(listItem(paragraph())) paragraph())",
   "backspaceHandled": true,
 }
@@ -482,7 +482,7 @@ exports[`schema v2 (flat) > suggestion mode > the Typography sentence and a mark
 
 exports[`schema v2 (flat) > task list ("[ ] ") > retype, then Backspace 1`] = `
 {
-  "afterBackspace": "doc(paragraph() paragraph())",
+  "afterBackspace": "doc(paragraph("[ ] "))",
   "afterType": "doc(taskList(taskItem(paragraph())) paragraph())",
   "backspaceHandled": true,
 }
