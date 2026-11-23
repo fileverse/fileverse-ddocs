@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`schema v1 > two clients > converge; pins A’s caret and anchors through remote edits, moves and undo 1`] = `
+[
+  "B types: Alpha plus / Beta / Gamma / Delta | A caret Gamma@5 | c1:Alpha c2:Gamma",
+  "A types: Alpha plus / Beta / Gamma! / Delta | A caret Gamma!@6 | c1:Alpha c2:Gamma",
+  "B moves Delta above A’s caret: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "A undo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "A redo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "B undo: Alpha plus / Beta / Gamma! / Delta | A caret Gamma!@0 | c1:Alpha c2:Gamma",
+  "B redo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+]
+`;
+
+exports[`schema v1 > undo grouping > focus then blur between two typed words 1`] = `2`;
+
+exports[`schema v2 > two clients > converge; pins A’s caret and anchors through remote edits, moves and undo 1`] = `
+[
+  "B types: Alpha plus / Beta / Gamma / Delta | A caret Gamma@5 | c1:Alpha c2:Gamma",
+  "A types: Alpha plus / Beta / Gamma! / Delta | A caret Gamma!@6 | c1:Alpha c2:Gamma",
+  "B moves Delta above A’s caret: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "A undo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "A redo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+  "B undo: Alpha plus / Beta / Gamma! / Delta | A caret Gamma!@0 | c1:Alpha c2:Gamma",
+  "B redo: Delta / Alpha plus / Beta / Gamma! | A caret Beta@0 | ",
+]
+`;
+
+exports[`schema v2 > undo grouping > focus then blur between two typed words 1`] = `2`;
