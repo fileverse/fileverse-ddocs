@@ -6,11 +6,10 @@ import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 import { ExtendedTextStyle } from './text-style';
 import { destroyTracked, track, selectText } from './caret-marks/test-helpers';
 
-// Guard for TIPTAP_UPGRADE.md §6 R1: `ExtendedTextStyle` overrides
-// `removeEmptyTextStyle` (a backport of Tiptap 3.30.3). Without it, unsetting
-// one run's colour inside a wrapper (v1 dBlock, list item, quote) strips the
-// textStyle from every run in that wrapper (TEC-3016). The `it.fails` cases use
-// the stock 3.11 command; they must start passing exactly when R1 can be removed.
+// Guard for TIPTAP_UPGRADE.md §6 R1: the `removeEmptyTextStyle` backport was
+// dropped because Tiptap 3.30.3 ships the fix. Unsetting one run's colour inside
+// a wrapper (v1 dBlock, list item, quote) must keep the sibling runs' textStyle
+// (TEC-3016), with both the real ExtendedTextStyle and the stock TextStyle.
 
 afterEach(destroyTracked);
 
@@ -61,7 +60,7 @@ const unsetFirstRun = (editor: Editor) => {
 
 describe.each([1, 2])('unsetColor keeps sibling runs, R1 (schema v%i)', (v) => {
   describe.each(Object.entries(SHAPES))('in a %s', (_shape, html) => {
-    it('with the ExtendedTextStyle override', () => {
+    it('with ExtendedTextStyle', () => {
       const editor = mount(v, html, false);
       unsetFirstRun(editor);
       expect(colourOf(editor, 'blue')).toBe('rgb(0, 0, 255)');
@@ -70,32 +69,32 @@ describe.each([1, 2])('unsetColor keeps sibling runs, R1 (schema v%i)', (v) => {
   });
 });
 
-// A v2 top-level paragraph is itself a textblock, which stock skips, so only
-// the wrappers lose their runs there. v1 wraps every paragraph in a dBlock.
-describe('stock removeEmptyTextStyle (no override), R1', () => {
+// The stock command, without our override: the wrapper shapes are what 3.11
+// got wrong. v1 wraps every paragraph in a dBlock.
+describe('stock removeEmptyTextStyle keeps sibling runs, R1', () => {
   const stockKeepsBlue = (v: number, html: string) => {
     const editor = mount(v, html, true);
     unsetFirstRun(editor);
     expect(colourOf(editor, 'blue')).toBe('rgb(0, 0, 255)');
   };
 
-  it('v2 paragraph is safe without the override', () => {
+  it('v2 paragraph', () => {
     stockKeepsBlue(2, SHAPES.paragraph);
   });
 
-  it.fails('v1 dBlock wipes the sibling run', () => {
+  it('v1 dBlock keeps the sibling run', () => {
     stockKeepsBlue(1, SHAPES.paragraph);
   });
-  it.fails('v1 list item wipes the sibling run', () => {
+  it('v1 list item keeps the sibling run', () => {
     stockKeepsBlue(1, SHAPES['list item']);
   });
-  it.fails('v2 list item wipes the sibling run', () => {
+  it('v2 list item keeps the sibling run', () => {
     stockKeepsBlue(2, SHAPES['list item']);
   });
-  it.fails('v1 blockquote wipes the sibling run', () => {
+  it('v1 blockquote keeps the sibling run', () => {
     stockKeepsBlue(1, SHAPES.blockquote);
   });
-  it.fails('v2 blockquote wipes the sibling run', () => {
+  it('v2 blockquote keeps the sibling run', () => {
     stockKeepsBlue(2, SHAPES.blockquote);
   });
 });
