@@ -13,6 +13,7 @@ import {
   createCommentAnchorFromEditor,
   createCommentAnchorPointFromEditor,
   getCommentAtPosition,
+  hasResolvableCommentAnchorInState,
   triggerDecorationRebuild,
   resolveSuggestionAddPointInState,
   type CommentAnchor,
@@ -547,6 +548,53 @@ describe('accepted suggestions', () => {
     expect(editor.state.doc.toJSON()).toEqual(
       expect.objectContaining({ type: 'doc' }),
     );
+  });
+
+  // y-tiptap 3.3.0 resolves the later Add's stored anchor (now in deleted
+  // text) to null; its saved override must keep it resolvable.
+  it('keeps a pending Add in the moved suffix resolvable for the comment store', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const addAt = (id: string, position: number, texts: string[]) => ({
+      id,
+      ...createCommentAnchorPointFromEditor(editor!, position)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add' as const,
+      suggestedContent: texts.join('\n'),
+      multilineStructure: {
+        version: 1,
+        insertedTexts: texts,
+        structureType: texts.length === 2 ? ['block'] : ['soft', 'block'],
+      },
+    });
+    const first: CommentAnchor = addAt(
+      'first',
+      findRange(editor, 'Alpha base').to,
+      [' FIRST', ''],
+    );
+    const later: CommentAnchor = addAt(
+      'later',
+      findRange(editor, 'Beta base').to,
+      [' SECOND', '', ''],
+    );
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    expect(hasResolvableCommentAnchorInState(later, editor.state)).toBe(true);
+
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    first.resolved = true;
+    expect(hasResolvableCommentAnchorInState(later, editor.state)).toBe(true);
+
+    const clone = new Y.Doc();
+    Y.applyUpdate(clone, Y.encodeStateAsUpdate(harness.ydoc));
+    const reloaded = makeCommentEditor(1, clone);
+    expect(
+      hasResolvableCommentAnchorInState(later, reloaded.editor.state),
+    ).toBe(true);
+    reloaded.editor.destroy();
   });
 
   it('keeps the effective point aligned through undo and redo of the v1 split', () => {

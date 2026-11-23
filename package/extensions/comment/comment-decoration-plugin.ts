@@ -176,7 +176,7 @@ function getSuggestionAddPointOverrides(
 }
 
 function resolveSuggestionAddPointOverride(
-  anchor: CommentAnchor,
+  anchor: Pick<CommentAnchor, 'id'>,
   state: EditorState,
 ): number | null {
   const encoded = getSuggestionAddPointOverrides(state)?.get(anchor.id);
@@ -251,12 +251,16 @@ export function resolveSuggestionAddPointInState(
 export function hasResolvableCommentAnchorInState(
   anchor: Pick<
     CommentAnchor,
-    'anchorFrom' | 'anchorTo' | 'isSuggestion' | 'suggestionType'
+    'id' | 'anchorFrom' | 'anchorTo' | 'isSuggestion' | 'suggestionType'
   >,
   state: EditorState,
 ): boolean {
   if (anchor.isSuggestion && anchor.suggestionType === 'add') {
-    return resolveCommentAnchorPointInState(anchor, state) !== null;
+    // The saved override outlives a stored anchor in deleted text.
+    return (
+      (resolveSuggestionAddPointOverride(anchor, state) ??
+        resolveCommentAnchorPointInState(anchor, state)) !== null
+    );
   }
 
   return resolveCommentAnchorRangeInState(anchor, state) !== null;
