@@ -28,6 +28,8 @@ import { useResponsive } from '../../utils/responsive';
 import { useEditingContext } from '../../hooks/use-editing-context';
 import { TextSelection } from 'prosemirror-state';
 import { SuperchargedTableExtensions } from '../supercharged-table/supercharged-table-kit';
+import { OrderedList } from '../ordered-list';
+import { Blockquote } from '../blockquote';
 import { ModelOption, WindowWithModelContext, ModelService } from './types';
 import { getLoadingMessageInOrder, md } from './utils';
 
@@ -70,7 +72,12 @@ export const AIWriterNodeView = memo(
 
     // Create a new editor instance for editing
     const editEditor = useEditor({
-      extensions: [StarterKit, ...SuperchargedTableExtensions],
+      extensions: [
+        StarterKit.configure({ orderedList: false, blockquote: false }),
+        OrderedList,
+        Blockquote,
+        ...SuperchargedTableExtensions,
+      ],
       content: '',
       editable: true,
       immediatelyRender: false,
