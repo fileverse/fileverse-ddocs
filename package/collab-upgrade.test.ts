@@ -1,16 +1,35 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as Y from 'yjs';
 import { toUint8Array } from 'js-base64';
 import type { Editor } from '@tiptap/react';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import {
+  absolutePositionToRelativePosition,
+  yCursorPlugin,
+  yCursorPluginKey,
+  ySyncPluginKey,
+} from '@tiptap/y-tiptap';
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+} from 'y-protocols/awareness';
+import type { DecorationSet } from '@tiptap/pm/view';
 import { NodeRangeSelection } from '@tiptap/extension-node-range';
 import {
   caretTo,
   destroyTracked,
   endOf,
   makeEditor,
+  nativeDelete,
   pressEnter,
   stampOf,
   startOf,
@@ -203,6 +222,61 @@ describe.each([1, 2])('schema v%i', (version) => {
       step('B undo', () => mod(b, 'z'));
       step('B redo', () => mod(b, 'y'));
       expect(log).toMatchSnapshot();
+    });
+  });
+
+  describe('remote caret', () => {
+    // §5.10.1: B's caret right after "A" is item-based; deleting "A" leaves
+    // it at the first text position (2 in v1, 1 in v2), which 3.0.6-3.0.9
+    // resolved to null.
+    it('renders B’s caret on A at the first text position', async () => {
+      const { a, b } = twoClients(version);
+      const docOf = (editor: Editor) =>
+        ySyncPluginKey.getState(editor.state).doc as Y.Doc;
+      const awA = new Awareness(docOf(a));
+      const awB = new Awareness(docOf(b));
+      onTestFinished(() => {
+        awA.destroy();
+        awB.destroy();
+      });
+      awB.on(
+        'update',
+        ({ added, updated, removed }: Record<string, number[]>) => {
+          const changed = [...added, ...updated, ...removed];
+          applyAwarenessUpdate(
+            awA,
+            encodeAwarenessUpdate(awB, changed),
+            'remote',
+          );
+        },
+      );
+      a.registerPlugin(yCursorPlugin(awA));
+
+      // What B's yCursorPlugin publishes while B has focus (jsdom has none).
+      const publishCaret = (pos: number) => {
+        const sync = ySyncPluginKey.getState(b.state);
+        const rel = absolutePositionToRelativePosition(
+          pos,
+          sync.type,
+          sync.binding.mapping,
+        );
+        awB.setLocalStateField('cursor', { anchor: rel, head: rel });
+      };
+      const caretsOnA = () =>
+        (yCursorPluginKey.getState(a.state) as DecorationSet)
+          .find(undefined, undefined, (spec) => spec.key === `${awB.clientID}`)
+          .map((decoration) => decoration.from);
+
+      const first = startOf(b, 'Alpha');
+      awB.setLocalStateField('user', { name: 'B', color: '#30bced' });
+      publishCaret(first + 1);
+      // y-tiptap batches awareness re-renders into a setTimeout(0).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(caretsOnA()).toEqual([first + 1]);
+
+      nativeDelete(b, first, first + 1);
+      expect(blockTexts(a)).toBe('lpha / Beta / Gamma / Delta');
+      expect(caretsOnA()).toEqual([first]);
     });
   });
 

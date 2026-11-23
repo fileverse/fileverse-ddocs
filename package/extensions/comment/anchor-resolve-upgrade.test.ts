@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import type { Editor } from '@tiptap/react';
 import {
   ySyncPluginKey,
   relativePositionToAbsolutePosition,
@@ -80,29 +81,50 @@ describe.each([1, 2])('schema v%i', (version) => {
     expect(resolvedAnchors(h)).toBe('c1:xHel');
   });
 
-  it('restores a caret at the first text position after a tab remount', () => {
+  // Captures the caret at `at`, runs `edit` on the first editor, destroys it
+  // (tab switch away) and resolves the caret in a new editor (switch back).
+  const remount = (at: number, edit: (editor: Editor) => void = () => {}) => {
     const ydoc = new Y.Doc();
     const first = makeEditor(version, HTML, { ydoc });
-    caretTo(first, firstTextPos);
+    caretTo(first, at);
     const cursor = captureCursorPosition(first)!;
+    edit(first);
     first.destroy();
 
     const editor = track(makeEditor(version, null, { ydoc }));
-    expect(editor.state.doc.textContent).toBe('HelloWorld');
     // resolveCursorPosition falls back to the absolute offset, so read the
     // Yjs path directly to prove the relative position resolves.
     const sync = ySyncPluginKey.getState(editor.state);
-    expect(
-      relativePositionToAbsolutePosition(
+    return {
+      text: editor.state.doc.textContent,
+      relative: relativePositionToAbsolutePosition(
         sync.doc,
         sync.type,
         cursor.relAnchor!,
         sync.binding.mapping,
       ),
-    ).toBe(firstTextPos);
-    expect(resolveCursorPosition(editor, cursor)).toEqual({
-      anchor: firstTextPos,
-      head: firstTextPos,
+      restored: resolveCursorPosition(editor, cursor),
+    };
+  };
+
+  it('restores a caret at the first text position after a tab remount', () => {
+    expect(remount(firstTextPos)).toEqual({
+      text: 'HelloWorld',
+      relative: firstTextPos,
+      restored: { anchor: firstTextPos, head: firstTextPos },
+    });
+  });
+
+  // At offset 0 the relative position is type-based; after "H" it is
+  // item-based, the shape 3.0.6-3.0.9 resolved to null once "H" is deleted.
+  it('restores a caret after a deleted first character to the first text position', () => {
+    const result = remount(firstTextPos + 1, (editor) =>
+      nativeDelete(editor, firstTextPos, firstTextPos + 1),
+    );
+    expect(result).toEqual({
+      text: 'elloWorld',
+      relative: firstTextPos,
+      restored: { anchor: firstTextPos, head: firstTextPos },
     });
   });
 });
