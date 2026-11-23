@@ -80,7 +80,7 @@ const lowlight = createLowlight(common);
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../types';
 import { type ToCItemType } from '../components/toc/types';
 import type { DBlockRuntimeStateRef } from './d-block/dblock-runtime';
-import { CustomLink } from './custom-link';
+import { CustomLink, autoLinkCandidate } from './custom-link';
 import { suggestionTrackingPluginKey } from './suggestion/suggestion-tracking-extension';
 import { DdocTableOfContents } from './table-of-contents';
 import SearchAndReplace from './search-replace/search-replace';
@@ -366,7 +366,7 @@ export const defaultExtensions = ({
   }),
   HorizontalRule,
   CustomLink.configure({
-    shouldAutoLink: (url) => /^https?:\/\//.test(url),
+    shouldAutoLink: (url) => /^https?:\/\//.test(autoLinkCandidate(url)),
     autolink: true,
     openOnClick: false,
     HTMLAttributes: {

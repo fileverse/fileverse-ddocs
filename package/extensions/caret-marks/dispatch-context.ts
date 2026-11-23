@@ -1,6 +1,11 @@
 import { isChangeOrigin } from '@tiptap/extension-collaboration';
 import { Mark } from '@tiptap/pm/model';
-import type { EditorState, PluginKey, Transaction } from '@tiptap/pm/state';
+import {
+  Selection,
+  type EditorState,
+  type PluginKey,
+  type Transaction,
+} from '@tiptap/pm/state';
 import { ReplaceAroundStep, type Step } from '@tiptap/pm/transform';
 
 export type OldCaret = {
@@ -25,6 +30,8 @@ export type DispatchContext = {
   docChanged: boolean;
   oldCaret: OldCaret | null;
   pending: Pending | null;
+  /** The root deleted a selection spanning the whole document's text. */
+  wholeDocDelete: boolean;
 };
 
 export const EMPTY_CONTEXT: DispatchContext = {
@@ -32,6 +39,7 @@ export const EMPTY_CONTEXT: DispatchContext = {
   docChanged: false,
   oldCaret: null,
   pending: null,
+  wholeDocDelete: false,
 };
 
 export const isRootTransaction = (tr: Transaction) =>
@@ -122,6 +130,17 @@ const nextPending = (
   return prev;
 };
 
+// Same test as @tiptap/core's keymap clear-document plugin.
+const isWholeDocumentSelected = ({ selection, doc }: EditorState) =>
+  !selection.empty &&
+  selection.from === Selection.atStart(doc).from &&
+  selection.to === Selection.atEnd(doc).to;
+
+// Tiptap 3.33.1's keymap appends setStoredMarks(null) after that delete; 3.11
+// did not, so it is not a clear (Rule A3 keeps the deleted text's marks).
+const isWholeDocClear = (tr: Transaction, prev: DispatchContext) =>
+  prev.wholeDocDelete && tr.storedMarksSet && tr.storedMarks === null;
+
 export const applyDispatchContext = (
   tr: Transaction,
   prev: DispatchContext,
@@ -134,6 +153,7 @@ export const applyDispatchContext = (
       docChanged: tr.docChanged,
       oldCaret: trackOldCaret(tr, oldState),
       pending: nextPending(tr, null, key, oldState),
+      wholeDocDelete: tr.docChanged && isWholeDocumentSelected(oldState),
     };
   }
   const oldCaret =
@@ -149,6 +169,8 @@ export const applyDispatchContext = (
   return {
     ...prev,
     oldCaret,
-    pending: nextPending(tr, prev.pending, key, oldState),
+    pending: isWholeDocClear(tr, prev)
+      ? prev.pending
+      : nextPending(tr, prev.pending, key, oldState),
   };
 };

@@ -1,4 +1,19 @@
-export const isBlackOrWhiteShade = (color: string) => {
+// Tiptap 3.20+ stores the authored colour (`#333`) where browsers used to
+// hand us `rgb(51, 51, 51)`, so a hex grey is judged by its rgb() form too.
+const hexToRgb = (hex: string): string | null => {
+  const match = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(hex);
+  if (!match) return null;
+  const digits =
+    match[1].length <= 4 ? match[1].replace(/./g, '$&$&') : match[1];
+  // A translucent colour serialises as rgba(), which is never a shade.
+  if (digits.length === 8 && !/ff$/i.test(digits)) return null;
+  const [r, g, b] = [0, 2, 4].map((i) =>
+    Number.parseInt(digits.slice(i, i + 2), 16),
+  );
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+export const isBlackOrWhiteShade = (color: string): boolean => {
   // Handle rgb format
   if (color.startsWith('rgb')) {
     const rgbValues = color.match(/\d+/g);
@@ -31,7 +46,9 @@ export const isBlackOrWhiteShade = (color: string) => {
     '#b7b7b7',
   ].map((c) => c.toLowerCase());
 
-  return blackShades.includes(color) || whiteShades.includes(color);
+  if (blackShades.includes(color) || whiteShades.includes(color)) return true;
+  const rgb = hexToRgb(color);
+  return rgb !== null && isBlackOrWhiteShade(rgb);
 };
 
 export const getContrastColor = (hex: string): '#000000' | '#ffffff' => {

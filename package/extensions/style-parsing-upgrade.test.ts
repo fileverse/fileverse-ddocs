@@ -115,3 +115,29 @@ describe('paste colour clean-up input, §5.6', () => {
     }).toMatchSnapshot();
   });
 });
+
+// 3.34 stores a pasted hex colour as authored, where a browser on 3.11 stored
+// its rgb() form; the clean-up must treat each hex grey as it treated that form
+// (Task 13, Keep: isBlackOrWhiteShade normalises hex greys).
+describe('paste colour clean-up of hex greys, §5.6', () => {
+  const HEX_GREYS = [
+    ['#141414', 'rgb(20, 20, 20)', 'stripped'],
+    ['#808080', 'rgb(128, 128, 128)', 'stripped'],
+    ['#fafafa', 'rgb(250, 250, 250)', 'stripped'],
+    ['#333', 'rgb(51, 51, 51)', 'kept'],
+    ['#fff', 'rgb(255, 255, 255)', 'stripped'],
+    ['#808080ff', 'rgb(128, 128, 128)', 'stripped'],
+    ['#80808080', 'rgba(128, 128, 128, 0.5)', 'kept'],
+  ] as const;
+
+  it.each(HEX_GREYS)('%s cleans up as %s', (hex, rgb, expected) => {
+    const editor = mount(1, span(`color: ${hex}`));
+    const color = (stored(editor)[0].marks.textStyle as { color: string })
+      .color;
+    const cleanUp = (c: string) =>
+      isBlackOrWhiteShade(c) ? 'stripped' : 'kept';
+    expect(color).toBe(hex);
+    expect(cleanUp(color)).toBe(cleanUp(rgb));
+    expect(cleanUp(color)).toBe(expected);
+  });
+});

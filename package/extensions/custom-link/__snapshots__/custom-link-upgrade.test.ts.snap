@@ -4,14 +4,16 @@ exports[`link paste and typing, §5.18 (schema v1) > a space typed after a link 
 {
   "handled": false,
   "runs": [
-    "aaa  -> https://a.dev",
+    "aaa -> https://a.dev",
+    " ",
   ],
 }
 `;
 
 exports[`link paste and typing, §5.18 (schema v1) > a word typed after that space 1`] = `
 [
-  "aaa more -> https://a.dev",
+  "aaa -> https://a.dev",
+  " more",
 ]
 `;
 
@@ -31,6 +33,7 @@ exports[`link paste and typing, §5.18 (schema v1) > example.com pasted over a s
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -46,6 +49,7 @@ exports[`link paste and typing, §5.18 (schema v1) > https://example.com pasted 
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "https://example.com",
+      "title": null,
     },
   ],
   "text": "https://example.com",
@@ -61,6 +65,7 @@ exports[`link paste and typing, §5.18 (schema v1) > https://example.com pasted 
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -83,6 +88,7 @@ exports[`link paste and typing, §5.18 (schema v1) > www.example.com pasted over
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -93,14 +99,16 @@ exports[`link paste and typing, §5.18 (schema v2) > a space typed after a link 
 {
   "handled": false,
   "runs": [
-    "aaa  -> https://a.dev",
+    "aaa -> https://a.dev",
+    " ",
   ],
 }
 `;
 
 exports[`link paste and typing, §5.18 (schema v2) > a word typed after that space 1`] = `
 [
-  "aaa more -> https://a.dev",
+  "aaa -> https://a.dev",
+  " more",
 ]
 `;
 
@@ -120,6 +128,7 @@ exports[`link paste and typing, §5.18 (schema v2) > example.com pasted over a s
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -135,6 +144,7 @@ exports[`link paste and typing, §5.18 (schema v2) > https://example.com pasted 
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "https://example.com",
+      "title": null,
     },
   ],
   "text": "https://example.com",
@@ -150,6 +160,7 @@ exports[`link paste and typing, §5.18 (schema v2) > https://example.com pasted 
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -172,6 +183,7 @@ exports[`link paste and typing, §5.18 (schema v2) > www.example.com pasted over
       "rel": "noopener noreferrer",
       "target": "_blank",
       "text": "words",
+      "title": null,
     },
   ],
   "text": "some words",
@@ -198,40 +210,48 @@ exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > select
 
 exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the first link, same text, empty href (unlink) 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the first link, same text, new href 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://new.dev",
+  "bbb -> https://b.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the second link, same text, new href 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://a.dev",
+  "bbb -> https://new.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > re-apply after unset from a caret inside the first link 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > set from a caret inside the first link 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://new.dev",
+  "bbb -> https://b.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > set from a caret inside the second link 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://a.dev",
+  "bbb -> https://new.dev",
   " tail",
 ]
 `;
@@ -245,17 +265,24 @@ exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorComm
 
 exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > unset from a caret inside the first link 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > unset from a caret inside the second link 1`] = `
 [
-  "aaabbb tail",
+  "aaa -> https://a.dev",
+  "bbb tail",
 ]
 `;
 
-exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `[]`;
+exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `
+[
+  "bbb -> https://b.dev",
+]
+`;
 
 exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right after the second link > before embed 1`] = `
 {
@@ -304,40 +331,48 @@ exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > select
 
 exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the first link, same text, empty href (unlink) 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the first link, same text, new href 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://new.dev",
+  "bbb -> https://b.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the second link, same text, new href 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://a.dev",
+  "bbb -> https://new.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > re-apply after unset from a caret inside the first link 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > set from a caret inside the first link 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://new.dev",
+  "bbb -> https://b.dev",
   " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > set from a caret inside the second link 1`] = `
 [
-  "aaabbb -> https://new.dev",
+  "aaa -> https://a.dev",
+  "bbb -> https://new.dev",
   " tail",
 ]
 `;
@@ -351,17 +386,24 @@ exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorComm
 
 exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > unset from a caret inside the first link 1`] = `
 [
-  "aaabbb tail",
+  "aaa",
+  "bbb -> https://b.dev",
+  " tail",
 ]
 `;
 
 exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > unset from a caret inside the second link 1`] = `
 [
-  "aaabbb tail",
+  "aaa -> https://a.dev",
+  "bbb tail",
 ]
 `;
 
-exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `[]`;
+exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `
+[
+  "bbb -> https://b.dev",
+]
+`;
 
 exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right after the second link > before embed 1`] = `
 {

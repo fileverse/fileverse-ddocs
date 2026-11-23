@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import { Editor } from '@tiptap/react';
 import { makeEditor } from '../../utils/make-editor';
+import { autoLinkCandidate } from '.';
 
 const textStyleOf = (editor: Editor, text: string) => {
   let attrs: Record<string, unknown> | undefined;
@@ -49,5 +50,43 @@ describe('CustomLink setLink', () => {
     expect(textStyleOf(editor, 'link')).toMatchObject({
       color: 'rgb(0, 0, 255)',
     });
+  });
+});
+
+describe('CustomLink paste over a selection', () => {
+  let editor: Editor;
+  afterEach(() => editor?.destroy());
+  beforeAll(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ClipboardEvent ??= Event;
+  });
+
+  const pasteOverWords = (text: string) => {
+    editor = makeEditor('<p>some words</p>');
+    editor.commands.setTextSelection({ from: 6, to: 11 });
+    editor.view.pasteText(text);
+    const hrefs: string[] = [];
+    editor.state.doc.descendants((node) =>
+      node.marks.forEach((mark) => {
+        if (mark.type.name === 'link') hrefs.push(mark.attrs.href);
+      }),
+    );
+    return hrefs;
+  };
+
+  it('links a bare domain with the default protocol, as Tiptap 3.11 did', () => {
+    expect(pasteOverWords('example.com/path')).toEqual([
+      'http://example.com/path',
+    ]);
+  });
+
+  it('does not link an email or a non-http URL', () => {
+    expect(pasteOverWords('a@b.com')).toEqual([]);
+    editor.destroy();
+    expect(pasteOverWords('ftp://x.com')).toEqual([]);
+  });
+
+  it('leaves autolink checks outside a paste unchanged', () => {
+    expect(autoLinkCandidate('example.com')).toBe('example.com');
   });
 });
