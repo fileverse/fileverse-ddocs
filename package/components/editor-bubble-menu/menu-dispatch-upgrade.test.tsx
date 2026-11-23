@@ -172,8 +172,8 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
       expect(new Set(proving.map((p) => p.options)).size).toBe(1);
       if (host.rendersWith === 'store') expect(parentRenders).toHaveLength(0);
       expect(transactions).toBe(0);
-      // Not a transaction, but the same churn: ColumnsMenu's plugin key holds
-      // a fresh uuid on every render and 3.11 keeps the one it mounted with.
+      // Not a transaction, but the same churn: ColumnsMenu's plugin key gets a
+      // fresh uuid each render; BubbleMenu resolves it once (3.11 and 3.34).
       expect([
         register.mock.calls.length,
         unregister.mock.calls.length,

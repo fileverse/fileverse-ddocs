@@ -72,9 +72,9 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
   const { isBelow1280px, isNativeMobile } = useResponsive();
   const { isFocusMode } = useEditorContext();
   const { scale } = useZoom();
-  // Tiptap keeps the appendTo and options it mounted with, so they read the
-  // live breakpoint and scale through a ref. Below 1280px the menu sits in
-  // the scaled page and is counter-scaled; wider, it is on the canvas.
+  // The ref keeps appendTo and options identity-stable (no dispatch on every
+  // render) while reading the live breakpoint and scale. Below 1280px the menu
+  // sits in the scaled page and is counter-scaled; wider, it is on the canvas.
   const counterScaleRef = useRef({ isBelow1280px, scale });
   counterScaleRef.current = { isBelow1280px, scale };
   const getCounterScale = () =>
