@@ -1,0 +1,199 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`select all + delete, §5.5 (schema v1) > a link in the deleted text must not carry 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": null,
+  "text": "",
+  "typed": {
+    "names": [],
+    "textStyle": null,
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v1) > bold + colour + font + size, Cmd-A then Backspace 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": null,
+  "text": "",
+  "typed": {
+    "names": [],
+    "textStyle": null,
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v1) > control: a link in a text-only selection (pinned as-is) 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": [
+    "bold",
+    "link",
+    "textStyle",
+  ],
+  "text": "",
+  "typed": {
+    "names": [
+      "bold",
+      "link",
+      "textStyle",
+    ],
+    "textStyle": {
+      "color": "rgb(255, 0, 0)",
+      "data-original-color": null,
+      "fontFamily": "Georgia",
+      "fontSize": "24px",
+    },
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v1) > control: selecting only the text and deleting keeps the marks (Rule A3) 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": [
+    "bold",
+    "textStyle",
+  ],
+  "text": "",
+  "typed": {
+    "names": [
+      "bold",
+      "textStyle",
+    ],
+    "textStyle": {
+      "color": "rgb(255, 0, 0)",
+      "data-original-color": null,
+      "fontFamily": "Georgia",
+      "fontSize": "24px",
+    },
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v1) > control: the content carries every mark before the delete 1`] = `
+{
+  "names": [
+    "bold",
+    "textStyle",
+  ],
+  "textStyle": {
+    "color": "rgb(255, 0, 0)",
+    "data-original-color": null,
+    "fontFamily": "Georgia",
+    "fontSize": "24px",
+  },
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v2) > a link in the deleted text must not carry 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": null,
+  "text": "",
+  "typed": {
+    "names": [],
+    "textStyle": null,
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v2) > bold + colour + font + size, Cmd-A then Backspace 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": null,
+  "text": "",
+  "typed": {
+    "names": [],
+    "textStyle": null,
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v2) > control: a link in a text-only selection (pinned as-is) 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": [
+    "bold",
+    "link",
+    "textStyle",
+  ],
+  "text": "",
+  "typed": {
+    "names": [
+      "bold",
+      "link",
+      "textStyle",
+    ],
+    "textStyle": {
+      "color": "rgb(255, 0, 0)",
+      "data-original-color": null,
+      "fontFamily": "Georgia",
+      "fontSize": "24px",
+    },
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v2) > control: selecting only the text and deleting keeps the marks (Rule A3) 1`] = `
+{
+  "handled": true,
+  "stampAfterTyping": null,
+  "stampBeforeTyping": null,
+  "storedMarks": [
+    "bold",
+    "textStyle",
+  ],
+  "text": "",
+  "typed": {
+    "names": [
+      "bold",
+      "textStyle",
+    ],
+    "textStyle": {
+      "color": "rgb(255, 0, 0)",
+      "data-original-color": null,
+      "fontFamily": "Georgia",
+      "fontSize": "24px",
+    },
+  },
+  "updates": 1,
+}
+`;
+
+exports[`select all + delete, §5.5 (schema v2) > control: the content carries every mark before the delete 1`] = `
+{
+  "names": [
+    "bold",
+    "textStyle",
+  ],
+  "textStyle": {
+    "color": "rgb(255, 0, 0)",
+    "data-original-color": null,
+    "fontFamily": "Georgia",
+    "fontSize": "24px",
+  },
+}
+`;

@@ -1,0 +1,391 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`link paste and typing, §5.18 (schema v1) > a space typed after a link 1`] = `
+{
+  "handled": false,
+  "runs": [
+    "aaa  -> https://a.dev",
+  ],
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > a word typed after that space 1`] = `
+[
+  "aaa more -> https://a.dev",
+]
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > example.com pasted into empty text 1`] = `
+{
+  "links": [],
+  "text": "example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "http://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > https://example.com pasted into empty text 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "https://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "https://example.com",
+    },
+  ],
+  "text": "https://example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > https://example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "https://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > www.example.com pasted into empty text 1`] = `
+{
+  "links": [],
+  "text": "www.example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v1) > www.example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "http://www.example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > a space typed after a link 1`] = `
+{
+  "handled": false,
+  "runs": [
+    "aaa  -> https://a.dev",
+  ],
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > a word typed after that space 1`] = `
+[
+  "aaa more -> https://a.dev",
+]
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > example.com pasted into empty text 1`] = `
+{
+  "links": [],
+  "text": "example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "http://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > https://example.com pasted into empty text 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "https://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "https://example.com",
+    },
+  ],
+  "text": "https://example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > https://example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "https://example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > www.example.com pasted into empty text 1`] = `
+{
+  "links": [],
+  "text": "www.example.com",
+}
+`;
+
+exports[`link paste and typing, §5.18 (schema v2) > www.example.com pasted over a selection 1`] = `
+{
+  "links": [
+    {
+      "class": "custom-text-link",
+      "href": "http://www.example.com",
+      "rel": "noopener noreferrer",
+      "target": "_blank",
+      "text": "words",
+    },
+  ],
+  "text": "some words",
+}
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > empty caret inside the first link, same text, new href 1`] = `
+[
+  "a -> https://a.dev",
+  "aaa -> https://new.dev",
+  "aa -> https://a.dev",
+  "bbb -> https://b.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the first link, new text 1`] = `
+[
+  "zzz -> https://new.dev",
+  "bbb -> https://b.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the first link, same text, empty href (unlink) 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the first link, same text, new href 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > applyLinkWithText > selection of the second link, same text, new href 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > re-apply after unset from a caret inside the first link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > set from a caret inside the first link 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > set from a caret inside the second link 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > set over a selection that spans both links 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > unset from a caret inside the first link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > insert.link (useEditorCommands) > unset from a caret inside the second link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `[]`;
+
+exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right after the second link > before embed 1`] = `
+{
+  "candidate": "image",
+  "runs": [
+    "bbb -> https://b.dev",
+    "https://example.com/pic.png -> https://example.com/pic.png",
+  ],
+}
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right before the first link > after embed 1`] = `
+[
+  "https://example.com/pic.png -> https://example.com/pic.png",
+  "aaa -> https://a.dev",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v1) > paste-as candidate next to an existing link > image URL pasted right before the first link > before embed 1`] = `
+{
+  "candidate": null,
+  "runs": [
+    "https://example.com/pic.png -> https://example.com/pic.png",
+    "aaa -> https://a.dev",
+  ],
+}
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > empty caret inside the first link, same text, new href 1`] = `
+[
+  "a -> https://a.dev",
+  "aaa -> https://new.dev",
+  "aa -> https://a.dev",
+  "bbb -> https://b.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the first link, new text 1`] = `
+[
+  "zzz -> https://new.dev",
+  "bbb -> https://b.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the first link, same text, empty href (unlink) 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the first link, same text, new href 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > applyLinkWithText > selection of the second link, same text, new href 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > re-apply after unset from a caret inside the first link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > set from a caret inside the first link 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > set from a caret inside the second link 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > set over a selection that spans both links 1`] = `
+[
+  "aaabbb -> https://new.dev",
+  " tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > unset from a caret inside the first link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > insert.link (useEditorCommands) > unset from a caret inside the second link 1`] = `
+[
+  "aaabbb tail",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right after the second link > after embed 1`] = `[]`;
+
+exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right after the second link > before embed 1`] = `
+{
+  "candidate": "image",
+  "runs": [
+    "bbb -> https://b.dev",
+    "https://example.com/pic.png -> https://example.com/pic.png",
+  ],
+}
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right before the first link > after embed 1`] = `
+[
+  "https://example.com/pic.png -> https://example.com/pic.png",
+  "aaa -> https://a.dev",
+]
+`;
+
+exports[`link range from a caret, §5.4 (schema v2) > paste-as candidate next to an existing link > image URL pasted right before the first link > before embed 1`] = `
+{
+  "candidate": null,
+  "runs": [
+    "https://example.com/pic.png -> https://example.com/pic.png",
+    "aaa -> https://a.dev",
+  ],
+}
+`;
