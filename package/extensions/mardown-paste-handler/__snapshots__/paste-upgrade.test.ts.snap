@@ -19,13 +19,13 @@ exports[`pasted HTML attributes, §5.14 (schema v1) > ordered list: Google Docs 
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": "a",
+      "type": null,
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": "a",
+    "type": null,
   },
 }
 `;
@@ -37,13 +37,13 @@ exports[`pasted HTML attributes, §5.14 (schema v1) > ordered list: list-style-t
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": "i",
+      "type": null,
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": "i",
+    "type": null,
   },
 }
 `;
@@ -85,13 +85,13 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > ordered list: Google Docs 
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": "a",
+      "type": null,
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": "a",
+    "type": null,
   },
 }
 `;
@@ -103,13 +103,13 @@ exports[`pasted HTML attributes, §5.14 (schema v2) > ordered list: list-style-t
       "dir": "auto",
       "start": 1,
       "tight": false,
-      "type": "i",
+      "type": null,
     },
   ],
   "rendered": {
     "class": "flex flex-col items-start list-decimal list-outside",
     "start": null,
-    "type": "i",
+    "type": null,
   },
 }
 `;
