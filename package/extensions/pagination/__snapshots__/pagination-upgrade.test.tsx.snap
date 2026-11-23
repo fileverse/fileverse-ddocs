@@ -1,0 +1,197 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pagination upgrade probes, schema v1 > dispatches at most one spacer transaction per keystroke in a 300-block doc 1`] = `
+{
+  "plain character": 0,
+  "wraps to a second line": 1,
+}
+`;
+
+exports[`pagination upgrade probes, schema v1 > places a table, media and a code block the same once node views have rendered 1`] = `
+{
+  "pageCount": 3,
+  "pageStarts": [
+    "before@paragraph",
+    "before@tableRow",
+    "before@paragraph",
+  ],
+  "spacers": [
+    "p2 block@tableRow h=239 header=30",
+    "p3 block@dBlock h=209",
+  ],
+}
+`;
+
+exports[`pagination upgrade probes, schema v2 > dispatches at most one spacer transaction per keystroke in a 300-block doc 1`] = `
+{
+  "plain character": 0,
+  "wraps to a second line": 1,
+}
+`;
+
+exports[`pagination upgrade probes, schema v2 > places a table, media and a code block the same once node views have rendered 1`] = `
+{
+  "pageCount": 3,
+  "pageStarts": [
+    "before@paragraph",
+    "before@tableRow",
+    "before@paragraph",
+  ],
+  "spacers": [
+    "p2 block@tableRow h=239 header=30",
+    "p3 block@paragraph h=209",
+  ],
+}
+`;
+
+exports[`popup probes, schema v1 > emoji picker: opens on :: with the unlaid-out (zero) reference rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "bottom-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 0,
+    "left": 0,
+    "top": 0,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(0px, 10px)",
+}
+`;
+
+exports[`popup probes, schema v1 > emoji picker: places the popup from the decoration rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "top-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 120,
+    "left": 50,
+    "top": 100,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(50px, 90px)",
+}
+`;
+
+exports[`popup probes, schema v1 > slash menu: opens on / with the unlaid-out (zero) reference rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "bottom-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 0,
+    "left": 0,
+    "top": 0,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(0px, 10px)",
+}
+`;
+
+exports[`popup probes, schema v1 > slash menu: places the popup from the decoration rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "top-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 120,
+    "left": 50,
+    "top": 100,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(50px, 90px)",
+}
+`;
+
+exports[`popup probes, schema v2 > emoji picker: opens on :: with the unlaid-out (zero) reference rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "bottom-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 0,
+    "left": 0,
+    "top": 0,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(0px, 10px)",
+}
+`;
+
+exports[`popup probes, schema v2 > emoji picker: places the popup from the decoration rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "top-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 120,
+    "left": 50,
+    "top": 100,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(50px, 90px)",
+}
+`;
+
+exports[`popup probes, schema v2 > slash menu: opens on / with the unlaid-out (zero) reference rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "bottom-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 0,
+    "left": 0,
+    "top": 0,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(0px, 10px)",
+}
+`;
+
+exports[`popup probes, schema v2 > slash menu: places the popup from the decoration rect 1`] = `
+{
+  "appendsToBody": true,
+  "dataPlacement": "top-start",
+  "interactive": true,
+  "placement": "bottom-start",
+  "popperCount": 1,
+  "referenceHidden": true,
+  "referenceRect": {
+    "bottom": 120,
+    "left": 50,
+    "top": 100,
+  },
+  "target": "body",
+  "tippyCalls": 1,
+  "transform": "translate(50px, 90px)",
+}
+`;
