@@ -11,7 +11,6 @@ const isBundled = (name: string) =>
   name.startsWith('@tiptap/') ||
   name.startsWith('prosemirror-') ||
   [
-    '@_ueberdosis/prosemirror-tables',
     '@aarkue/tiptap-math-extension',
     '@tippyjs/react',
     'mammoth',
