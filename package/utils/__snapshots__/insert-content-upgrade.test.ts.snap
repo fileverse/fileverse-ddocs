@@ -1,0 +1,529 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`schema v1 (dBlock) > bold paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("😀 hello"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > bold paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("😀 hello"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > bold paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYhello"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > bold paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYllo"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > bold paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYhello"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > bold paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYllo"[bold])))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("😀 hello")))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("😀 hello")))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYhello")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYllo")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYhello")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > first paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("XYllo")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("😀 hello")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("😀 hello")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("XYhello")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("XYllo")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("XYhello")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > list item paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(dBlock(bulletList(listItem(paragraph("XYllo")))) dBlock(paragraph()))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("😀 hello")))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("😀 hello")))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("XYhello")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("XYllo")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("XYhello")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v1 (dBlock) > second paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(dBlock(paragraph("one")) dBlock(paragraph("XYllo")))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(paragraph("😀 hello"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(paragraph("😀 hello"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(paragraph("XYhello"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(paragraph("XYllo"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(paragraph("XYhello"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > bold paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(paragraph("XYllo"[bold]))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(paragraph("😀 hello"))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(paragraph("😀 hello"))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(paragraph("XYhello"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(paragraph("XYllo"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(paragraph("XYhello"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > first paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(paragraph("XYllo"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("😀 hello"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("😀 hello"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("XYhello"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("XYllo"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("XYhello"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > list item paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(bulletList(listItem(paragraph("XYllo"))) paragraph())",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > emoji: string at a collapsed range 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("😀 hello"))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > emoji: string over a typed \`::\` range 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("😀 hello"))",
+  "ok": true,
+  "selection": {
+    "from": 3,
+    "to": 3,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > paste without formatting: text node over a caret 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("XYhello"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > paste without formatting: text node over a range 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("XYllo"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > suggestion 'add': text node at the start 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("XYhello"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
+
+exports[`schema v2 (flat) > second paragraph > suggestion 'replace': deleteRange then text node 1`] = `
+{
+  "doc": "doc(paragraph("one") paragraph("XYllo"))",
+  "ok": true,
+  "selection": {
+    "from": 2,
+    "to": 2,
+  },
+}
+`;
