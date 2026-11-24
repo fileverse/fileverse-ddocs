@@ -57,4 +57,16 @@ describe.each([1, 2])('input rule undo grouping (schema v%i)', (version) => {
     undoKey(editor);
     expect(editor.state.doc.textContent).toBe('');
   });
+
+  // The wrapped rules stay undoable: Backspace right after one reverts it.
+  it('restores the straight quote on Backspace right after a smart quote', () => {
+    const { editor } = open(version);
+    typeChars(editor, "It'");
+    expect(editor.state.doc.textContent).toBe('It’');
+    const handled = editor.view.someProp('handleKeyDown', (f) =>
+      f(editor.view, new KeyboardEvent('keydown', { key: 'Backspace' })),
+    );
+    expect(handled).toBe(true);
+    expect(editor.state.doc.textContent).toBe("It'");
+  });
 });

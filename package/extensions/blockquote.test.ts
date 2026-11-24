@@ -13,7 +13,7 @@ import {
   resolvedAnchors,
 } from './list-toggle/test-helpers';
 
-// Backspace after a quote is the core keymap's joinBackward, not upstream
+// Backspace at a quote boundary is the core keymap's joinBackward, not upstream
 // Blockquote's merge (Tiptap 3.26+), which drops a v2 heading's type. In v1
 // upstream's handler declines, so only v2 can tell the two apart.
 
@@ -26,7 +26,7 @@ const blocks = (editor: Editor) =>
       : node.textContent,
   );
 
-describe('Backspace at the start of a block after a quote (schema v2)', () => {
+describe('Backspace at a quote boundary (schema v2)', () => {
   it.each([
     ['an H2', '<h2>hh</h2>', 'hh', ['qq', 'h2:hh', '']],
     ['a paragraph', '<p>pp</p>', 'pp', ['qq', 'pp', '']],
@@ -42,4 +42,13 @@ describe('Backspace at the start of a block after a quote (schema v2)', () => {
       expectValid(h.editor, 2);
     },
   );
+
+  it('merges a non-first paragraph inside a quote into the one above, inside the quote', () => {
+    const h = makeListEditor(2, '<blockquote><p>q1</p><p>q2</p></blockquote>');
+    h.editor.commands.setTextSelection(startOf(h.editor, 'q2'));
+    expect(pressKey(h.editor, 'Backspace')).toBe(true);
+    expect(blocks(h.editor)).toEqual(['q1q2', '']);
+    expect(h.editor.state.doc.firstChild?.type.name).toBe('blockquote');
+    expectValid(h.editor, 2);
+  });
 });
