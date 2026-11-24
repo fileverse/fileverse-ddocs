@@ -16,6 +16,10 @@ import {
 } from '../extensions/pagination/print';
 import { htmlToOdt } from 'odf-kit';
 import { preprocessHtml } from '../extensions/odt-export';
+import {
+  ExportErrorHandler,
+  startExportWatchdog,
+} from '../utils/export-watchdog';
 
 interface UseDdocExportArgs {
   editor: Editor | null;
@@ -23,6 +27,7 @@ interface UseDdocExportArgs {
   ydoc: Y.Doc | null;
   exportOptions: (IEditorToolElement | null)[];
   copyAo3Html?: CopyAo3Html;
+  onExportError?: ExportErrorHandler;
 }
 
 const useDdocExport = ({
@@ -31,6 +36,7 @@ const useDdocExport = ({
   ydoc,
   exportOptions,
   copyAo3Html,
+  onExportError,
 }: UseDdocExportArgs) => {
   const normalizeTabTitle = useCallback(
     (title?: string) => (title || 'Untitled').replace(/\s+/g, ' ').trim(),
@@ -99,7 +105,7 @@ const useDdocExport = ({
     async (format: string, name?: string) => {
       const option = formatOptionMap[format];
       if (!option || option.disabled) return;
-      option.onClick(name);
+      await option.onClick(name);
     },
     [formatOptionMap],
   );
@@ -115,75 +121,81 @@ const useDdocExport = ({
     [editor, ydoc],
   );
 
-  const exportAllTabsAsPdf = useCallback(async () => {
-    if (!editor || !ydoc || tabs.length === 0) return;
-    const tempEditors: Editor[] = [];
-    try {
-      const inputs = getPrintInputs(editor);
-      const pagesInputs = inputs?.pageSetup?.mode === 'pages' ? inputs : null;
-      const activeField = editor.extensionManager.extensions.find(
-        (extension) => extension.name === 'collaboration',
-      )?.options?.field;
-      const activeTabId = typeof activeField === 'string' ? activeField : '';
-      const pageBreak =
-        '\n<div data-type="page-break" data-page-break="true"></div>\n';
+  const exportAllTabsAsPdf = useCallback(
+    async (beforePrint?: () => void) => {
+      if (!editor || !ydoc || tabs.length === 0) return;
+      const tempEditors: Editor[] = [];
+      try {
+        const inputs = getPrintInputs(editor);
+        const pagesInputs = inputs?.pageSetup?.mode === 'pages' ? inputs : null;
+        const activeField = editor.extensionManager.extensions.find(
+          (extension) => extension.name === 'collaboration',
+        )?.options?.field;
+        const activeTabId = typeof activeField === 'string' ? activeField : '';
+        const pageBreak =
+          '\n<div data-type="page-break" data-page-break="true"></div>\n';
 
-      const pagelessPages: string[] = [];
-      const pagesPages: string[] = [];
-      let pagesOptions:
-        | Awaited<ReturnType<typeof buildPrintHtml>>['options']
-        | undefined;
-      let pagesFailed = false;
+        const pagelessPages: string[] = [];
+        const pagesPages: string[] = [];
+        let pagesOptions:
+          | Awaited<ReturnType<typeof buildPrintHtml>>['options']
+          | undefined;
+        let pagesFailed = false;
 
-      for (const tab of tabs) {
-        const tempEditor = createTempEditorForTab(tab.id);
-        if (!tempEditor) continue;
-        tempEditors.push(tempEditor);
-        const tabTitle = normalizeTabTitle(tab.name);
-        const level = getTabHeadingLevel(tab);
-        const titleSection = `<section class="tab-title-page"><h${level} class="tab-title-page__text">${escapeHtml(tabTitle)}</h${level}></section>`;
-        const tabHtml = tempEditor.getHTML();
-        pagelessPages.push(titleSection, tabHtml);
+        for (const tab of tabs) {
+          const tempEditor = createTempEditorForTab(tab.id);
+          if (!tempEditor) continue;
+          tempEditors.push(tempEditor);
+          const tabTitle = normalizeTabTitle(tab.name);
+          const level = getTabHeadingLevel(tab);
+          const titleSection = `<section class="tab-title-page"><h${level} class="tab-title-page__text">${escapeHtml(tabTitle)}</h${level}></section>`;
+          const tabHtml = tempEditor.getHTML();
+          pagelessPages.push(titleSection, tabHtml);
 
-        if (!pagesInputs || pagesFailed) continue;
-        const isActive = tab.id === (activeTabId || 'default');
-        try {
-          const built = await buildPrintHtml(
-            isActive
-              ? {
-                  editor,
-                  ...pagesInputs,
-                  placement: resolvePrintPlacement(
+          if (!pagesInputs || pagesFailed) continue;
+          const isActive = tab.id === (activeTabId || 'default');
+          try {
+            const built = await buildPrintHtml(
+              isActive
+                ? {
                     editor,
-                    pagesInputs.isPagesActive,
-                  ),
-                }
-              : { editor: tempEditor, ...pagesInputs, isPagesActive: false },
-          );
-          pagesPages.push(titleSection, built.html);
-          if (isActive || !pagesOptions) pagesOptions = built.options;
-        } catch (error) {
-          console.error('ddoc pages: all-tabs print failed', error);
-          pagesFailed = true;
+                    ...pagesInputs,
+                    placement: resolvePrintPlacement(
+                      editor,
+                      pagesInputs.isPagesActive,
+                    ),
+                  }
+                : { editor: tempEditor, ...pagesInputs, isPagesActive: false },
+            );
+            pagesPages.push(titleSection, built.html);
+            if (isActive || !pagesOptions) pagesOptions = built.options;
+          } catch (error) {
+            console.error('ddoc pages: all-tabs print failed', error);
+            onExportError?.(error, { format: 'pdf', stage: 'all-tabs:pages' });
+            pagesFailed = true;
+          }
         }
-      }
 
-      if (pagesInputs && !pagesFailed) {
-        handleContentPrint(pagesPages.join(pageBreak), pagesOptions);
-      } else {
-        handleContentPrint(pagelessPages.join(pageBreak));
+        beforePrint?.();
+        if (pagesInputs && !pagesFailed) {
+          await handleContentPrint(pagesPages.join(pageBreak), pagesOptions);
+        } else {
+          await handleContentPrint(pagelessPages.join(pageBreak));
+        }
+      } finally {
+        tempEditors.forEach((tempEditor) => tempEditor.destroy());
       }
-    } finally {
-      tempEditors.forEach((tempEditor) => tempEditor.destroy());
-    }
-  }, [
-    createTempEditorForTab,
-    editor,
-    escapeHtml,
-    normalizeTabTitle,
-    tabs,
-    ydoc,
-  ]);
+    },
+    [
+      createTempEditorForTab,
+      editor,
+      escapeHtml,
+      normalizeTabTitle,
+      onExportError,
+      tabs,
+      ydoc,
+    ],
+  );
 
   const exportAllTabsAsMarkdown = useCallback(
     async (name?: string, includeStyles?: boolean) => {
@@ -419,43 +431,57 @@ const useDdocExport = ({
     }) => {
       if (!editor) return;
       const isAllTabs = tab === 'all';
+      const stage = isAllTabs ? 'all-tabs' : 'current-tab';
+      const stopWatchdog = startExportWatchdog(
+        format,
+        () => stage,
+        onExportError,
+      );
 
-      if (isAllTabs) {
-        if (format === 'ao3-html') {
-          await copyAllTabsAsAo3Html();
+      try {
+        if (isAllTabs) {
+          if (format === 'ao3-html') {
+            await copyAllTabsAsAo3Html();
+            return;
+          }
+          if (format === 'pdf') {
+            await exportAllTabsAsPdf(stopWatchdog);
+            return;
+          }
+          if (format === 'md') {
+            await exportAllTabsAsMarkdown(name);
+            return;
+          }
+          if (format === 'md-css') {
+            await exportAllTabsAsMarkdown(name, true);
+            return;
+          }
+          if (format === 'html') {
+            await downloadAllTabsAsHtmlFile(name);
+            return;
+          }
+          if (format === 'txt') {
+            await exportAllTabsAsText(name);
+            return;
+          }
+          if (format === 'odt') {
+            await exportAllTabsAsOdt(name);
+            return;
+          }
           return;
         }
-        if (format === 'pdf') {
-          await exportAllTabsAsPdf();
-          return;
-        }
-        if (format === 'md') {
-          await exportAllTabsAsMarkdown(name);
-          return;
-        }
-        if (format === 'md-css') {
-          await exportAllTabsAsMarkdown(name, true);
-          return;
-        }
-        if (format === 'html') {
-          await downloadAllTabsAsHtmlFile(name);
-          return;
-        }
-        if (format === 'txt') {
-          await exportAllTabsAsText(name);
-          return;
-        }
-        if (format === 'odt') {
-          await exportAllTabsAsOdt(name);
-          return;
-        }
-        return;
+
+        await triggerSingleTabExport(format, name);
+      } catch (error) {
+        if (!onExportError) throw error;
+        onExportError(error, { format, stage });
+      } finally {
+        stopWatchdog();
       }
-
-      await triggerSingleTabExport(format, name);
     },
     [
       editor,
+      onExportError,
       copyAllTabsAsAo3Html,
       downloadAllTabsAsHtmlFile,
       exportAllTabsAsMarkdown,
