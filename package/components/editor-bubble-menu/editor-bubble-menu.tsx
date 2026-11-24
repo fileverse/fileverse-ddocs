@@ -341,7 +341,7 @@ const EditorBubbleMenuComponent = (props: EditorBubbleMenuProps) => {
       options={bubbleMenuOptions}
       shouldShow={handleBubbleMenuShouldShow}
       className={cn(
-        'flex gap-2 overflow-hidden rounded-lg min-w-fit w-full p-1 border color-bg-default items-center shadow-elevation-3',
+        'flex gap-2 overflow-hidden rounded-lg min-w-fit p-1 border color-bg-default items-center shadow-elevation-3',
         isBubbleMenuHidden({
           isCommentOpen,
           isLinkPopupOpen: toolVisibility === IEditorTool.LINK_POPUP,
