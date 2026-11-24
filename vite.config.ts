@@ -47,6 +47,7 @@ export default defineConfig({
           './headless-editor-utils.ts',
         ),
         persistence: path.resolve(__dirname, './persistence.ts'),
+        swarm: path.resolve(__dirname, './swarm.ts'),
       },
       formats: ['es'],
       //A function that generates the output file
