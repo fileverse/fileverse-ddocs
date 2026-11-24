@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as Y from 'yjs';
+import { toUint8Array } from 'js-base64';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import {
   destroyTracked,
@@ -57,3 +60,32 @@ describe.each([1, 2])(
     });
   },
 );
+
+// Documents saved on Tiptap 3.11 (one per schema): opening one must not
+// write to the Y.Doc or add a root (no migration maps, no repair writes).
+describe.each([1, 2])('opening a stored document (schema v%i)', (version) => {
+  it('writes nothing to the Y.Doc', async () => {
+    const stored = fs
+      .readFileSync(
+        path.resolve(
+          __dirname,
+          `../__fixtures__/stored-docs/v${version}-doc.b64`,
+        ),
+        'utf8',
+      )
+      .trim();
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, toUint8Array(stored));
+    const roots = [...ydoc.share.keys()].sort();
+    let updates = 0;
+    ydoc.on('update', () => {
+      updates += 1;
+    });
+
+    const editor = track(makeEditor(version, null, { ydoc }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(editor.state.doc.textContent.length).toBeGreaterThan(0);
+    expect(updates).toBe(0);
+    expect([...ydoc.share.keys()].sort()).toEqual(roots);
+  });
+});
