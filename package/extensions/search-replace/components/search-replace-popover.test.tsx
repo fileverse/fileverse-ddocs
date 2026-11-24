@@ -66,6 +66,15 @@ describe('find and replace shortcut', () => {
     expect(state().showSearchReplacePopover).toBe(false);
   });
 
+  it('survives the tab editor being destroyed and replaced', () => {
+    const { rerender } = render(<SearchReplace editor={editor} />);
+    editor.commands.setContent('<p>hello</p>');
+    editor.destroy();
+    const next = makeEditor();
+    expect(() => rerender(<SearchReplace editor={next} />)).not.toThrow();
+    next.destroy();
+  });
+
   it('does nothing for viewers, who cannot replace', () => {
     setPlatform('Win32');
     render(<SearchReplace editor={editor} viewerMode="view-only" />);
