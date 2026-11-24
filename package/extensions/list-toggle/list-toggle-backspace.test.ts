@@ -209,8 +209,22 @@ describe.each([1, 2])(
       expectValid(editor, version);
     });
 
-    // Right after the shortcut Backspace undoes it (input-rules-upgrade.test.ts);
-    // once anything else happened it is the list-toggle Backspace again.
+    // Lists restore the marker like the core keymap does for `# ` and `> `.
+    it.each(['- ', '1. ', '[ ] ', '# ', '> '])(
+      'Backspace right after %j restores the typed marker',
+      (shortcut) => {
+        const { editor } = makeListEditor(version, '<p></p>');
+        editor.commands.setTextSelection(1 + (version === 1 ? 1 : 0));
+        typeChars(editor, shortcut);
+        expect(bareShape(editor)).not.toContain(shortcut.trim());
+        expect(pressBackspace(editor)).toBe(true);
+        expect(bareShape(editor)).toBe(`p(${JSON.stringify(shortcut)})`);
+        expect(editor.state.selection.$from.parentOffset).toBe(shortcut.length);
+        expectValid(editor, version);
+      },
+    );
+
+    // Once anything else happened it is the list-toggle Backspace again.
     it.each(['- ', '1. ', '[ ] '])(
       'still un-lists an item made with %j once text was typed',
       (shortcut) => {

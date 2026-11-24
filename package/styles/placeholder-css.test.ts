@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import postcss, { type Rule } from 'postcss';
+import type { Editor } from '@tiptap/react';
+import {
+  destroyTracked,
+  endOf,
+  makeEditor,
+  track,
+} from '../extensions/caret-marks/test-helpers';
 
 // The "Type / to browse options" hint must only ever land on an empty
 // PARAGRAPH in the first block position. TEC-2515's flat-schema rewrite
@@ -115,5 +122,37 @@ describe('default "Type /" placeholder scoping', () => {
     for (const chain of headingChains) {
       expect(chain, chain).not.toContain('ProseMirror-focused');
     }
+  });
+});
+
+// The classes the rules above read, as the Placeholder extension sets them:
+// on the empty textblock under the caret, and on the empty doc's paragraph.
+describe.each([1, 2])('placeholder classes (schema v%i)', (version) => {
+  afterEach(destroyTracked);
+
+  const marked = (editor: Editor, cls: string) =>
+    Array.from(editor.view.dom.querySelectorAll(`.${cls}`))
+      .filter((el) => el.tagName !== 'DIV')
+      .map((el) => el.tagName.toLowerCase());
+
+  it('marks the empty document', () => {
+    const editor = track(makeEditor(version, '<p></p>'));
+    expect(marked(editor, 'is-editor-empty')).toEqual(['p']);
+  });
+
+  it('marks only the empty textblock under the caret', () => {
+    const editor = track(
+      makeEditor(version, '<p>head</p><ul><li><p></p></li></ul><p>tail</p>'),
+    );
+    let inside = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (inside === -1 && node.isTextblock && !node.content.size)
+        inside = pos + 1;
+    });
+    editor.commands.setTextSelection(inside);
+    expect(marked(editor, 'is-empty')).toContain('p');
+    expect(marked(editor, 'is-editor-empty')).toEqual([]);
+    editor.commands.setTextSelection(endOf(editor, 'tail'));
+    expect(marked(editor, 'is-empty')).toEqual([]);
   });
 });

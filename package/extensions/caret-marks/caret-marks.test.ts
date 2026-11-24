@@ -28,6 +28,7 @@ import {
   typedTextStyle,
   selectText,
   pressEnter,
+  pressKey,
   type,
 } from './test-helpers';
 
@@ -513,6 +514,37 @@ describe.each([1, 2])('Rule A3 — emptied in place (schema v%i)', (version) => 
     expect(caretBlock(editor).node.content.size).toBe(0);
     expect(stampOf(caretBlock(editor).node)).toBe('[]');
     expect(typedMarks(editor)).toEqual([]);
+  });
+
+  // Tiptap 3.33's keymap appends setStoredMarks(null) after emptying the doc
+  // from a selection spanning its text; that is not a clear.
+  const STYLED =
+    '<span style="color: rgb(255, 0, 0); font-family: Georgia; font-size: 24px">hello world</span>';
+  it.each([
+    ['plain', `<p><strong>${STYLED}</strong></p>`],
+    ['linked', `<p><strong><a href="https://a.dev">${STYLED}</a></strong></p>`],
+  ])('keeps the marks of %s text selected whole and deleted', (_name, html) => {
+    const editor = track(makeEditor(version, html));
+    selectText(editor, 'hello world');
+    expect(pressKey(editor, 'Backspace')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('');
+    expect(stampOf(caretBlock(editor).node)).not.toBe('[]');
+    const typed = typedRun(editor);
+    expect(typed.names).toEqual(expect.arrayContaining(['bold', 'textStyle']));
+    expect(typed.textStyle).toMatchObject({
+      color: 'rgb(255, 0, 0)',
+      fontFamily: 'Georgia',
+      fontSize: '24px',
+    });
+  });
+
+  it('carries no link after select-all and Backspace', () => {
+    const editor = track(
+      makeEditor(version, `<p><a href="https://a.dev">${STYLED}</a></p>`),
+    );
+    editor.commands.selectAll();
+    pressKey(editor, 'Backspace');
+    expect(typedMarks(editor)).not.toContain('link');
   });
 
   it('writes nothing when the caret lands in a different, pre-existing block', () => {

@@ -18,6 +18,18 @@ import {
   resolveSuggestionAddPointInState,
   type CommentAnchor,
 } from './comment-decoration-plugin';
+import {
+  destroyTracked,
+  makeEditor,
+  nativeDelete,
+  startOf,
+  track,
+} from '../caret-marks/test-helpers';
+import {
+  addComment,
+  makeListEditor,
+  resolvedAnchors,
+} from '../list-toggle/test-helpers';
 
 const makeCommentEditor = (schemaVersion = 1, ydoc = new Y.Doc()) => {
   const anchors: CommentAnchor[] = [];
@@ -1918,3 +1930,60 @@ describe.each([1, 2])(
     });
   },
 );
+
+// Anchors resolve through @tiptap/y-tiptap: 3.0.1 rewrote every paragraph on
+// a remote block move, 3.0.6–3.0.9 lost positions at the start of a v2 doc.
+describe.each([1, 2])('anchors under collaboration (schema v%i)', (version) => {
+  afterEach(destroyTracked);
+
+  it('two clients converge and keep anchors around a remote block move', () => {
+    const a = makeCommentEditor(version);
+    track(a.editor).commands.setContent(
+      '<p>Alpha</p><p>Beta</p><p>Gamma</p><p>Delta</p>',
+    );
+    const docA = a.ydoc;
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    docA.on('update', (u: Uint8Array, origin: unknown) => {
+      if (origin !== 'remote') Y.applyUpdate(docB, u, 'remote');
+    });
+    docB.on('update', (u: Uint8Array, origin: unknown) => {
+      if (origin !== 'remote') Y.applyUpdate(docA, u, 'remote');
+    });
+    const b = track(makeEditor(version, null, { ydoc: docB }));
+    addComment(a, 'c1', 'Alpha');
+    addComment(a, 'c2', 'Gamma');
+    const roots = [...docB.share.keys()].sort();
+
+    const $delta = b.state.doc.resolve(startOf(b, 'Delta'));
+    const block = $delta.node(1);
+    const from = $delta.before(1);
+    b.view.dispatch(
+      b.state.tr.delete(from, from + block.nodeSize).insert(0, block),
+    );
+
+    expect(a.editor.getJSON()).toEqual(b.getJSON());
+    expect(a.editor.state.doc.firstChild!.textContent).toBe('Delta');
+    expect(resolvedAnchors(a)).toBe('c1:Alpha c2:Gamma');
+    // y-tiptap 3.0.10–3.0.12 wrote position-migration roots on such a move.
+    expect([...docB.share.keys()].sort()).toEqual(roots);
+  });
+
+  it('resolves anchors at the first text position', () => {
+    const h = makeListEditor(version, '<p>Hello</p>');
+    const first = startOf(h.editor, 'Hello');
+    expect(first).toBe(version === 1 ? 2 : 1);
+    addComment(h, 'c1', 'ello');
+    nativeDelete(h.editor, first, first + 1);
+    expect(resolvedAnchors(h)).toBe('c1:ello');
+
+    const point = createCommentAnchorPointFromEditor(h.editor, first, 1)!;
+    expect(
+      resolveSuggestionAddPointInState(
+        { id: 's1', resolved: false, deleted: false, ...point },
+        h.editor.state,
+        [],
+      ),
+    ).toBe(first);
+  });
+});

@@ -32,11 +32,9 @@ vi.mock('@tiptap/react/menus', async (importOriginal) => {
   return { ...mod, BubbleMenu: Spy };
 });
 
-// Probe for TIPTAP_UPGRADE.md §5.13. 3.34's BubbleMenu dispatches an
-// `updateOptions` transaction whenever a prop's identity changes, and all four
-// hosts pass inline `options`. Each case re-renders the host and counts the
-// editor's transactions: it is 0 today and must stay 0 after the bump
-// (memoise `options` and the closures where it is not).
+// BubbleMenu dispatches an `updateOptions` transaction whenever a prop's
+// identity changes (Tiptap 3.20+), so each host must pass stable `options` and
+// closures: a re-render of the host's parent dispatches nothing.
 
 type Host = {
   name: string;
@@ -164,16 +162,15 @@ describe.each([1, 2])('menu dispatches, schema v%i', (version) => {
 
       const storeRenders = bubbleRenders.all.splice(0);
 
-      // Every re-render reaches BubbleMenu with the same `options` object: on
-      // 3.11 it was new each time; 3.34 dispatches `updateOptions` when it changes.
+      // Every re-render reaches BubbleMenu with the same `options` object.
       const proving =
         host.rendersWith === 'parent' ? parentRenders : storeRenders;
       expect(proving.length).toBeGreaterThanOrEqual(3);
       expect(new Set(proving.map((p) => p.options)).size).toBe(1);
       if (host.rendersWith === 'store') expect(parentRenders).toHaveLength(0);
       expect(transactions).toBe(0);
-      // Not a transaction, but the same churn: ColumnsMenu's plugin key gets a
-      // fresh uuid each render; BubbleMenu resolves it once (3.11 and 3.34).
+      // ColumnsMenu's plugin key gets a fresh uuid each render; BubbleMenu
+      // resolves it once, so nothing re-registers.
       expect([
         register.mock.calls.length,
         unregister.mock.calls.length,

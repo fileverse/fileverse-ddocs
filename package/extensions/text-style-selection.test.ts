@@ -92,3 +92,31 @@ describe.each([
     ]);
   });
 });
+
+// TEC-3016: unsetting one run's colour must not wipe the textStyle of the
+// other runs in the same wrapper (Tiptap 3.30.3 `removeEmptyTextStyle`).
+const TWO_RUNS = `<span style="color: ${RED}">red</span><span style="color: rgb(0, 0, 255)">blue</span>`;
+describe.each([
+  ['v1 paragraph (dBlock)', 1, `<p>${TWO_RUNS}</p>`],
+  ['v1 list item', 1, `<ul><li><p>${TWO_RUNS}</p></li></ul>`],
+  ['v2 list item', 2, `<ul><li><p>${TWO_RUNS}</p></li></ul>`],
+  ['v1 quote', 1, `<blockquote><p>${TWO_RUNS}</p></blockquote>`],
+  ['v2 quote', 2, `<blockquote><p>${TWO_RUNS}</p></blockquote>`],
+])('unsetColor on one run in a %s', (_label, schemaVersion, html) => {
+  let editor: Editor;
+  afterEach(() => editor?.destroy());
+
+  it('keeps the other run coloured', () => {
+    editor = makeEditor(schemaVersion, html);
+    let from = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (from === -1 && node.text === 'red') from = pos;
+    });
+    editor.commands.setTextSelection({ from, to: from + 3 });
+    editor.chain().unsetColor().run();
+    expect(runs(editor).map(([text, color]) => [text, color])).toEqual([
+      ['red', null],
+      ['blue', 'rgb(0, 0, 255)'],
+    ]);
+  });
+});
