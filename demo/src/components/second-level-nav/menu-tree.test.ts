@@ -65,6 +65,17 @@ describe('demoMenuTree', () => {
     ).toEqual(['file.new', 'file.importexport', 'file.print']);
   });
 
+  it('version history (Swarm) is owner-only', () => {
+    const fileFor = (role: Parameters<typeof ctxFor>[0]) =>
+      projectMenu(demoMenuTree, ctxFor(role)).find((m) => m.id === 'file')!;
+    expect(
+      fileFor('owner').children.some((c) => c.id === 'file.versionHistory'),
+    ).toBe(true);
+    expect(
+      fileFor('viewer').children.some((c) => c.id === 'file.versionHistory'),
+    ).toBe(false);
+  });
+
   it('viewer File ▸ Import/Export projects as "Export" with only "Export as .md"', () => {
     const file = projectMenu(demoMenuTree, ctxFor('viewer')).find(
       (m) => m.id === 'file',

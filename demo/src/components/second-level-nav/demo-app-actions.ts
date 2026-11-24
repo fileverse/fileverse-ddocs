@@ -32,6 +32,8 @@ export type DemoAppActionDeps = {
   setPageMode: (mode: PageSetup['mode'] | null) => void;
   startPresentation: () => void;
   openWordCountModal: () => void;
+  /** Opens the Swarm version-history dropdown (no-op when Swarm is off). */
+  openVersionHistory: () => void;
 };
 
 /** Plain factory (not a hook) — safe to call inside renderNavbar's closure. */
@@ -57,6 +59,7 @@ export const createDemoAppActions = (d: DemoAppActionDeps): ActionRegistry => ({
   'file.print': {
     run: () => d.printCurrentTab(),
   },
+  'file.versionHistory': { run: () => d.openVersionHistory() },
   // Canvas visibility toggle (Hide comments / Show comments).
   'view.comments.toggleCanvas': {
     run: () => d.toggleCanvasComments(),

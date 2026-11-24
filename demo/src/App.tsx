@@ -6,6 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import DdocEditor from '../../package/ddoc-editor';
 import type { FontDescriptor } from '../../package/types';
 import { Editor, JSONContent } from '@tiptap/react';
@@ -45,7 +46,19 @@ import { fromUint8Array } from 'js-base64';
 import { crypto as cryptoUtils } from './crypto';
 import { collabStore } from './storage/collab-store';
 import { docStore } from './storage/doc-store';
+import { swarmEnabled, useSwarmStorage } from './storage/swarm-store';
 import {
+  MAX_RESTORE_ATTEMPTS,
+  restoreRetryDelayMs,
+} from './storage/restore-retry';
+import { SwarmRestoreProgress } from './components/SwarmRestoreProgress';
+import { SwarmNotice } from './components/SwarmNotice';
+import { primarySwarmCondition } from '../../package/utils/swarm-diagnostics';
+import type { DocumentVersion } from '../../package/utils/swarm-document-storage';
+import {
+  deleteDdocContent,
+  getDdocContentFingerprint,
+  mergeDdocContent,
   readDdocContent,
   repairDdocContent,
 } from '../../package/persistence';
@@ -71,6 +84,54 @@ import {
 } from './utils';
 import { DevBar } from './components/DevBar';
 import { DocSwitcher } from './components/DocSwitcher';
+
+/**
+ * Swarm snapshot envelope: carries the document title alongside the content
+ * (the base64 Yjs state the store holds), so a restore in another browser
+ * recovers both. Older raw-content snapshots (no envelope) still load.
+ */
+const packSnapshot = (title: string, content: string): string =>
+  JSON.stringify({ __ddoc: 1, title, content });
+const unpackSnapshot = (text: string): { title?: string; content: string } => {
+  try {
+    const v = JSON.parse(text);
+    if (v && v.__ddoc === 1 && typeof v.content === 'string') return v;
+  } catch {
+    // not an envelope: fall through
+  }
+  return { content: text };
+};
+
+/** Keep ?swarmVersion=N in the address bar (shareable) without reloading. */
+const syncVersionParam = (n: number | null) => {
+  const url = new URL(window.location.href);
+  if (n === null) url.searchParams.delete('swarmVersion');
+  else url.searchParams.set('swarmVersion', String(n));
+  window.history.replaceState(null, '', url.toString());
+};
+
+/** The Swarm mark (ethswarm.org), drawn in the current text color. */
+const SwarmIcon = () => (
+  <svg
+    viewBox="0 0 1115 1115"
+    width="12"
+    height="12"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M0 665.01V965l260 150 260-150.01V664.96L260 515 0 665.01zM855 515 595 665v299.99L855 1115l260-150.01V664.95L855 515zM817.32 300.27l-129.91-75.25-.13-149.98L557.5 0 297.68 150.01V450L557.5 600l259.82-150V300.27z" />
+    <path d="m817.32 300.27 129.91-75.3V75L817.52 0 687.28 75.04l130.24 74.83-.2 150.4z" />
+  </svg>
+);
+
+type VersionPreview = {
+  index: number;
+  /** The version's base64 Yjs state, handed to versionHistoryState. */
+  content: string;
+  /** Full snapshot envelope, re-saved verbatim on restore. */
+  raw: string;
+  title?: string;
+};
 
 function App() {
   // --- Document identity ---
@@ -109,6 +170,37 @@ function App() {
   });
 
   const urlTabId = getTabIdFromURL();
+
+  // --- Swarm storage (images and document versions) ---
+  // Active when VITE_BEE_API_URL is set or the browser injects window.swarm
+  // (see storage/swarm-store.ts). Documents go to Swarm only in the default
+  // store mode: each save reads the doc's y-indexeddb store and uploads it
+  // as a new version on the doc's feed.
+  const {
+    imageUploadFn,
+    imageFetchFn,
+    docStorage,
+    stampHealth,
+    nodeState,
+    canWrite,
+    progress: swarmProgress,
+    adoptBatch,
+    beeUrl: swarmBeeUrl,
+    batchId: swarmBatchId,
+    diagnosticsInput,
+    recheck: recheckSwarm,
+    grantAccess: grantSwarmAccess,
+    markDocumentReadOnly,
+    managesPostage: swarmManagesPostage,
+    documentHasOwnKey,
+    documentKeyFromLink,
+  } = useSwarmStorage(docId);
+  // Bumped to read the store again (after a Swarm restore, or after leaving
+  // a version preview) before the editor mounts.
+  const [storeEpoch, setStoreEpoch] = useState(0);
+  // Assigned below, once its dependencies exist; the handlers declared
+  // before it call it through this ref.
+  const scheduleSwarmSaveRef = useRef<() => void>(() => {});
 
   const isOwnerEdSecretSet = import.meta.env.VITE_OWNER_ED_SECRET;
   // --- Persistence ---
@@ -189,11 +281,26 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [storeOnly, docId]);
+  }, [storeOnly, docId, storeEpoch]);
+  // Read the store again before the editor (re)mounts. The check goes back
+  // to pending in the same render, so the editor waits instead of mounting
+  // on the previous read: on stale content it would write that back into
+  // the store, and on a stale "new" it would stamp an existing doc as new.
+  const rereadStore = useCallback(() => {
+    setStoreCheck({ status: 'pending' });
+    setStoreEpoch((e) => e + 1);
+  }, []);
   const handleLocalChange = useCallback(() => {
     setLastSavedAt(Date.now());
+    scheduleSwarmSaveRef.current();
   }, []);
+  // True while "Restore as latest" replaces this doc's store (see below).
+  const replacingStoreRef = useRef(false);
   const handleIndexedDbError = useCallback((error: Error) => {
+    // An editor that was mounted earlier keeps its connection to the store
+    // and reports the store's deletion as a lost connection. During a
+    // restore that deletion is this page's own doing, not a save problem.
+    if (replacingStoreRef.current) return;
     console.error('[demo] local save problem:', error);
     toast({
       title: 'Local save problem',
@@ -259,13 +366,390 @@ function App() {
     return doc?.title || 'Untitled';
   });
 
+  // Latest title for Swarm envelopes (a title edit fires no content change).
+  const titleRef = useRef(title);
   const handleTitleChange = useCallback(
     (newTitle: string) => {
       setTitle(newTitle);
       docStore.updateDocTitle(docId, newTitle);
+      titleRef.current = newTitle;
+      // A title edit is a document change too: version it on Swarm.
+      scheduleSwarmSaveRef.current();
     },
     [docId],
   );
+
+  // --- Swarm: status, restore, saves, version history ---
+  const [swarmStatus, setSwarmStatus] = useState<
+    | { state: 'off' }
+    // Looked up, and the doc has no version on Swarm.
+    | { state: 'none' }
+    | { state: 'saving' }
+    | { state: 'saved'; version: number }
+    | { state: 'error'; message: string }
+  >({ state: 'off' });
+  // What (if anything) is wrong with Swarm right now, in the user's terms.
+  const swarmCondition = swarmEnabled
+    ? primarySwarmCondition({
+        ...diagnosticsInput,
+        // Opened from someone else's link: its feed can only be signed by
+        // its owner, so publishing obstacles are not this reader's to fix.
+        documentReadOnly: documentHasOwnKey && swarmManagesPostage,
+        lastError:
+          swarmStatus.state === 'error' ? swarmStatus.message : undefined,
+      })
+    : null;
+
+  // Restore. A doc this browser's store does not hold (opened from a link,
+  // or in another browser) is restored from its latest Swarm version: the
+  // snapshot is merged into the store, which is then read again, and the
+  // editor mounts from the store as usual. Until that settles the restore
+  // screen stands in for the editor, so nothing mounts the doc as new.
+  const [swarmRestore, setSwarmRestore] = useState<'idle' | 'running' | 'done'>(
+    'idle',
+  );
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreDeferred, setRestoreDeferred] = useState(false);
+  // The attempt in which the browser refused this page an identity. It is
+  // not asked again until the user does: "Try again" starts a new attempt.
+  const identityRefusedAtRef = useRef<number | null>(null);
+  const swarmRestoreGate =
+    swarmEnabled &&
+    storeOnly &&
+    storeCheck.status === 'new' &&
+    swarmRestore !== 'done';
+  useEffect(() => {
+    if (swarmRestoreGate && swarmRestore === 'idle') setSwarmRestore('running');
+  }, [swarmRestoreGate, swarmRestore]);
+  useEffect(() => {
+    if (swarmRestore !== 'running') return;
+    // The node answered but has no batch: reads still work, so carry on.
+    // Only a node we cannot reach at all ends the restore early.
+    if (nodeState.kind === 'unreachable') {
+      setRestoreError(nodeState.reason || 'Bee node unreachable');
+      return;
+    }
+    // A provider reveals this app's feed identity only once the user has
+    // granted access, so a doc whose owner must come from the provider
+    // cannot even be looked up before that. Open it and let the notice ask;
+    // the effect below restores it if access is granted while it is empty.
+    if (
+      diagnosticsInput.provider?.reason === 'not-connected' &&
+      !documentHasOwnKey
+    ) {
+      setRestoreDeferred(true);
+      setSwarmRestore('done');
+      return;
+    }
+    if (!docStorage) return;
+    if (identityRefusedAtRef.current === restoreAttempt) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setRestoreError(null);
+        // Under a provider, a doc made here lives on the feed of the
+        // identity the browser signs this page's feeds with, and the
+        // browser names it only with the user's leave (and only once they
+        // have set one up). A refusal is the user's answer, not a node
+        // still warming up: say what is missing and wait for them, rather
+        // than ask five times in a row.
+        if (swarmManagesPostage && !documentHasOwnKey) {
+          try {
+            await docStorage.feedOwner();
+          } catch (error) {
+            if (cancelled) return;
+            console.warn('Swarm identity not available', error);
+            identityRefusedAtRef.current = restoreAttempt;
+            setRestoreError(
+              `your browser did not give this page a Swarm identity (${(error as Error).message}). Set up or unlock your identity in the browser and allow the request, then try again`,
+            );
+            return;
+          }
+          if (cancelled) return;
+        }
+        const snapshot = await docStorage.loadDocument(docId);
+        if (cancelled) return;
+        if (snapshot) {
+          const { title: restoredTitle, content } = unpackSnapshot(
+            snapshot.text,
+          );
+          const merged = await mergeDdocContent(docId, content);
+          if (cancelled) return;
+          if (merged.status !== 'available') {
+            throw new Error(
+              `Could not write the restored version into this browser's store (${merged.status})`,
+            );
+          }
+          lastSavedRef.current = {
+            fingerprint: await getDdocContentFingerprint(content),
+            title: restoredTitle ?? titleRef.current,
+          };
+          if (restoredTitle) {
+            setTitle(restoredTitle);
+            titleRef.current = restoredTitle;
+            docStore.updateDocTitle(docId, restoredTitle);
+          }
+          setSwarmStatus({ state: 'saved', version: snapshot.feedIndex });
+          console.info(
+            `Swarm: restored document version ${snapshot.feedIndex}`,
+          );
+          rereadStore();
+        } else if (documentKeyFromLink) {
+          // The link names a doc this browser has never held, and nothing
+          // is saved under the identity looked up here: it was made under
+          // another browser's identity, which such a link does not name.
+          // Say so, rather than open an empty doc in its place.
+          setRestoreError(
+            'this link was made in a browser that keeps the document under its own Swarm identity, so the document can only be opened there',
+          );
+          return;
+        } else {
+          setSwarmStatus({ state: 'none' });
+        }
+        if (!cancelled) setSwarmRestore('done');
+      } catch (error) {
+        console.warn('Swarm restore failed', error);
+        if (cancelled) return;
+        // Keep the restore screen up rather than dropping into an empty
+        // editor that silently discards a doc still out there. Early
+        // failures are usually a node that is not ready yet, so retry a
+        // bounded number of times before asking the reader to.
+        if (restoreAttempt + 1 < MAX_RESTORE_ATTEMPTS) {
+          const delay = restoreRetryDelayMs(restoreAttempt);
+          setTimeout(() => setRestoreAttempt((n) => n + 1), delay);
+        } else {
+          setRestoreError((error as Error).message);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    swarmRestore,
+    docStorage,
+    docId,
+    nodeState,
+    restoreAttempt,
+    diagnosticsInput.provider?.reason,
+    documentHasOwnKey,
+    documentKeyFromLink,
+    swarmManagesPostage,
+    rereadStore,
+  ]);
+  // Access granted after a deferred restore: try again, but only while the
+  // store still holds nothing, so nothing typed meanwhile is overwritten.
+  useEffect(() => {
+    if (
+      !restoreDeferred ||
+      !diagnosticsInput.provider ||
+      diagnosticsInput.provider.reason === 'not-connected'
+    ) {
+      return;
+    }
+    setRestoreDeferred(false);
+    void readDdocContent(docId).then((stored) => {
+      if (stored.status === 'missing' || stored.status === 'empty') {
+        setRestoreAttempt(0);
+        setSwarmRestore('running');
+      }
+    });
+  }, [restoreDeferred, diagnosticsInput.provider, docId]);
+
+  // Saves. Each (debounced) save reads the store and uploads it as a new
+  // version, skipped when neither the content nor the title changed since
+  // the version last saved or restored. While Swarm cannot be written (no
+  // batch, node stopped) the save is held and flushed when it can.
+  const lastSavedRef = useRef<{ fingerprint: string; title: string } | null>(
+    null,
+  );
+  const swarmSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const swarmSavePendingRef = useRef(false);
+  const [versionPreview, setVersionPreview] = useState<VersionPreview | null>(
+    null,
+  );
+  const scheduleSwarmSave = useCallback(() => {
+    if (!docStorage || !storeOnly) return;
+    swarmSavePendingRef.current = true;
+    if (versionPreview || !canWrite) return;
+    if (swarmSaveTimeoutRef.current) clearTimeout(swarmSaveTimeoutRef.current);
+    swarmSaveTimeoutRef.current = setTimeout(async () => {
+      swarmSavePendingRef.current = false;
+      const stored = await readDdocContent(docId);
+      if (!stored.encodedState) return;
+      const title = titleRef.current;
+      const fingerprint = await getDdocContentFingerprint(stored.encodedState);
+      const last = lastSavedRef.current;
+      if (last && last.fingerprint === fingerprint && last.title === title) {
+        return;
+      }
+      setSwarmStatus({ state: 'saving' });
+      try {
+        const version = await docStorage.saveDocument(
+          docId,
+          packSnapshot(title, stored.encodedState),
+        );
+        lastSavedRef.current = { fingerprint, title };
+        setSwarmStatus({ state: 'saved', version: version.index });
+      } catch (error) {
+        console.error('Swarm save failed', error);
+        swarmSavePendingRef.current = true;
+        // A doc owned by another identity cannot be written here; record
+        // that so nothing else is attempted and the tag says so.
+        if (/read-only here|another identity/i.test((error as Error).message)) {
+          markDocumentReadOnly();
+        } else {
+          setSwarmStatus({ state: 'error', message: (error as Error).message });
+        }
+      }
+    }, 2000);
+  }, [
+    docId,
+    docStorage,
+    storeOnly,
+    versionPreview,
+    canWrite,
+    markDocumentReadOnly,
+  ]);
+  scheduleSwarmSaveRef.current = scheduleSwarmSave;
+  // Swarm writable again (a batch bought, a node back): flush what waited.
+  useEffect(() => {
+    if (canWrite && swarmSavePendingRef.current) scheduleSwarmSave();
+  }, [canWrite, scheduleSwarmSave]);
+
+  // Version history, through the package's versionHistoryState: selecting
+  // a version re-hydrates the mounted editor in place, and the package
+  // suspends its own persistence while version mode is on. ?swarmVersion=N
+  // deep-links to a version.
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const pendingVersionParamRef = useRef<number | null>(
+    (() => {
+      const v = new URLSearchParams(window.location.search).get('swarmVersion');
+      return v === null ? null : Number(v);
+    })(),
+  );
+  const [versionList, setVersionList] = useState<DocumentVersion[] | null>(
+    null,
+  );
+  const [versionListError, setVersionListError] = useState<string | null>(
+    null,
+  );
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  // Rendered in a portal at a fixed position so no toolbar or navbar
+  // stacking context can cover it.
+  const [versionMenuPos, setVersionMenuPos] = useState({ top: 0, left: 0 });
+  const swarmTagRef = useRef<HTMLButtonElement | null>(null);
+  const openVersionHistory = useCallback(async () => {
+    if (!docStorage) return;
+    const rect = swarmTagRef.current?.getBoundingClientRect();
+    setVersionMenuPos(
+      rect
+        ? { top: rect.bottom + 4, left: rect.left }
+        : { top: 56, left: window.innerWidth / 2 - 120 },
+    );
+    setVersionsOpen((open) => !open);
+    setVersionListError(null);
+    try {
+      setVersionList(await docStorage.listDocumentVersions(docId));
+    } catch (error) {
+      console.warn('Swarm version list failed', error);
+      setVersionList([]);
+      setVersionListError((error as Error).message);
+    }
+  }, [docStorage, docId]);
+  const previewVersion = useCallback(
+    async (index: number) => {
+      if (!docStorage) return;
+      try {
+        const snapshot = await docStorage.loadDocumentVersion(docId, index);
+        if (!snapshot) return;
+        const { title: vTitle, content } = unpackSnapshot(snapshot.text);
+        setVersionPreview({
+          index,
+          content,
+          raw: snapshot.text,
+          title: vTitle,
+        });
+        syncVersionParam(index);
+      } catch (error) {
+        console.warn('Swarm version load failed', error);
+      }
+    },
+    [docStorage, docId],
+  );
+  const exitVersionPreview = useCallback(() => {
+    setVersionPreview(null);
+    syncVersionParam(null);
+    // A fresh live session, mounted from what the store holds now.
+    setEditorEpoch((e) => e + 1);
+    rereadStore();
+  }, [rereadStore]);
+  // Restore as latest: history is never rewritten; the version is saved
+  // again as the newest one and becomes the doc's content here. A merge
+  // cannot undo newer edits, so the store is replaced: the editor unmounts,
+  // the store is deleted and refilled with the version, and a fresh session
+  // mounts from it.
+  const [restoringVersion, setRestoringVersion] =
+    useState<VersionPreview | null>(null);
+  useEffect(() => {
+    if (!restoringVersion || !docStorage) return;
+    let cancelled = false;
+    void (async () => {
+      const version = restoringVersion;
+      try {
+        replacingStoreRef.current = true;
+        const deleted = await deleteDdocContent(docId).finally(() => {
+          replacingStoreRef.current = false;
+        });
+        // Still open somewhere else (another tab): merging into it would
+        // keep the newer edits this restore is meant to drop.
+        if (deleted.status !== 'deleted') {
+          throw new Error(
+            `Could not replace this browser's copy of the document (${deleted.status}). Close other tabs that have it open and try again.`,
+          );
+        }
+        const merged = await mergeDdocContent(docId, version.content);
+        if (merged.status !== 'available') {
+          throw new Error(
+            `Could not write the version into this browser's store (${merged.status})`,
+          );
+        }
+        const saved = await docStorage.saveDocument(docId, version.raw);
+        const title = version.title ?? titleRef.current;
+        lastSavedRef.current = {
+          fingerprint: await getDdocContentFingerprint(version.content),
+          title,
+        };
+        if (version.title) {
+          setTitle(version.title);
+          titleRef.current = version.title;
+          docStore.updateDocTitle(docId, version.title);
+        }
+        setSwarmStatus({ state: 'saved', version: saved.index });
+      } catch (error) {
+        console.error('Swarm restore failed', error);
+        setSwarmStatus({ state: 'error', message: (error as Error).message });
+      }
+      if (cancelled) return;
+      setVersionList(null);
+      setRestoringVersion(null);
+      exitVersionPreview();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [restoringVersion, docStorage, docId, exitVersionPreview]);
+  // ?swarmVersion=N deep link: enter version preview once the doc is open.
+  useEffect(() => {
+    const pending = pendingVersionParamRef.current;
+    if (pending !== null && docStorage && !swarmRestoreGate) {
+      pendingVersionParamRef.current = null;
+      void previewVersion(pending);
+    }
+  }, [docStorage, swarmRestoreGate, previewVersion]);
 
   // Document styling state - starts undefined to allow dark mode to work.
   // ?pagesFixture=<id>&paper=a4|letter&orientation=landscape opens a Pages M0
@@ -677,6 +1161,7 @@ function App() {
       setPageMode,
       startPresentation: () => setIsPresentationMode(true),
       openWordCountModal: () => setWordCountModalOpen(true),
+      openVersionHistory,
     });
 
     return (
@@ -713,6 +1198,134 @@ function App() {
           >
             {lastSavedAt ? 'Saved' : 'Not saved yet'}
           </Tag>
+          {/* Shown as soon as the node answers, read-only nodes included:
+              nothing is saved there, but versions stay browsable. Visible on
+              laptop widths too (from sm, not xl like the badges around it):
+              it is the save state and the way into version history. */}
+          {(swarmStatus.state !== 'off' ||
+            nodeState.kind === 'ready' ||
+            nodeState.kind === 'read-only') && (
+            <div className="relative hidden sm:block">
+              <button
+                type="button"
+                ref={swarmTagRef}
+                onClick={openVersionHistory}
+                className="h-6 rounded border color-border-default color-text-secondary text-[12px] font-normal flex items-center gap-1 px-2 cursor-pointer whitespace-nowrap"
+                style={{ backgroundColor: 'hsl(var(--color-bg-secondary))' }}
+                title={
+                  (nodeState.kind === 'read-only'
+                    ? `Edits are kept in this browser only: ${nodeState.reason.toLowerCase()}, so nothing is written to Swarm. Get a postage batch to save. `
+                    : '') +
+                  (!storeOnly
+                    ? 'Document versions are saved to Swarm only without ?localCopy=1. '
+                    : '') +
+                  (stampHealth
+                    ? `Postage stamp ${stampHealth.status}: ${Math.round(stampHealth.utilization * 100)}% full, expires ${stampHealth.expiresAt.toLocaleDateString()}. `
+                    : '') +
+                  'Click for version history'
+                }
+              >
+                <SwarmIcon />
+                {versionPreview
+                  ? `Swarm: viewing v${versionPreview.index}`
+                  : !canWrite || !storeOnly
+                    ? 'Swarm: not saving'
+                    : swarmStatus.state === 'saving'
+                      ? 'Swarm: saving…'
+                      : swarmStatus.state === 'saved'
+                        ? `Swarm: saved v${swarmStatus.version}`
+                        : swarmStatus.state === 'error'
+                          ? 'Swarm: save failed'
+                          : swarmStatus.state === 'none'
+                            ? 'Swarm: no version yet'
+                            : 'Swarm: connected'}
+                {stampHealth && stampHealth.status !== 'ok'
+                  ? ` · stamp ${stampHealth.status}`
+                  : ''}
+              </button>
+              {versionsOpen &&
+                createPortal(
+                  <div
+                    className="fixed min-w-56 max-h-72 overflow-y-auto rounded border color-border-default color-bg-default shadow-elevation-3 text-[12px]"
+                    style={{
+                      backgroundColor: 'hsl(var(--color-bg-default))',
+                      top: versionMenuPos.top,
+                      left: versionMenuPos.left,
+                      zIndex: 99999,
+                    }}
+                  >
+                    {versionPreview && (
+                      <>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:color-bg-secondary font-medium"
+                          onClick={() => {
+                            setVersionsOpen(false);
+                            setRestoringVersion(versionPreview);
+                          }}
+                        >
+                          ⤴ Restore v{versionPreview.index} as latest
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:color-bg-secondary"
+                          onClick={() => {
+                            setVersionsOpen(false);
+                            exitVersionPreview();
+                          }}
+                        >
+                          ← Back to latest
+                        </button>
+                        <div className="border-t color-border-default" />
+                      </>
+                    )}
+                    {versionList === null && (
+                      <div className="px-3 py-2 color-text-secondary">
+                        Loading versions…
+                      </div>
+                    )}
+                    {versionListError ? (
+                      <div className="px-3 py-2 color-text-secondary max-w-80 whitespace-normal">
+                        Could not list the versions from here:{' '}
+                        {versionListError}
+                      </div>
+                    ) : (
+                      versionList?.length === 0 && (
+                        <div className="px-3 py-2 color-text-secondary">
+                          No versions yet
+                        </div>
+                      )
+                    )}
+                    {versionList
+                      ?.slice()
+                      .reverse()
+                      .map((v) => (
+                        <button
+                          key={v.index}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:color-bg-secondary flex justify-between gap-3"
+                          onClick={() => previewVersion(v.index)}
+                        >
+                          <span>
+                            v{v.index}
+                            {v.index ===
+                            versionList[versionList.length - 1]?.index
+                              ? ' (latest)'
+                              : ''}
+                            {v.index === versionPreview?.index
+                              ? ' (viewing)'
+                              : ''}
+                          </span>
+                          <span className="color-text-secondary">
+                            {new Date(v.timestamp * 1000).toLocaleString()}
+                          </span>
+                        </button>
+                      ))}
+                  </div>,
+                  document.body,
+                )}
+            </div>
+          )}
           <div className="w-6 h-6 rounded color-bg-secondary flex justify-center items-center border color-border-default xl:hidden">
             <LucideIcon
               name="BadgeCheck"
@@ -992,113 +1605,168 @@ function App() {
           isFocusMode || !isNavbarVisible ? 'ddoc-navbar-row--hidden' : ''
         }`}
       />
-      <div className="flex-1 min-h-0">
-        <DdocEditor
-          ref={editorRef}
-          navbarContainer={navbarHost}
-          fonts={demoFonts}
-          collaboration={collaboration}
-          username={username}
-          setUsername={setUsername}
-          isPreviewMode={isPreviewMode}
-          disableInlineComment={disableInlineComment}
-          onChange={storeOnly ? undefined : handleContentChange}
-          onLocalChange={storeOnly ? handleLocalChange : undefined}
-          initialContent={
-            storeOnly
-              ? storeCheck.status === 'existing'
-                ? storeCheck.content
-                : storeCheck.status === 'new'
-                  ? undefined
-                  : null
-              : initialContent
-          }
-          isNewDocument={
-            storeOnly && storeCheck.status !== 'pending'
-              ? storeCheck.status === 'new'
-              : undefined
-          }
-          onIndexedDbError={handleIndexedDbError}
-          enableIndexeddbSync={true}
-          ddocId={docId}
-          // Only consulted at doc creation; existing docs follow their marker.
-          preferredSchemaVersion={
-            new URLSearchParams(window.location.search).get('v1') === '1'
-              ? 1
-              : 2
-          }
-          tabConfig={tabConfig}
-          onError={(error) => {
-            toast({
-              title: 'Error',
-              description: error,
-              variant: 'error',
-              iconType: 'icon',
-            });
-          }}
-          renderNavbar={renderNavbar}
-          ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
-          selectedTags={selectedTags}
-          setSelectedTags={setSelectedTags}
-          isCommentSectionOpen={isCommentSectionOpen}
-          setIsCommentSectionOpen={setIsCommentSectionOpen}
-          setInlineCommentData={setInlineCommentData}
-          inlineCommentData={inlineCommentData}
-          commentDrawerOpen={commentDrawerOpen}
-          onCommentDrawerOpenChange={setCommentDrawerOpen}
-          isPresentationMode={isPresentationMode}
-          onPresentationModeChange={setIsPresentationMode}
-          isFocusMode={isFocusMode}
-          onFocusModeChange={setIsFocusMode}
-          isSplitView={isSplitView}
-          onSplitViewChange={setIsSplitView}
-          zoomLevel={zoomLevel}
-          onZoomLevelChange={setZoomLevel}
-          isNavbarVisible={isNavbarVisible}
-          onNavbarVisibleChange={setIsNavbarVisible}
-          onComment={(): void => {}}
-          onInlineComment={(): void => {}}
-          onMarkdownImport={(): void => {}}
-          onMarkdownExport={(): void => {}}
-          onPdfExport={(): void => {}}
-          onHtmlExport={(): void => {}}
-          onTxtExport={(): void => {}}
-          onDocxImport={(): void => {}}
-          initialComments={initialComments}
-          onCommentReply={handleReplyOnComment}
-          onNewComment={handleNewComment}
-          setInitialComments={setInitialComment}
-          onResolveComment={handleResolveComment}
-          onUnresolveComment={handleUnresolveComment}
-          onDeleteComment={handleDeleteComment}
-          showTOC={showTOC}
-          onShowTOCChange={setShowTOC}
-          isConnected={isConnected}
-          connectViaWallet={async () => {}}
-          isLoading={false}
-          connectViaUsername={handleConnectViaUsername}
-          onCopyHeadingLink={(link: string) => {
-            navigator.clipboard.writeText(link);
-            // Mirror the consumer (protected-document-context.tsx): the
-            // package only supplies the slug; feedback is the host's job.
-            toast({
-              title: 'Anchor link copied to clipboard',
-              toastType: 'mini',
-              iconType: 'icon',
-              customIcon: 'Link',
-            });
-          }}
-          onCollaboratorChange={onCollaboratorChange}
-          documentStyling={documentStyling}
-          isDDocOwner={isDDocOwner}
-          viewerMode={isDDocOwner ? undefined : viewerMode}
-          initialCommentAnchors={initialCommentAnchors}
-          onStatsChange={(stats) => {
-            setCharacterCount(stats.characters);
-            setWordCount(stats.words);
-            setPageCount(stats.pages ?? 0);
+      {/* A bar pinned to the bottom of the viewport (see SwarmNotice): the
+          doc stays usable while whatever is wrong with Swarm is spelled out. */}
+      {swarmCondition && !swarmRestoreGate && (
+        <SwarmNotice
+          condition={swarmCondition}
+          beeUrl={swarmBeeUrl ?? ''}
+          batchId={swarmBatchId}
+          onRetry={recheckSwarm}
+          onGrantAccess={grantSwarmAccess}
+          onBatchReady={(id) => {
+            adoptBatch(id);
+            recheckSwarm();
           }}
         />
+      )}
+      <div className="flex-1 min-h-0">
+        {swarmRestoreGate ? (
+          <SwarmRestoreProgress
+            nodeState={nodeState}
+            progress={swarmProgress}
+            managesPostage={swarmManagesPostage}
+            attempt={restoreAttempt + 1}
+            maxAttempts={MAX_RESTORE_ATTEMPTS}
+            error={restoreError}
+            onSkip={() => {
+              setRestoreError(null);
+              setSwarmRestore('done');
+            }}
+            onRetry={() => {
+              setRestoreError(null);
+              setRestoreAttempt((n) => n + 1);
+            }}
+          />
+        ) : restoringVersion ? (
+          <div className="p-6 text-[14px] color-text-secondary">
+            Restoring version {restoringVersion.index} from Swarm…
+          </div>
+        ) : (
+          <DdocEditor
+            ref={editorRef}
+            /* Stable key while switching versions (versionId re-hydrates the
+             mounted editor); leaving version mode bumps the epoch, which
+             remounts a fresh live session. */
+            key={
+              versionPreview ? 'swarm-version-preview' : `live-${editorEpoch}`
+            }
+            versionHistoryState={
+              versionPreview
+                ? {
+                    enabled: true,
+                    versionId: `swarm-v${versionPreview.index}`,
+                    content: versionPreview.content,
+                  }
+                : undefined
+            }
+            imageUploadFn={imageUploadFn}
+            imageFetchFn={imageFetchFn}
+            navbarContainer={navbarHost}
+            fonts={demoFonts}
+            collaboration={collaboration}
+            username={username}
+            setUsername={setUsername}
+            isPreviewMode={isPreviewMode || Boolean(versionPreview)}
+            disableInlineComment={disableInlineComment}
+            onChange={storeOnly ? undefined : handleContentChange}
+            onLocalChange={storeOnly ? handleLocalChange : undefined}
+            initialContent={
+              storeOnly
+                ? storeCheck.status === 'existing'
+                  ? storeCheck.content
+                  : storeCheck.status === 'new'
+                    ? undefined
+                    : null
+                : initialContent
+            }
+            isNewDocument={
+              storeOnly && storeCheck.status !== 'pending'
+                ? storeCheck.status === 'new'
+                : undefined
+            }
+            onIndexedDbError={handleIndexedDbError}
+            enableIndexeddbSync={true}
+            ddocId={docId}
+            // Only consulted at doc creation; existing docs follow their marker.
+            preferredSchemaVersion={
+              new URLSearchParams(window.location.search).get('v1') === '1'
+                ? 1
+                : 2
+            }
+            tabConfig={tabConfig}
+            onError={(error) => {
+              toast({
+                title: 'Error',
+                description: error,
+                variant: 'error',
+                iconType: 'icon',
+              });
+            }}
+            renderNavbar={renderNavbar}
+            ensResolutionUrl={import.meta.env.ENS_RESOLUTION_URL}
+            selectedTags={selectedTags}
+            setSelectedTags={setSelectedTags}
+            isCommentSectionOpen={isCommentSectionOpen}
+            setIsCommentSectionOpen={setIsCommentSectionOpen}
+            setInlineCommentData={setInlineCommentData}
+            inlineCommentData={inlineCommentData}
+            commentDrawerOpen={commentDrawerOpen}
+            onCommentDrawerOpenChange={setCommentDrawerOpen}
+            isPresentationMode={isPresentationMode}
+            onPresentationModeChange={setIsPresentationMode}
+            isFocusMode={isFocusMode}
+            onFocusModeChange={setIsFocusMode}
+            isSplitView={isSplitView}
+            onSplitViewChange={setIsSplitView}
+            zoomLevel={zoomLevel}
+            onZoomLevelChange={setZoomLevel}
+            isNavbarVisible={isNavbarVisible}
+            onNavbarVisibleChange={setIsNavbarVisible}
+            onComment={(): void => {}}
+            onInlineComment={(): void => {}}
+            onMarkdownImport={(): void => {}}
+            onMarkdownExport={(): void => {}}
+            onPdfExport={(): void => {}}
+            onHtmlExport={(): void => {}}
+            onTxtExport={(): void => {}}
+            onDocxImport={(): void => {}}
+            initialComments={initialComments}
+            onCommentReply={handleReplyOnComment}
+            onNewComment={handleNewComment}
+            setInitialComments={setInitialComment}
+            onResolveComment={handleResolveComment}
+            onUnresolveComment={handleUnresolveComment}
+            onDeleteComment={handleDeleteComment}
+            showTOC={showTOC}
+            onShowTOCChange={setShowTOC}
+            isConnected={isConnected}
+            connectViaWallet={async () => {}}
+            isLoading={false}
+            connectViaUsername={handleConnectViaUsername}
+            onCopyHeadingLink={(link: string) => {
+              navigator.clipboard.writeText(link);
+              // Mirror the consumer (protected-document-context.tsx): the
+              // package only supplies the slug; feedback is the host's job.
+              toast({
+                title: 'Anchor link copied to clipboard',
+                toastType: 'mini',
+                iconType: 'icon',
+                customIcon: 'Link',
+              });
+            }}
+            onCollaboratorChange={onCollaboratorChange}
+            documentStyling={documentStyling}
+            isDDocOwner={isDDocOwner}
+            viewerMode={isDDocOwner ? undefined : viewerMode}
+            initialCommentAnchors={initialCommentAnchors}
+            onStatsChange={(stats) => {
+              setCharacterCount(stats.characters);
+              setWordCount(stats.words);
+              setPageCount(stats.pages ?? 0);
+            }}
+          />
+        )}
       </div>
       <DemoFooter
         wordCount={wordCount}
