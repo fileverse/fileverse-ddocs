@@ -83,6 +83,10 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 ## Testing conventions
 
 - Vitest + jsdom + Testing Library with globals on. Tests sit next to the code as `*.test.ts(x)` under `package/` and `demo/src/`.
+- Before writing a test, name the realistic bug it would catch. If you can't, don't write it.
+- Expected values are hard-coded literals, never recomputed with the code's own formula or constants.
+- Assert what a user or caller observes, not internal state or mock calls.
+- No "renders without crashing", no whole-tree snapshots.
 - `utils/make-editor.ts` builds a jsdom editor with the real headless extension set. Collaboration owns the doc, so set content with `editor.commands.setContent(...)` after construction; the `content` constructor option is silently ignored. Destroy editors in `afterEach`.
 - For extension-only tests, build a minimal `Editor` with `StarterKit` plus the extension under test (see `extensions/paragraph-spacing.test.ts`). Behaviour that differs by schema gets a v1 and a v2 case (see `extensions/undo-selection.test.ts`).
 - Browser QA is manual in the demo. `scripts/parity-sweep.cjs` and `scripts/chrome-parity-probe.cjs` drive a real Chrome against the demo on port 5173 to compare v1 and v2.
