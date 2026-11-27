@@ -21,9 +21,11 @@ class CoverSelectionNodeView extends ReactNodeView {
   }
 
   private syncCoverSelection = () => {
+    const { empty, from, to } = this.editor.state.selection;
+    // A caret covers nothing: skip the lookup unless a highlight needs clearing.
+    if (empty && !this.renderer.props.selected) return;
     const pos = this.getPos();
     if (typeof pos !== 'number') return;
-    const { from, to } = this.editor.state.selection;
     const covers = from <= pos && to >= pos + this.node.nodeSize;
     if (covers === !!this.renderer.props.selected) return;
     if (covers) this.selectNode();
