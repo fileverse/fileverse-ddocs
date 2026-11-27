@@ -423,7 +423,6 @@ export interface DdocProps extends CommentAccountProps {
    * divider between the two. Return null to render nothing.
    */
   renderToolbarLeading?: () => React.ReactNode;
-  metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
   /** @deprecated No effect. The host footer sits outside the editor. */
   footerHeight?: string;
