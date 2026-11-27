@@ -423,6 +423,7 @@ export interface DdocProps extends CommentAccountProps {
    * divider between the two. Return null to render nothing.
    */
   renderToolbarLeading?: () => React.ReactNode;
+  /** @deprecated No effect. Link preview cards were removed (TEC-3401). */
   metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
   /** @deprecated No effect. The host footer sits outside the editor. */

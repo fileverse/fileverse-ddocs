@@ -265,7 +265,6 @@ interface UseTabEditorArgs {
   onCommentInteraction?: DdocProps['onCommentInteraction'];
   onError?: DdocProps['onError'];
   ipfsImageUploadFn?: DdocProps['ipfsImageUploadFn'];
-  metadataProxyUrl?: string;
   onCopyHeadingLink?: DdocProps['onCopyHeadingLink'];
   ipfsImageFetchFn?: DdocProps['ipfsImageFetchFn'];
   fetchV1ImageFn?: DdocProps['fetchV1ImageFn'];
@@ -317,7 +316,6 @@ export const useTabEditor = ({
   onCommentInteraction,
   onError,
   ipfsImageUploadFn,
-  metadataProxyUrl,
   onCopyHeadingLink,
   ipfsImageFetchFn,
   fetchV1ImageFn,
@@ -398,7 +396,6 @@ export const useTabEditor = ({
     ydoc,
     onError,
     ipfsImageUploadFn,
-    metadataProxyUrl,
     onCopyHeadingLink,
     ipfsImageFetchFn,
     fetchV1ImageFn,
@@ -1651,7 +1648,6 @@ interface UseExtensionStackArgs {
   ydoc: Y.Doc;
   onError?: (error: string) => void;
   ipfsImageUploadFn?: DdocProps['ipfsImageUploadFn'];
-  metadataProxyUrl?: string;
   onCopyHeadingLink?: DdocProps['onCopyHeadingLink'];
   ipfsImageFetchFn?: DdocProps['ipfsImageFetchFn'];
   fetchV1ImageFn?: DdocProps['fetchV1ImageFn'];
@@ -1680,7 +1676,6 @@ const useEditorExtension = ({
   ydoc,
   onError,
   ipfsImageUploadFn,
-  metadataProxyUrl,
   onCopyHeadingLink,
   ipfsImageFetchFn,
   fetchV1ImageFn,
@@ -1780,7 +1775,6 @@ const useEditorExtension = ({
         ...defaultExtensions({
           onError: handleExtensionError,
           ipfsImageUploadFn,
-          metadataProxyUrl,
           onCopyHeadingLink: handleCopyHeadingLink,
           ipfsImageFetchFn,
           fetchV1ImageFn,
@@ -1880,7 +1874,6 @@ const useEditorExtension = ({
     },
     [
       ipfsImageUploadFn,
-      metadataProxyUrl,
       handleExtensionError,
       handleCopyHeadingLink,
       ipfsImageFetchFn,
