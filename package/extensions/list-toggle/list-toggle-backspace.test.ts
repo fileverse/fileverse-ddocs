@@ -34,6 +34,22 @@ const backspaceAtStartOf = (editor: Editor, text: string) => {
   return pressBackspace(editor);
 };
 
+/** caretMarks is stamped on typed lines; not what these cases are about. */
+const bareShape = (editor: Editor) =>
+  flatShape(editor).replace(/\{caretMarks=\[\]\}/g, '');
+
+/** Typed text as the browser delivers it, so input rules run. */
+const typeChars = (editor: Editor, text: string) => {
+  for (const ch of text) {
+    const { from, to } = editor.state.selection;
+    const handled = editor.view.someProp('handleTextInput', (f) =>
+      f(editor.view, from, to, ch),
+    );
+    if (!handled)
+      editor.view.dispatch(editor.state.tr.insertText(ch, from, to));
+  }
+};
+
 /** Caret in the first empty paragraph that is a list item's child. */
 const caretInEmptyItem = (editor: Editor) => {
   let found = -1;
@@ -190,6 +206,49 @@ describe.each([1, 2])(
       editor.commands.toggleTaskList();
       expect(backspaceAtStartOf(editor, 'bb')).toBe(true);
       expect(flatShape(editor)).toBe('tl(ti(p("aa"))) p("bb") p()');
+      expectValid(editor, version);
+    });
+
+    // Lists restore the marker like the core keymap does for `# ` and `> `.
+    it.each(['- ', '1. ', '[ ] ', '# ', '> '])(
+      'Backspace right after %j restores the typed marker',
+      (shortcut) => {
+        const { editor } = makeListEditor(version, '<p></p>');
+        editor.commands.setTextSelection(1 + (version === 1 ? 1 : 0));
+        typeChars(editor, shortcut);
+        expect(bareShape(editor)).not.toContain(shortcut.trim());
+        expect(pressBackspace(editor)).toBe(true);
+        expect(bareShape(editor)).toBe(`p(${JSON.stringify(shortcut)})`);
+        expect(editor.state.selection.$from.parentOffset).toBe(shortcut.length);
+        expectValid(editor, version);
+      },
+    );
+
+    // Once anything else happened it is the list-toggle Backspace again.
+    it.each(['- ', '1. ', '[ ] '])(
+      'still un-lists an item made with %j once text was typed',
+      (shortcut) => {
+        const { editor } = makeListEditor(version, '<p></p>');
+        editor.commands.setTextSelection(1 + (version === 1 ? 1 : 0));
+        typeChars(editor, `${shortcut}aa`);
+        expect(bareShape(editor)).toMatch(
+          /^(ul|ol|tl)\((li|ti)\(p\("aa"\)\)\)/,
+        );
+        expect(backspaceAtStartOf(editor, 'aa')).toBe(true);
+        expect(bareShape(editor)).toBe('p("aa") p()');
+        expectValid(editor, version);
+      },
+    );
+
+    it('still un-lists an emptied item made with the shortcut', () => {
+      const { editor } = makeListEditor(version, '<p></p>');
+      editor.commands.setTextSelection(1 + (version === 1 ? 1 : 0));
+      typeChars(editor, '- a');
+      const end = editor.state.selection.from;
+      editor.view.dispatch(editor.state.tr.delete(end - 1, end));
+      expect(bareShape(editor)).toBe('ul(li(p())) p()');
+      expect(pressBackspace(editor)).toBe(true);
+      expect(bareShape(editor)).toBe('p() p()');
       expectValid(editor, version);
     });
 

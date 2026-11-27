@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { Editor } from '@tiptap/react';
 import type { Transaction } from '@tiptap/pm/state';
-import { PluginKey } from '@tiptap/pm/state';
+import { PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import { liftTarget } from '@tiptap/pm/transform';
 import {
   makeEditor,
@@ -101,6 +101,53 @@ describe('dispatch context: provenance', () => {
         editor.state.tr.setStoredMarks([editor.schema.marks.italic.create()]),
       ).pending?.explicit,
     ).toBe(true);
+  });
+});
+
+describe('dispatch context: whole-document clear', () => {
+  // The clear-document gate needs a text selection spanning the doc; an
+  // AllSelection starts at 0 and never matches it.
+  const selectAll = (editor: Editor) => {
+    const { doc } = editor.state;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(
+          doc,
+          Selection.atStart(doc).from,
+          Selection.atEnd(doc).to,
+        ),
+      ),
+    );
+    return editor.state.tr;
+  };
+  const appendedClear = (editor: Editor) =>
+    editor.state.tr.setStoredMarks(null).setMeta('appendedTransaction', true);
+
+  it('guards the appended setStoredMarks(null) only when the delete emptied the doc', () => {
+    const editor = track(makeEditor(2, '<p>abc</p>'));
+    const root = selectAll(editor).deleteSelection();
+    const cleared = context(editor, root);
+    expect(cleared.wholeDocClear).toBe(true);
+    expect(
+      applyDispatchContext(appendedClear(editor), cleared, editor.state, key)
+        .pending,
+    ).toBeNull();
+    expect(
+      context(
+        editor,
+        selectAll(editor).setMeta('composition', true).deleteSelection(),
+      ).wholeDocClear,
+    ).toBe(false);
+  });
+
+  it('does not swallow a stored-marks reset after select-all then typing', () => {
+    const editor = track(makeEditor(2, '<p>abc</p>'));
+    const typed = context(editor, selectAll(editor).insertText('x'));
+    expect(typed.wholeDocClear).toBe(false);
+    expect(
+      applyDispatchContext(appendedClear(editor), typed, editor.state, key)
+        .pending,
+    ).toEqual({ marks: null, explicit: true });
   });
 });
 

@@ -12,10 +12,21 @@ import {
   type ChangedRange,
   type Editor,
 } from '@tiptap/core';
-import { type EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
-import { canSplit, type Transform } from '@tiptap/pm/transform';
+import {
+  type EditorState,
+  Plugin,
+  PluginKey,
+  type Transaction,
+} from '@tiptap/pm/state';
+import {
+  canSplit,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+  type Transform,
+} from '@tiptap/pm/transform';
 import { TextSelection } from '@tiptap/pm/state';
-import { type ResolvedPos } from '@tiptap/pm/model';
+import { type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { getSplittedAttributes } from '@tiptap/core';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
@@ -153,6 +164,9 @@ export function resolveCommentAnchorPointInState(
 const ACCEPTED_BREAK_POINTS = 'acceptedSuggestionBreakPoints';
 const SUGGESTION_ADD_POINT_OVERRIDES = 'suggestionAddPointOverrides';
 
+// A tab's fragment keeps its root name, so scan `doc.share` once per fragment.
+const tabFieldByFragment = new WeakMap<object, string>();
+
 /** Each tab has its own Yjs fragment and its own pending Add overrides. */
 function getSuggestionAddPointOverrides(
   state: EditorState,
@@ -160,9 +174,13 @@ function getSuggestionAddPointOverrides(
 ): Y.Map<Uint8Array> | null {
   const syncState = ySyncPluginKey.getState(state);
   if (!syncState?.binding) return null;
-  const field = [...syncState.doc.share].find(
-    ([, sharedType]) => sharedType === syncState.type,
-  )?.[0];
+  let field = tabFieldByFragment.get(syncState.type);
+  if (field === undefined) {
+    field = [...syncState.doc.share].find(([, sharedType]) =>
+      Object.is(sharedType, syncState.type),
+    )?.[0];
+    if (field) tabFieldByFragment.set(syncState.type, field);
+  }
   if (!field) return null;
   const root = syncState.doc.getMap(SUGGESTION_ADD_POINT_OVERRIDES) as Y.Map<
     Y.Map<Uint8Array>
@@ -175,20 +193,68 @@ function getSuggestionAddPointOverrides(
   return tabPoints instanceof Y.Map ? tabPoints : null;
 }
 
+// Saved after an undo or redo, under its own key: redo cannot restore an
+// override entry that a newer write replaced.
+const undoOverrideKey = (id: string) => `${id}#undo`;
+
+/** The first saved override that resolves here, with its position. */
+function findSuggestionAddPointOverride(
+  anchor: Pick<CommentAnchor, 'id'>,
+  state: EditorState,
+): { position: Y.RelativePosition; point: number } | null {
+  const doc = ySyncPluginKey.getState(state)?.doc;
+  const overrides = getSuggestionAddPointOverrides(state);
+  if (!doc || !overrides) return null;
+  let localOnly: { position: Y.RelativePosition; point: number } | null = null;
+  for (const key of [anchor.id, undoOverrideKey(anchor.id)]) {
+    const encoded = overrides.get(key);
+    if (!(encoded instanceof Uint8Array)) continue;
+    try {
+      const position = Y.decodeRelativePosition(encoded);
+      // A block-start or empty-block point is anchored to its text type, and
+      // y-tiptap resolves a deleted one to a nearby gap rather than null.
+      const absolute = Y.createAbsolutePositionFromRelativePosition(
+        position,
+        doc,
+      );
+      if (!absolute || absolute.type._item?.deleted) continue;
+      const point = resolveCommentAnchorPointInState(
+        { anchorFrom: position },
+        state,
+      );
+      if (point === null) continue;
+      // Prefer what peers and a reload resolve too, so every client agrees.
+      if (resolvesOnTheWire(position, doc)) return { position, point };
+      localOnly ??= { position, point };
+    } catch {
+      // An unreadable entry falls through to the next one.
+    }
+  }
+  return localOnly;
+}
+
 function resolveSuggestionAddPointOverride(
-  anchor: CommentAnchor,
+  anchor: Pick<CommentAnchor, 'id'>,
   state: EditorState,
 ): number | null {
-  const encoded = getSuggestionAddPointOverrides(state)?.get(anchor.id);
-  if (!(encoded instanceof Uint8Array)) return null;
-  try {
-    return resolveCommentAnchorPointInState(
-      { anchorFrom: Y.decodeRelativePosition(encoded) },
-      state,
-    );
-  } catch {
-    return null;
-  }
+  return findSuggestionAddPointOverride(anchor, state)?.point ?? null;
+}
+
+/** Undefined when the parent break has no persisted position. */
+function resolveAcceptedBreakPoint(
+  anchor: Pick<CommentAnchor, 'anchorFrom' | 'anchorTo'>,
+  parentId: string,
+  state: EditorState,
+): number | null | undefined {
+  const encoded: Uint8Array | undefined = ySyncPluginKey
+    .getState(state)
+    ?.doc.getMap<Uint8Array>(ACCEPTED_BREAK_POINTS)
+    .get(parentId);
+  if (!encoded) return undefined;
+  return resolveCommentAnchorPointInState(
+    { ...anchor, anchorFrom: Y.decodeRelativePosition(encoded) },
+    state,
+  );
 }
 
 /** Resolve following Adds against the accepted break's persisted Yjs position. */
@@ -197,16 +263,18 @@ export function resolveSuggestionAddPointInState(
   state: EditorState,
   anchors: CommentAnchor[] | ReadonlyMap<string, CommentAnchor>,
 ): number | null {
-  const point =
-    (anchor.followsSuggestionId
-      ? null
-      : resolveSuggestionAddPointOverride(anchor, state)) ??
-    resolveCommentAnchorPointInState(anchor, state);
-  if (point === null || !anchor.followsSuggestionId) return point;
+  if (!anchor.followsSuggestionId) {
+    return (
+      resolveSuggestionAddPointOverride(anchor, state) ??
+      resolveCommentAnchorPointInState(anchor, state)
+    );
+  }
   const parent = Array.isArray(anchors)
     ? anchors.find((entry) => entry.id === anchor.followsSuggestionId)
     : anchors.get(anchor.followsSuggestionId);
-  if (!parent?.resolved || !parent.multilineStructure) return point;
+  if (!parent?.resolved || !parent.multilineStructure) {
+    return resolveCommentAnchorPointInState(anchor, state);
+  }
   if (
     !validMultilineStructure(
       parent.suggestedContent,
@@ -216,17 +284,11 @@ export function resolveSuggestionAddPointInState(
     parent.multilineStructure.structureType.length !== 1
   )
     return null;
-  const acceptedPoint: Uint8Array | undefined = ySyncPluginKey
-    .getState(state)
-    ?.doc.getMap(ACCEPTED_BREAK_POINTS)
-    .get(parent.id);
-  if (acceptedPoint) {
-    return resolveCommentAnchorPointInState(
-      { ...anchor, anchorFrom: Y.decodeRelativePosition(acceptedPoint) },
-      state,
-    );
-  }
+  const acceptedPoint = resolveAcceptedBreakPoint(anchor, parent.id, state);
+  if (acceptedPoint !== undefined) return acceptedPoint;
   // Compatibility for breaks accepted before their positions were persisted.
+  // The anchor's own point must still resolve for this legacy path.
+  if (resolveCommentAnchorPointInState(anchor, state) === null) return null;
   const parentPoint = resolveCommentAnchorPointInState(parent, state);
   if (parentPoint === null) return null;
   const kind = parent.multilineStructure.structureType[0];
@@ -251,12 +313,31 @@ export function resolveSuggestionAddPointInState(
 export function hasResolvableCommentAnchorInState(
   anchor: Pick<
     CommentAnchor,
-    'anchorFrom' | 'anchorTo' | 'isSuggestion' | 'suggestionType'
+    | 'id'
+    | 'anchorFrom'
+    | 'anchorTo'
+    | 'isSuggestion'
+    | 'suggestionType'
+    | 'followsSuggestionId'
   >,
   state: EditorState,
 ): boolean {
   if (anchor.isSuggestion && anchor.suggestionType === 'add') {
-    return resolveCommentAnchorPointInState(anchor, state) !== null;
+    // A block retype can drop the stored anchor but not the accepted break.
+    if (
+      anchor.followsSuggestionId &&
+      typeof resolveAcceptedBreakPoint(
+        anchor,
+        anchor.followsSuggestionId,
+        state,
+      ) === 'number'
+    )
+      return true;
+    // The saved override outlives a stored anchor in deleted text.
+    return (
+      (resolveSuggestionAddPointOverride(anchor, state) ??
+        resolveCommentAnchorPointInState(anchor, state)) !== null
+    );
   }
 
   return resolveCommentAnchorRangeInState(anchor, state) !== null;
@@ -1112,6 +1193,130 @@ function buildDecorations(
   return DecorationSet.create(state.doc, decorations);
 }
 
+type MovedAddPoint = { anchor: CommentAnchor; point: number };
+
+/** A step that moves or joins blocks, at any depth. Typing is not one. */
+function isStructuralStep(step: Step, doc: PMNode) {
+  if (step instanceof ReplaceAroundStep) return true;
+  if (!(step instanceof ReplaceStep)) return false;
+  const { slice } = step;
+  if (slice.openStart > 0 || slice.openEnd > 0) return true;
+  let hasBlock = false;
+  slice.content.forEach((node) => {
+    if (node.isBlock) hasBlock = true;
+  });
+  return (
+    hasBlock || doc.resolve(step.from).parent !== doc.resolve(step.to).parent
+  );
+}
+
+const isPendingStandaloneAdd = (anchor: CommentAnchor) =>
+  anchor.isSuggestion === true &&
+  anchor.suggestionType === 'add' &&
+  !anchor.resolved &&
+  !anchor.deleted &&
+  !anchor.followsSuggestionId;
+
+function mapAddPoints(adds: MovedAddPoint[], tr: Transaction): MovedAddPoint[] {
+  return adds.flatMap(({ anchor, point }) => {
+    const result = tr.mapping.mapResult(
+      point,
+      anchor.anchorFrom.assoc === 1 ? 1 : -1,
+    );
+    // `setBlockType` reports the content start as deleted though it survives.
+    return result.deletedAcross ? [] : [{ anchor, point: result.pos }];
+  });
+}
+
+function writeAddPointOverrides(
+  state: EditorState,
+  adds: MovedAddPoint[],
+  origin: unknown,
+  keyFor: (id: string) => string = (id) => id,
+) {
+  const syncState = ySyncPluginKey.getState(state);
+  if (adds.length === 0 || !syncState?.binding) return;
+  if (!getSuggestionAddPointOverrides(state)) {
+    // Created outside the history: undo captures only changes to a map
+    // already in its scope, so the first entry must not create the map.
+    syncState.doc.transact(
+      () => getSuggestionAddPointOverrides(state, true),
+      commentDecorationPluginKey,
+    );
+  }
+  syncState.doc.transact((ytr) => {
+    ytr.meta.set('addToHistory', syncState.addToHistory !== false);
+    const overrides = getSuggestionAddPointOverrides(state);
+    if (!overrides) return;
+    yUndoPluginKey.getState(state)?.undoManager?.addToScope(overrides);
+    for (const { anchor, point } of adds) {
+      const relative = createCommentAnchorPointInState(
+        state,
+        point,
+        anchor.anchorFrom.assoc === 1 ? 1 : -1,
+      );
+      if (relative) {
+        overrides.set(
+          keyFor(anchor.id),
+          Y.encodeRelativePosition(relative.anchorFrom),
+        );
+      }
+    }
+  }, origin);
+}
+
+/**
+ * A restructure (heading, quote, list, join) keeps the text but y-tiptap
+ * recreates its Yjs items, so a pending Add's stored point dies with them
+ * (null since y-tiptap 3.3.0). Save the mapped point as the Add's override,
+ * in the restructure's undo step.
+ */
+function persistMovedAddPoints(
+  state: EditorState,
+  adds: MovedAddPoint[],
+  anchors: CommentAnchor[],
+) {
+  const moved = adds.filter(
+    ({ anchor, point }) =>
+      resolveSuggestionAddPointInState(anchor, state, anchors) !== point,
+  );
+  writeAddPointOverrides(state, moved, ySyncPluginKey);
+}
+
+/** Resolvable from what a peer or a reload has, not only via undo links. */
+function resolvesOnTheWire(position: Y.RelativePosition, doc: Y.Doc) {
+  const absolute = Y.createAbsolutePositionFromRelativePosition(
+    position,
+    doc,
+    false,
+  );
+  return absolute !== null && !absolute.type._item?.deleted;
+}
+
+/**
+ * Undo and redo recreate the block again, and the Add then resolves only
+ * through this session's undo links. Re-save it outside the undo history,
+ * so the redo stack survives.
+ */
+function persistUndoneAddPoints(state: EditorState, anchors: CommentAnchor[]) {
+  const syncState = ySyncPluginKey.getState(state);
+  if (!syncState?.binding) return;
+  const stale = anchors.filter(isPendingStandaloneAdd).flatMap((anchor) => {
+    const point = resolveSuggestionAddPointInState(anchor, state, anchors);
+    if (point === null) return [];
+    const used =
+      findSuggestionAddPointOverride(anchor, state)?.position ??
+      anchor.anchorFrom;
+    return resolvesOnTheWire(used, syncState.doc) ? [] : [{ anchor, point }];
+  });
+  writeAddPointOverrides(
+    state,
+    stale,
+    commentDecorationPluginKey,
+    undoOverrideKey,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
@@ -1134,6 +1339,53 @@ export const CommentDecorationExtension =
 
     addProseMirrorPlugins() {
       const { getAnchors, getActiveCommentId } = this.options;
+      // Yjs matches the view's state until y-tiptap's view update, so Add
+      // points are read before a local restructure and saved after it. Our
+      // view update runs after y-tiptap's (Collaboration has priority 1000).
+      let viewState: EditorState | null = null;
+      let movedAdds: { doc: PMNode; adds: MovedAddPoint[] } | null = null;
+      const trackMovedAdds = (
+        tr: Transaction,
+        oldState: EditorState,
+        newState: EditorState,
+      ) => {
+        // Accepting a suggestion saves its own overrides.
+        if (
+          !tr.docChanged ||
+          tr.getMeta(ySyncPluginKey)?.isChangeOrigin ||
+          tr.getMeta(suggestionTrackingPluginKey)
+        )
+          return;
+        if (movedAdds?.doc === oldState.doc) {
+          movedAdds = {
+            doc: newState.doc,
+            adds: mapAddPoints(movedAdds.adds, tr),
+          };
+          return;
+        }
+        if (
+          oldState !== viewState ||
+          !tr.steps.some((step, index) =>
+            isStructuralStep(step, tr.docs[index]),
+          )
+        )
+          return;
+        const anchors = getAnchors();
+        const adds = anchors
+          .filter(isPendingStandaloneAdd)
+          .flatMap((anchor) => {
+            const point = resolveSuggestionAddPointInState(
+              anchor,
+              oldState,
+              anchors,
+            );
+            return point === null ? [] : [{ anchor, point }];
+          });
+        movedAdds =
+          adds.length > 0
+            ? { doc: newState.doc, adds: mapAddPoints(adds, tr) }
+            : null;
+      };
 
       return [
         new Plugin({
@@ -1151,7 +1403,8 @@ export const CommentDecorationExtension =
                 ),
               };
             },
-            apply(tr, pluginState, _oldState, newState) {
+            apply(tr, pluginState, oldState, newState) {
+              trackMovedAdds(tr, oldState, newState);
               // Rebuild decorations if:
               //   1. Explicit rebuild triggered (tr.getMeta(commentDecorationPluginKey))
               //   2. The doc changed *and* the Y.Doc already reflects that change
@@ -1230,10 +1483,27 @@ export const CommentDecorationExtension =
               });
             };
             overrides?.observeDeep(onOverridesChanged);
+            viewState = editorView.state;
+            const undoManager = yUndoPluginKey.getState(
+              editorView.state,
+            )?.undoManager;
+            const onUndoOrRedo = () => {
+              if (!disposed)
+                persistUndoneAddPoints(editorView.state, getAnchors());
+            };
+            undoManager?.on('stack-item-popped', onUndoOrRedo);
             return {
+              update(view) {
+                viewState = view.state;
+                const pending = movedAdds;
+                if (!pending || pending.doc !== view.state.doc) return;
+                movedAdds = null;
+                persistMovedAddPoints(view.state, pending.adds, getAnchors());
+              },
               destroy() {
                 disposed = true;
                 overrides?.unobserveDeep(onOverridesChanged);
+                undoManager?.off('stack-item-popped', onUndoOrRedo);
               },
             };
           },
@@ -1270,7 +1540,15 @@ export function createCommentAnchorPointFromEditor(
   pos: number,
   assoc: -1 | 1 = -1,
 ): CommentAnchorRelativeRange | null {
-  const syncState = ySyncPluginKey.getState(editor.state);
+  return createCommentAnchorPointInState(editor.state, pos, assoc);
+}
+
+function createCommentAnchorPointInState(
+  state: EditorState,
+  pos: number,
+  assoc: -1 | 1,
+): CommentAnchorRelativeRange | null {
+  const syncState = ySyncPluginKey.getState(state);
   if (!syncState?.binding) return null;
   const { type, binding } = syncState;
   try {
@@ -1504,32 +1782,29 @@ export function applyAcceptedSuggestion(
   const { doc, type, binding } = syncState;
 
   try {
-    let from = relativePositionToAbsolutePosition(
-      doc,
-      type,
-      anchor.anchorFrom,
-      binding.mapping,
-    );
-    let to = relativePositionToAbsolutePosition(
-      doc,
-      type,
-      anchor.anchorTo,
-      binding.mapping,
-    );
+    // An Add's stored anchor can sit in deleted text (null since y-tiptap
+    // 3.3.0); its logical point falls back to the saved overrides.
+    const from =
+      anchor.suggestionType === 'add'
+        ? resolveSuggestionAddPointInState(anchor, state, relatedAnchors)
+        : relativePositionToAbsolutePosition(
+            doc,
+            type,
+            anchor.anchorFrom,
+            binding.mapping,
+          );
+    const to =
+      anchor.suggestionType === 'add'
+        ? from
+        : relativePositionToAbsolutePosition(
+            doc,
+            type,
+            anchor.anchorTo,
+            binding.mapping,
+          );
 
     if (from === null || to === null) return false;
     if (from < 0 || to > state.doc.content.size) return false;
-
-    if (anchor.suggestionType === 'add') {
-      const logicalPoint = resolveSuggestionAddPointInState(
-        anchor,
-        state,
-        relatedAnchors,
-      );
-      if (logicalPoint === null) return false;
-      from = logicalPoint;
-      to = logicalPoint;
-    }
 
     const { suggestionType, suggestedContent } = anchor;
 

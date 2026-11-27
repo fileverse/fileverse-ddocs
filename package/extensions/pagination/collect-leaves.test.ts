@@ -12,6 +12,7 @@ import {
 import { PageGrid } from './page-grid';
 import { place } from './place';
 import { buildPrintSchema, serializeWithBreaks } from './print-break-node';
+import { mountEditorContent } from '../../utils/mount-editor-content';
 
 const HTML = `<h2>Heading</h2><p>Paragraph</p><ul><li><p>outer</p><ul><li><p>inner</p></li></ul></li></ul><table><tbody><tr><th><p>H</p></th></tr><tr><td><p>a</p></td></tr></tbody></table><img src="data:image/svg+xml;base64,PHN2Zy8+"><div data-type="page-break"></div><aside data-type="callout"><p>note</p></aside>`;
 
@@ -328,6 +329,8 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
     let tops: Record<string, number> = {};
     beforeEach(() => {
       editor.commands.setContent(TABLE_HTML);
+      // Table cells are React node views (mount-editor-content.ts).
+      mountEditorContent(editor);
       document.elementFromPoint = () => null;
       Range.prototype.getClientRects = function (this: Range) {
         const top = tops[this.startContainer.textContent ?? ''] ?? 0;
@@ -395,6 +398,7 @@ describe.each([1, 2])('collectLeaves, schema v%i', (schemaVersion) => {
       editor.commands.setContent(
         '<table><tbody><tr><td><p>a1</p><img src="data:image/svg+xml;base64,PHN2Zy8+"><p>a2</p></td><td><p>b1</p></td></tr></tbody></table>',
       );
+      mountEditorContent(editor);
       document.elementFromPoint = () => null;
       const rect = (el: Element, top: number, height: number) => {
         el.getBoundingClientRect = () =>

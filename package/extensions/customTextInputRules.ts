@@ -1,10 +1,11 @@
 import { Extension, textInputRule } from '@tiptap/core';
+import { keepInUndoGroup } from './input-rule-undo-group';
 
 const customTextInputRules = Extension.create({
   name: 'customTextInputRules',
 
   addInputRules() {
-    return [
+    return keepInUndoGroup([
       textInputRule({
         find: /1st\s$/,
         replace: '1ˢᵗ ',
@@ -254,7 +255,7 @@ const customTextInputRules = Extension.create({
       // textInputRule({ find: /\/shrug $/, replace: '¯\\_(ツ)_/¯' }),
       // textInputRule({ find: /;\) $/, replace: '😉 ' }),
       // textInputRule({ find: /:\)\] $/, replace: '🙂 ' })
-    ];
+    ]);
   },
 });
 

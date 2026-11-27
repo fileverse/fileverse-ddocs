@@ -11,6 +11,23 @@ export interface CustomLinkOptions extends LinkOptions {
   onForeignHeadingLink?: (message: string) => void;
 }
 
+// Set while Link's paste handler runs: since 3.31.4 it hands shouldAutoLink
+// the pasted text, not its href, so `example.com` over a selection stopped
+// linking (3.11 linked it as http://example.com).
+let pasteHandlerProtocol: string | null = null;
+
+/** What Link's paste handler passed to shouldAutoLink on Tiptap 3.11 (linkify's href). */
+export const autoLinkCandidate = (url: string) => {
+  if (
+    pasteHandlerProtocol === null ||
+    /^([a-z][\w+.-]*:\/\/|mailto:)/i.test(url)
+  )
+    return url;
+  return /^[^\s/@]+@[^\s/@]+$/.test(url)
+    ? `mailto:${url}`
+    : `${pasteHandlerProtocol}://${url}`;
+};
+
 /**
  * Extends tiptap's Link with a paste-time hook that detects
  * heading links pointing at headings from other dDocs and dispatches
@@ -45,8 +62,25 @@ export const CustomLink = Link.extend<CustomLinkOptions>({
   },
 
   addProseMirrorPlugins() {
-    const parentPlugins = this.parent?.() ?? [];
     const options = this.options;
+    const parentPlugins = (this.parent?.() ?? []).map((plugin) => {
+      const handlePaste = plugin.props.handlePaste;
+      if (!handlePaste) return plugin;
+      return new Plugin({
+        ...plugin.spec,
+        props: {
+          ...plugin.spec.props,
+          handlePaste(view, event, slice) {
+            pasteHandlerProtocol = options.defaultProtocol;
+            try {
+              return handlePaste.call(this, view, event, slice);
+            } finally {
+              pasteHandlerProtocol = null;
+            }
+          },
+        },
+      });
+    });
 
     const foreignHeadingDetector = new Plugin({
       key: new PluginKey('foreignHeadingLinkDetector'),

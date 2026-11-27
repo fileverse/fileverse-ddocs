@@ -15,7 +15,7 @@ import { CARET_MARKS_ATTR, serializeMarks } from './caret-style';
 export const makeEditor = (
   schemaVersion: number,
   content: string | null = '<p></p>',
-  options: { ydoc?: Y.Doc; extensions?: AnyExtension[] } = {},
+  options: { ydoc?: Y.Doc; field?: string; extensions?: AnyExtension[] } = {},
 ) => {
   const element = document.createElement('div');
   document.body.appendChild(element);
@@ -25,6 +25,7 @@ export const makeEditor = (
       ...(getHeadlessExtensions({
         schemaVersion,
         ydoc: options.ydoc,
+        field: options.field,
       }) as AnyExtension[]),
       ...(options.extensions ?? []),
     ],

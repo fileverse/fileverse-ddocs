@@ -1,7 +1,30 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Editor } from '@tiptap/react';
+import { renderHook } from '@testing-library/react';
+import * as Y from 'yjs';
+import {
+  absolutePositionToRelativePosition,
+  yCursorPluginKey,
+  ySyncPluginKey,
+} from '@tiptap/y-tiptap';
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+} from 'y-protocols/awareness';
 import { getHeadlessExtensions } from './use-headless-editor';
-import { TAB_EDITOR_ATTRIBUTES, printTab } from './use-tab-editor';
+import {
+  TAB_EDITOR_ATTRIBUTES,
+  printTab,
+  useExtensionSyncWithCollaboration,
+} from './use-tab-editor';
+import type { CollaborationProps } from '../sync-local/types';
+import {
+  destroyTracked,
+  makeEditor,
+  startOf,
+  track,
+} from '../extensions/caret-marks/test-helpers';
 import { printPagesTab } from '../extensions/pagination/print';
 import { handleContentPrint } from '../utils/handle-print';
 
@@ -81,5 +104,67 @@ describe('printTab', () => {
     await expect(printTab(fake, false, [])).rejects.toThrow('print blocked');
     expect(handleContentPrint).toHaveBeenCalledTimes(1);
     err.mockRestore();
+  });
+});
+
+// The hook rebuilds y-tiptap's yCursorPlugin from its spec (state.init/apply,
+// props, view) and re-runs apply only on its `awarenessUpdated` meta.
+describe('useExtensionSyncWithCollaboration', () => {
+  afterEach(destroyTracked);
+
+  it("renders a collaborator's caret and removes the plugin on unmount", async () => {
+    const docA = new Y.Doc();
+    const a = track(makeEditor(2, '<p>Alpha</p><p>Beta</p>', { ydoc: docA }));
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    const b = track(makeEditor(2, null, { ydoc: docB }));
+    const awA = new Awareness(docA);
+    const awB = new Awareness(docB);
+    awB.on('update', ({ added, updated }: Record<string, number[]>) => {
+      const changed = [...added, ...updated];
+      applyAwarenessUpdate(awA, encodeAwarenessUpdate(awB, changed), 'remote');
+    });
+
+    const { unmount } = renderHook(() =>
+      useExtensionSyncWithCollaboration({
+        editor: a,
+        isReady: true,
+        awareness: awA,
+        collaboration: {
+          enabled: true,
+          session: { username: 'A' },
+        } as unknown as CollaborationProps,
+        collaborationCleanupRef: { current: () => {} },
+      }),
+    );
+    // What B's own cursor plugin would publish while B has focus.
+    const caret = startOf(b, 'Beta') + 2;
+    const sync = ySyncPluginKey.getState(b.state);
+    const rel = absolutePositionToRelativePosition(
+      caret,
+      sync.type,
+      sync.binding.mapping,
+    );
+    awB.setLocalStateField('user', { name: 'B', color: '#30bced' });
+    awB.setLocalStateField('cursor', { anchor: rel, head: rel });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const carets = yCursorPluginKey
+      .getState(a.state)
+      .find(
+        undefined,
+        undefined,
+        (spec: { key: string }) => spec.key === `${awB.clientID}`,
+      )
+      .map((decoration: { from: number }) => decoration.from);
+    expect(carets).toEqual([caret]);
+    expect(
+      a.view.dom.querySelector('.collaboration-cursor__caret')?.textContent,
+    ).toBe('B');
+
+    unmount();
+    expect(yCursorPluginKey.getState(a.state)).toBeUndefined();
+    awA.destroy();
+    awB.destroy();
   });
 });

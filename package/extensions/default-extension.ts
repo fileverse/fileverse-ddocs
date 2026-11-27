@@ -26,6 +26,8 @@ import { PasteAs } from './paste-as/paste-as-candidate';
 import { BlockId } from './block-id';
 import { ListNormalization } from './list-normalization';
 import { TabIndent } from './tab-indent';
+import { Blockquote } from './blockquote';
+import { OrderedList } from './ordered-list';
 import { UndoSelection } from './undo-selection';
 import { AiWriterSpaceTrigger } from './ai-writer/ai-writer-space-trigger';
 import { SuperchargedTableExtensions } from './supercharged-table';
@@ -37,7 +39,7 @@ import { Plugin } from '@tiptap/pm/state';
 import { type Editor, InputRule } from '@tiptap/core';
 import { actionButton } from './action-button';
 import { Markdown } from 'tiptap-markdown';
-import Typography from '@tiptap/extension-typography';
+import { Typography } from './typography';
 import MarkdownPasteHandler from './mardown-paste-handler';
 import HtmlExportExtension from './html-export';
 import TextExportExtension from './text-export';
@@ -77,7 +79,7 @@ const lowlight = createLowlight(common);
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../types';
 import { type ToCItemType } from '../components/toc/types';
 import type { DBlockRuntimeStateRef } from './d-block/dblock-runtime';
-import { CustomLink } from './custom-link';
+import { CustomLink, autoLinkCandidate } from './custom-link';
 import { suggestionTrackingPluginKey } from './suggestion/suggestion-tracking-extension';
 import { DdocTableOfContents } from './table-of-contents';
 import SearchAndReplace from './search-replace/search-replace';
@@ -277,17 +279,8 @@ export const defaultExtensions = ({
         class: 'select-text pointer-events-auto transition-all',
       },
     },
-    orderedList: {
-      HTMLAttributes: {
-        class: 'flex flex-col items-start list-decimal list-outside',
-      },
-    },
-    blockquote: {
-      HTMLAttributes: {
-        class:
-          'pl-4 border-l-4 color-border-default italic color-text-secondary my-2',
-      },
-    },
+    orderedList: false,
+    blockquote: false,
     code: {
       HTMLAttributes: {
         class:
@@ -307,6 +300,17 @@ export const defaultExtensions = ({
     // v1 uses the custom dBlock-aware TrailingNode registered below; the
     // flat v2 schema uses StarterKit's stock one (schema-agnostic).
     trailingNode: schemaVersion >= 2 ? undefined : false,
+  }),
+  OrderedList.configure({
+    HTMLAttributes: {
+      class: 'flex flex-col items-start list-decimal list-outside',
+    },
+  }),
+  Blockquote.configure({
+    HTMLAttributes: {
+      class:
+        'pl-4 border-l-4 color-border-default italic color-text-secondary my-2',
+    },
   }),
   CommonMarkBold.configure({
     HTMLAttributes: {
@@ -359,7 +363,7 @@ export const defaultExtensions = ({
   }),
   HorizontalRule,
   CustomLink.configure({
-    shouldAutoLink: (url) => /^https?:\/\//.test(url),
+    shouldAutoLink: (url) => /^https?:\/\//.test(autoLinkCandidate(url)),
     autolink: true,
     openOnClick: false,
     HTMLAttributes: {

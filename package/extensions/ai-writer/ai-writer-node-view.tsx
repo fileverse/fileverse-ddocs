@@ -8,7 +8,6 @@ import React, {
 } from 'react';
 import { JSONContent, NodeViewProps, NodeViewWrapper } from '@tiptap/react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import wizardLogo from '../../assets/wizard.svg';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -27,7 +26,7 @@ import styles from './ai-writer-node-view.module.css';
 import { useResponsive } from '../../utils/responsive';
 import { useEditingContext } from '../../hooks/use-editing-context';
 import { TextSelection } from 'prosemirror-state';
-import { SuperchargedTableExtensions } from '../supercharged-table/supercharged-table-kit';
+import { aiWriterEditorExtensions } from './editor-extensions';
 import { ModelOption, WindowWithModelContext, ModelService } from './types';
 import { getLoadingMessageInOrder, md } from './utils';
 
@@ -70,7 +69,7 @@ export const AIWriterNodeView = memo(
 
     // Create a new editor instance for editing
     const editEditor = useEditor({
-      extensions: [StarterKit, ...SuperchargedTableExtensions],
+      extensions: aiWriterEditorExtensions(),
       content: '',
       editable: true,
       immediatelyRender: false,

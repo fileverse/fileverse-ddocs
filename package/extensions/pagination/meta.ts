@@ -24,9 +24,9 @@ export const dispatchMeta = (view: EditorView, meta: PaginationMeta) => {
   if (!refuses(tr)) view.dispatch(tr);
 };
 
-// y-sync applies every remote change, undo and redo as one whole-doc replace,
-// which would drop every spacer. Map through the range that really changed;
-// unchanged nodes are reused, so the diff is cheap.
+// y-sync still replaces a range (the changed top-level blocks, or the whole
+// doc when fitting needs it) without mapping our spacers. Map through the
+// range that really changed; unchanged nodes are reused, so the diff is cheap.
 export function spacerMapping(tr: Transaction): Mapping {
   if (!isChangeOrigin(tr)) return tr.mapping;
   const a = tr.before.content;

@@ -85,6 +85,30 @@ describe.each([1, 2])('Tab indentation (schema v%i)', (schemaVersion) => {
     expect(editor.state.selection.$from.depth).toBe(depth);
   });
 
+  // ListKeymap (Tiptap 3.30+) would sink this paragraph into the list.
+  it.each(['ul', 'ol'])(
+    'Tab at the start of a paragraph right after a %s indents the paragraph',
+    (list) => {
+      const editor = makeEditor(
+        schemaVersion,
+        `<${list}><li><p>aa</p></li></${list}><p>pp</p>`,
+      );
+      cursorAfter(editor, 'pp');
+      editor.commands.setTextSelection(editor.state.selection.from - 2);
+
+      expect(press(editor)).toBe(true);
+      const items: string[] = [];
+      const paragraphs: string[] = [];
+      editor.state.doc.descendants((node, _pos, parent) => {
+        if (node.type.name === 'listItem') items.push(node.textContent);
+        if (node.type.name === 'paragraph' && parent?.type.name !== 'listItem')
+          paragraphs.push(node.textContent);
+      });
+      expect(items).toEqual(['aa']);
+      expect(paragraphs[0]).toMatch(new RegExp(`^${EM_SPACE}+pp$`));
+    },
+  );
+
   it('Tab on the first list item is consumed instead of leaving the editor', () => {
     const editor = makeEditor(schemaVersion, '<ul><li><p>one</p></li></ul>');
     cursorAfter(editor, 'one');

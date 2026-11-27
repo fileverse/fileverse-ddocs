@@ -1,9 +1,11 @@
 import { act, render } from '@testing-library/react';
-import type { Editor } from '@tiptap/react';
+import { Editor, EditorContent } from '@tiptap/react';
+import { Extension } from '@tiptap/core';
 import { PageSheets, maskBoundaries, visibleSheetRange } from './page-sheets';
 import { createPageStore } from '../extensions/pagination/page-store';
 import { PAGE_GAP, PageGrid } from '../extensions/pagination/page-grid';
 import type { PageStart } from '../extensions/pagination/place';
+import { getHeadlessExtensions } from '../hooks/use-headless-editor';
 
 const scroll = vi.hoisted(() => ({ el: null as HTMLElement | null }));
 vi.mock('../utils/get-editor-scroll-container', () => ({
@@ -328,6 +330,92 @@ describe('PageSheets', () => {
       scroll.el = null;
       scroller.remove();
       layer.remove();
+    }
+  });
+
+  // EditorContent moves every child of view.dom's parent on mount and
+  // unmount, so a mask layer React portalled there would be removed twice.
+  it('keeps one mask per boundary when the editor prop is swapped', async () => {
+    const realObserver = globalThis.ResizeObserver;
+    // A browser's ResizeObserver reports once on observe; that re-measures
+    // the host after EditorContent re-parents view.dom.
+    globalThis.ResizeObserver = class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        queueMicrotask(() =>
+          this.callback(
+            [{ target } as ResizeObserverEntry],
+            this as unknown as ResizeObserver,
+          ),
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const editors: Editor[] = [];
+    const paged = (pageCount: number) => {
+      const store = createPageStore();
+      store.set({
+        enabled: true,
+        pageCount,
+        pageStarts: starts(Array(pageCount).fill('before')),
+      });
+      const editor = new Editor({
+        extensions: [
+          ...getHeadlessExtensions(),
+          Extension.create({
+            name: 'pagination',
+            addStorage: () => ({ store }),
+          }),
+        ],
+      });
+      editor.commands.setContent('<p>text</p>');
+      editors.push(editor);
+      return editor;
+    };
+    const Pages = ({ editor }: { editor: Editor }) => (
+      <div>
+        <PageSheets editor={editor} grid={A4} />
+        <div>
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+    );
+    const settle = () =>
+      act(async () => {
+        await new Promise((r) => requestAnimationFrame(r));
+      });
+    const boundaries = (editor: Editor) =>
+      editor.view.dom.parentElement!.querySelectorAll('.ddoc-page-mask').length;
+    const a = paged(3);
+    const b = paged(5);
+    const { rerender, unmount } = render(<Pages editor={a} />);
+    try {
+      await settle();
+      expect(boundaries(a)).toBe(2);
+      rerender(<Pages editor={b} />);
+      await settle();
+      expect(boundaries(b)).toBe(4);
+      rerender(<Pages editor={a} />);
+      await settle();
+      expect(boundaries(a)).toBe(2);
+      a.destroy();
+      const again = paged(3);
+      rerender(<Pages editor={again} />);
+      await settle();
+      expect(boundaries(again)).toBe(2);
+      expect(document.querySelectorAll('.ddoc-page-masks')).toHaveLength(1);
+      expect(
+        error.mock.calls.filter((c) =>
+          /removeChild|NotFoundError|not a child/i.test(String(c[0])),
+        ),
+      ).toEqual([]);
+    } finally {
+      unmount();
+      error.mockRestore();
+      globalThis.ResizeObserver = realObserver;
+      editors.forEach((editor) => editor.destroy());
     }
   });
 });

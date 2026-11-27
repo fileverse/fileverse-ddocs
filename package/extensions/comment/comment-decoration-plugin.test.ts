@@ -13,10 +13,25 @@ import {
   createCommentAnchorFromEditor,
   createCommentAnchorPointFromEditor,
   getCommentAtPosition,
+  hasResolvableCommentAnchorInState,
   triggerDecorationRebuild,
   resolveSuggestionAddPointInState,
   type CommentAnchor,
 } from './comment-decoration-plugin';
+import {
+  destroyTracked,
+  makeEditor,
+  nativeDelete,
+  pressKey,
+  startOf,
+  textblocks,
+  track,
+} from '../caret-marks/test-helpers';
+import {
+  addComment,
+  makeListEditor,
+  resolvedAnchors,
+} from '../list-toggle/test-helpers';
 
 const makeCommentEditor = (schemaVersion = 1, ydoc = new Y.Doc()) => {
   const anchors: CommentAnchor[] = [];
@@ -470,6 +485,7 @@ describe('accepted suggestions', () => {
   afterEach(() => {
     editor?.destroy();
     editor = null;
+    destroyTracked();
   });
 
   it('keeps a pending Add in the moved suffix of a v1 dBlock', () => {
@@ -547,6 +563,53 @@ describe('accepted suggestions', () => {
     expect(editor.state.doc.toJSON()).toEqual(
       expect.objectContaining({ type: 'doc' }),
     );
+  });
+
+  // y-tiptap 3.3.0 resolves the later Add's stored anchor (now in deleted
+  // text) to null; its saved override must keep it resolvable.
+  it('keeps a pending Add in the moved suffix resolvable for the comment store', () => {
+    const harness = makeCommentEditor(1);
+    editor = harness.editor;
+    editor.commands.setContent('<p>Alpha base<br><br>Beta base</p>');
+    const addAt = (id: string, position: number, texts: string[]) => ({
+      id,
+      ...createCommentAnchorPointFromEditor(editor!, position)!,
+      resolved: false,
+      deleted: false,
+      isSuggestion: true,
+      suggestionType: 'add' as const,
+      suggestedContent: texts.join('\n'),
+      multilineStructure: {
+        version: 1,
+        insertedTexts: texts,
+        structureType: texts.length === 2 ? ['block'] : ['soft', 'block'],
+      },
+    });
+    const first: CommentAnchor = addAt(
+      'first',
+      findRange(editor, 'Alpha base').to,
+      [' FIRST', ''],
+    );
+    const later: CommentAnchor = addAt(
+      'later',
+      findRange(editor, 'Beta base').to,
+      [' SECOND', '', ''],
+    );
+    harness.anchors.push(first, later);
+    triggerDecorationRebuild(editor);
+    expect(hasResolvableCommentAnchorInState(later, editor.state)).toBe(true);
+
+    expect(applyAcceptedSuggestion(editor, first, harness.anchors)).toBe(true);
+    first.resolved = true;
+    expect(hasResolvableCommentAnchorInState(later, editor.state)).toBe(true);
+
+    const clone = new Y.Doc();
+    Y.applyUpdate(clone, Y.encodeStateAsUpdate(harness.ydoc));
+    const reloaded = makeCommentEditor(1, clone);
+    expect(
+      hasResolvableCommentAnchorInState(later, reloaded.editor.state),
+    ).toBe(true);
+    reloaded.editor.destroy();
   });
 
   it('keeps the effective point aligned through undo and redo of the v1 split', () => {
@@ -1706,6 +1769,242 @@ describe('accepted suggestions', () => {
       }
     }
 
+    it(`keeps a following Add resolvable after the owner retypes the block (v${schemaVersion})`, () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>ABCold</p><p>DEF</p>');
+      const range = findRange(editor, 'old');
+      const replace: CommentAnchor = {
+        id: 'replace',
+        ...createCommentAnchorFromEditor(editor, range.from, range.to)!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'replace',
+        originalContent: 'old',
+        suggestedContent: '\n',
+        multilineStructure: {
+          version: 1,
+          insertedTexts: ['', ''],
+          structureType: ['block'],
+        },
+      };
+      const add: CommentAnchor = {
+        id: 'add',
+        ...createCommentAnchorPointFromEditor(editor, range.to)!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: 'yyy',
+        followsSuggestionId: replace.id,
+      };
+      const anchors = [replace, add];
+      expect(applyAcceptedSuggestion(editor, replace)).toBe(true);
+      replace.resolved = true;
+      editor.commands.setTextSelection(findRange(editor, 'ABC').from + 1);
+      expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+      expect(editor.state.doc.firstChild?.type.name).toBe(
+        schemaVersion === 1 ? 'dBlock' : 'heading',
+      );
+
+      const point = resolveSuggestionAddPointInState(
+        add,
+        editor.state,
+        anchors,
+      );
+      expect(point).not.toBeNull();
+      expect(hasResolvableCommentAnchorInState(add, editor.state)).toBe(true);
+      expect(applyAcceptedSuggestion(editor, add, anchors)).toBe(true);
+      expect(
+        editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n'),
+      ).toContain('yyy');
+    });
+
+    // A standalone Add whose block the owner restructures without changing
+    // its text. y-tiptap recreates that text's Yjs items, so the Add only
+    // survives through its saved override, which must reach a reloaded doc.
+    const pendingAddAt = (
+      harness: ReturnType<typeof makeCommentEditor>,
+      pos: number,
+    ): CommentAnchor => {
+      const add: CommentAnchor = {
+        id: 'restructured-add',
+        ...createCommentAnchorPointFromEditor(harness.editor, pos)!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: 'yyy',
+      };
+      harness.anchors.push(add);
+      yUndoPluginKey
+        .getState(harness.editor.state)
+        ?.undoManager.stopCapturing();
+      return add;
+    };
+    const reloaded = (ydoc: Y.Doc) => {
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(ydoc));
+      return track(makeCommentEditor(schemaVersion, copy).editor);
+    };
+    const flatText = (target: Editor) =>
+      target.state.doc.textBetween(0, target.state.doc.content.size, '|');
+    const atStartOf = (target: Editor, text: string) => {
+      target.commands.setTextSelection(findRange(target, text).from);
+    };
+    const withinFirstBlock = (target: Editor) => {
+      target.commands.setTextSelection(findRange(target, 'ABC').from + 1);
+    };
+    const atEndOf = (target: Editor, text: string) => {
+      target.commands.setTextSelection(findRange(target, text).to);
+    };
+    const insideEmptyBlock = (target: Editor) =>
+      textblocks(target).find(({ node }) => node.content.size === 0)!.pos + 1;
+
+    it.each([
+      {
+        name: 'Heading 1, Add at the end',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          withinFirstBlock(target);
+          return target.commands.setNode('heading', { level: 1 });
+        },
+        accepted: 'ABC old DEFyyy|next',
+      },
+      {
+        name: 'Heading 1, Add at the start',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'ABC').from,
+        edit: (target: Editor) => {
+          withinFirstBlock(target);
+          return target.commands.setNode('heading', { level: 1 });
+        },
+        accepted: 'yyyABC old DEF|next',
+      },
+      {
+        name: 'a quote',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          withinFirstBlock(target);
+          return target.commands.toggleBlockquote();
+        },
+        accepted: 'ABC old DEFyyy|next',
+      },
+      {
+        name: 'Backspace joining it to the block above',
+        html: '<p>prev</p><p>ABC old DEF</p>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          atStartOf(target, 'ABC');
+          return pressKey(target, 'Backspace');
+        },
+        accepted: 'prevABC old DEFyyy',
+      },
+      {
+        name: 'Backspace joining two paragraphs in a quote',
+        html: '<blockquote><p>prev</p><p>ABC old DEF</p></blockquote>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          atStartOf(target, 'ABC');
+          return pressKey(target, 'Backspace');
+        },
+        accepted: 'prevABC old DEFyyy|',
+      },
+      {
+        name: 'Delete joining two paragraphs in a list item',
+        html: '<ul><li><p>prev</p><p>ABC old DEF</p></li></ul>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          atEndOf(target, 'prev');
+          return pressKey(target, 'Delete');
+        },
+        accepted: 'prevABC old DEFyyy|',
+      },
+      {
+        name: 'Heading 1 on an empty block',
+        html: '<p>ABC old DEF</p><p></p><p>next</p>',
+        point: insideEmptyBlock,
+        edit: (target: Editor) => {
+          target.commands.setTextSelection(insideEmptyBlock(target));
+          return target.commands.setNode('heading', { level: 1 });
+        },
+        accepted: 'ABC old DEF|yyy|next',
+      },
+    ])(
+      `accepts a standalone Add after $name (v${schemaVersion})`,
+      ({ html, point, edit, accepted }) => {
+        const harness = makeCommentEditor(schemaVersion);
+        editor = harness.editor;
+        editor.commands.setContent(html);
+        const add = pendingAddAt(harness, point(editor));
+        expect(edit(editor)).toBe(true);
+
+        const copy = reloaded(harness.ydoc);
+        expect(hasResolvableCommentAnchorInState(add, copy.state)).toBe(true);
+        expect(applyAcceptedSuggestion(editor, add, [add])).toBe(true);
+        expect(flatText(editor)).toBe(accepted);
+      },
+    );
+
+    it.each([
+      {
+        name: 'the end of a block',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        select: withinFirstBlock,
+        accepted: 'ABC old DEFyyy|next',
+      },
+      {
+        name: 'the start of a block',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'ABC').from,
+        select: withinFirstBlock,
+        accepted: 'yyyABC old DEF|next',
+      },
+      {
+        name: 'an empty block',
+        html: '<p>ABC old DEF</p><p></p><p>next</p>',
+        point: insideEmptyBlock,
+        select: (target: Editor) => {
+          target.commands.setTextSelection(insideEmptyBlock(target));
+        },
+        accepted: 'ABC old DEF|yyy|next',
+      },
+    ])(
+      `keeps an Add at $name in place through retype, undo, redo and undo, on reload (v${schemaVersion})`,
+      ({ html, point, select, accepted }) => {
+        const harness = makeCommentEditor(schemaVersion);
+        editor = harness.editor;
+        editor.commands.setContent(html);
+        const add = pendingAddAt(harness, point(editor));
+        const expectInPlace = () => {
+          expect(
+            resolveSuggestionAddPointInState(add, editor!.state, [add]),
+          ).toBe(point(editor!));
+          const copy = reloaded(harness.ydoc);
+          expect(resolveSuggestionAddPointInState(add, copy.state, [add])).toBe(
+            point(copy),
+          );
+          return copy;
+        };
+
+        select(editor);
+        expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+        expectInPlace();
+        expect(editor.commands.undo()).toBe(true);
+        expectInPlace();
+        expect(editor.commands.redo()).toBe(true);
+        expectInPlace();
+        expect(editor.commands.undo()).toBe(true);
+        const copy = expectInPlace();
+        expect(applyAcceptedSuggestion(copy, add, [add])).toBe(true);
+        expect(flatText(copy)).toBe(accepted);
+      },
+    );
+
     it(`keeps a following Add after a Replace at the document end in v${schemaVersion}`, () => {
       const harness = makeCommentEditor(schemaVersion);
       editor = harness.editor;
@@ -1818,3 +2117,60 @@ describe.each([1, 2])(
     });
   },
 );
+
+// Anchors resolve through @tiptap/y-tiptap: 3.0.1 rewrote every paragraph on
+// a remote block move, 3.0.6–3.0.9 lost positions at the start of a v2 doc.
+describe.each([1, 2])('anchors under collaboration (schema v%i)', (version) => {
+  afterEach(destroyTracked);
+
+  it('two clients converge and keep anchors around a remote block move', () => {
+    const a = makeCommentEditor(version);
+    track(a.editor).commands.setContent(
+      '<p>Alpha</p><p>Beta</p><p>Gamma</p><p>Delta</p>',
+    );
+    const docA = a.ydoc;
+    const docB = new Y.Doc();
+    Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA));
+    docA.on('update', (u: Uint8Array, origin: unknown) => {
+      if (origin !== 'remote') Y.applyUpdate(docB, u, 'remote');
+    });
+    docB.on('update', (u: Uint8Array, origin: unknown) => {
+      if (origin !== 'remote') Y.applyUpdate(docA, u, 'remote');
+    });
+    const b = track(makeEditor(version, null, { ydoc: docB }));
+    addComment(a, 'c1', 'Alpha');
+    addComment(a, 'c2', 'Gamma');
+    const roots = [...docB.share.keys()].sort();
+
+    const $delta = b.state.doc.resolve(startOf(b, 'Delta'));
+    const block = $delta.node(1);
+    const from = $delta.before(1);
+    b.view.dispatch(
+      b.state.tr.delete(from, from + block.nodeSize).insert(0, block),
+    );
+
+    expect(a.editor.getJSON()).toEqual(b.getJSON());
+    expect(a.editor.state.doc.firstChild!.textContent).toBe('Delta');
+    expect(resolvedAnchors(a)).toBe('c1:Alpha c2:Gamma');
+    // y-tiptap 3.0.10–3.0.12 wrote position-migration roots on such a move.
+    expect([...docB.share.keys()].sort()).toEqual(roots);
+  });
+
+  it('resolves anchors at the first text position', () => {
+    const h = makeListEditor(version, '<p>Hello</p>');
+    const first = startOf(h.editor, 'Hello');
+    expect(first).toBe(version === 1 ? 2 : 1);
+    addComment(h, 'c1', 'ello');
+    nativeDelete(h.editor, first, first + 1);
+    expect(resolvedAnchors(h)).toBe('c1:ello');
+
+    const point = createCommentAnchorPointFromEditor(h.editor, first, 1)!;
+    expect(
+      resolveSuggestionAddPointInState(
+        { id: 's1', resolved: false, deleted: false, ...point },
+        h.editor.state,
+        [],
+      ),
+    ).toBe(first);
+  });
+});

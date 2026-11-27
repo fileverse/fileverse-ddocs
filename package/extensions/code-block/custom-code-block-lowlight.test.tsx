@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { common, createLowlight } from 'lowlight';
 import { CustomCodeBlockLowlight } from './custom-code-block-lowlight';
+import { mountEditorContent } from '../../utils/mount-editor-content';
 
 // The extension itself, mounted in a real (jsdom) view so the lowlight
 // decorations render: the wrapper around the upstream plugin must keep
@@ -26,6 +28,8 @@ const makeEditor = (content: string) => {
       }),
     ] as AnyExtension[],
   });
+  // The code block is a React node view (mount-editor-content.ts).
+  mountEditorContent(editor);
   return { editor, element };
 };
 
@@ -42,6 +46,7 @@ describe('CustomCodeBlockLowlight plugin gate', () => {
   };
 
   afterEach(() => {
+    cleanup();
     mounted.splice(0).forEach(({ editor, element }) => {
       editor.destroy();
       element.remove();

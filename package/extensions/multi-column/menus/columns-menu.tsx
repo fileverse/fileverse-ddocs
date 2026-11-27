@@ -14,6 +14,16 @@ import { counterScaleStyle } from '../../../utils/zoom';
 const markFloatingMenu = (node: HTMLDivElement | null) =>
   node?.classList.add('ddoc-floating-menu');
 
+// Stable identities: Tiptap 3.34's BubbleMenu dispatches an `updateOptions`
+// transaction whenever one of these props changes identity.
+const MENU_OPTIONS = {
+  offset: {
+    mainAxis: 16,
+    crossAxis: 0,
+  },
+  flip: true,
+};
+
 export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
   const { isSuggestionMode } = useEditingContext();
   // Mounted inside the scaled page (appendTo is the zoom layer).
@@ -29,6 +39,8 @@ export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
     const isColumns = editor.isActive('columns');
     return isColumns && !isPreviewMode;
   }, [editor, isSuggestionMode]);
+
+  const getAppendTo = useCallback(() => appendTo?.current, [appendTo]);
 
   const onColumnLeft = useCallback(() => {
     editor.chain().focus().setLayout(ColumnLayout.AlignLeft).run();
@@ -53,16 +65,10 @@ export const ColumnsMenu = ({ editor, appendTo }: MenuProps) => {
       pluginKey={`columnsMenu-${uuid()}`}
       shouldShow={shouldShow}
       updateDelay={0}
-      options={{
-        offset: {
-          mainAxis: 16,
-          crossAxis: 0,
-        },
-        flip: true,
-      }}
-      appendTo={() => appendTo?.current}
+      options={MENU_OPTIONS}
+      appendTo={getAppendTo}
       style={counterScaleStyle(scale)}
-      getReferencedVirtualElement={() => getReferenceClientRect()}
+      getReferencedVirtualElement={getReferenceClientRect}
     >
       <Toolbar.Wrapper className="border color-border-default shadow-elevation-3">
         <ToolbarButton

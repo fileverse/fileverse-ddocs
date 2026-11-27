@@ -103,28 +103,35 @@ export const CommentBubbleCard = ({
     [isCollabDocumentPublished],
   );
 
+  // Stable identity: Tiptap 3.34's BubbleMenu dispatches an `updateOptions`
+  // transaction whenever `options` changes identity.
+  const bubbleMenuOptions = useMemo(
+    () => ({
+      offset: {
+        mainAxis: 0,
+        crossAxis: 20,
+      },
+      placement: 'bottom' as const,
+      strategy: 'fixed' as const,
+      flip: {
+        fallbackPlacements: ['top' as const],
+      },
+      shift: {
+        crossAxis: true,
+      },
+      onHide: () => {
+        // Additional safety to ensure active state is removed when menu hides
+        clearActiveComment(editor);
+      },
+    }),
+    [editor],
+  );
+
   return (
     <BubbleMenu
       {...bubbleMenuProps}
       pluginKey="commentBubbleCard"
-      options={{
-        offset: {
-          mainAxis: 0,
-          crossAxis: 20,
-        },
-        placement: 'bottom',
-        strategy: 'fixed',
-        flip: {
-          fallbackPlacements: ['top'],
-        },
-        shift: {
-          crossAxis: true,
-        },
-        onHide: () => {
-          // Additional safety to ensure active state is removed when menu hides
-          clearActiveComment(editor);
-        },
-      }}
+      options={bubbleMenuOptions}
       editor={editor}
       className={cn(
         'shadow-elevation-4 rounded-lg color-bg-default border color-border-default',

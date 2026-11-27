@@ -10,6 +10,7 @@ import {
   printPagesTab,
 } from './print';
 import { handleContentPrint } from '../../utils/handle-print';
+import { mountEditorContent } from '../../utils/mount-editor-content';
 import type { Placement } from './place';
 
 vi.mock('../mardown-paste-handler', async (importOriginal) => ({
@@ -199,6 +200,8 @@ describe('buildPrintHtml', () => {
     editor.commands.setContent(
       '<table><tbody><tr><td><p>a</p></td><td><p>b</p></td></tr><tr><td><p>c</p></td><td><p>d</p></td></tr></tbody></table>',
     );
+    // The live table's cells are React node views (mount-editor-content.ts).
+    mountEditorContent(editor);
     let rowPos = -1;
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name === 'tableRow' && node.textContent === 'cd')

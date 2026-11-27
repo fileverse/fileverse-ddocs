@@ -44,16 +44,20 @@ const SearchReplace = ({
     setShowReplace,
     toggleShowReplace,
   } = useSearchReplaceStore((s) => s.actions);
-  // Result count and current match live in editor.storage. Select them
-  // through useEditorState so the popover re-renders only when they change,
-  // not on every transaction (this used to force a render per keystroke,
-  // open or closed).
+  // Read the result count only while find is open. After an editor swap `e`
+  // stays the outgoing editor until the new one's first transaction, and
+  // Tiptap 3.34 empties a destroyed editor's storage.
   const searchState = useEditorState({
     editor,
-    selector: ({ editor: e }: { editor: Editor | null }) => ({
-      resultCount: e ? e.storage.searchAndReplace.results.length : undefined,
-      resultIndex: e ? e.storage.searchAndReplace.resultIndex : undefined,
-    }),
+    selector: ({ editor: e }: { editor: Editor | null }) => {
+      const search = showSearchReplacePopover
+        ? e?.storage.searchAndReplace
+        : undefined;
+      return {
+        resultCount: search?.results.length,
+        resultIndex: search?.resultIndex,
+      };
+    },
   });
   const resultCount = searchState?.resultCount;
   const resultIndex = searchState?.resultIndex;

@@ -71,7 +71,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 - `extensions/` holds custom Tiptap nodes, marks and plugins; `default-extension.ts` is the registry and its order affects keymap priority.
 - Markdown import/export lives in `extensions/mardown-paste-handler/` (the misspelling is the real path; do not rename it), built on markdown-it and turndown. Docx import is `extensions/docx/` (mammoth); HTML, ODT and text export are extensions too. Headless conversions go through `getHeadlessExtensions` so they share the exact editor schema.
 - Fonts: the package ships only system fonts. Consumers pass a `fonts` catalog that `utils/font-loader.ts` loads on demand (`docs/FONTS.md`).
-- Lists: `extensions/list-toggle/` overrides `toggleList` for every trigger (and Backspace at the start of an item; Enter out of a nested list lifts the item, keeping its spacing) and both schemas with structural steps only (`docs/LIST_TOGGLE.md`). Markers take the item's font size and family through a display-only decoration when its first paragraph agrees (§3.9, print too). Never `replaceWith` a list: the comment store marks every comment inside it deleted. Comment anchors are Yjs relative positions and still die on any node type change until TEC-3181 lands; verify anchor survival with `resolveCommentAnchorRangeInState`, not the plugin's mapped decorations. Before a Tiptap upgrade, read §7 of that doc: what the engine relies on and which test catches each.
+- Lists: `extensions/list-toggle/` overrides `toggleList` for every trigger (and Backspace at the start of an item; Enter out of a nested list lifts the item, keeping its spacing) and both schemas with structural steps only (`docs/LIST_TOGGLE.md`). Markers take the item's font size and family through a display-only decoration when its first paragraph agrees (§3.9, print too). Never `replaceWith` a list: the comment store marks every comment inside it deleted. Comment anchors are Yjs relative positions and still die on any node type change until TEC-3181 lands; verify anchor survival with `resolveCommentAnchorRangeInState`, not the plugin's mapped decorations. Before a Tiptap upgrade, read §7 of that doc (and `docs/TIPTAP_UPGRADE.md` §9): what the engine relies on and which test catches each.
 
 ### Styling and bundling
 
@@ -83,6 +83,10 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 ## Testing conventions
 
 - Vitest + jsdom + Testing Library with globals on. Tests sit next to the code as `*.test.ts(x)` under `package/` and `demo/src/`.
+- Before writing a test, name the realistic bug it would catch. If you can't, don't write it.
+- Expected values are hard-coded literals, never recomputed with the code's own formula or constants.
+- Assert what a user or caller observes, not internal state or mock calls.
+- No "renders without crashing", no whole-tree snapshots.
 - `utils/make-editor.ts` builds a jsdom editor with the real headless extension set. Collaboration owns the doc, so set content with `editor.commands.setContent(...)` after construction; the `content` constructor option is silently ignored. Destroy editors in `afterEach`.
 - For extension-only tests, build a minimal `Editor` with `StarterKit` plus the extension under test (see `extensions/paragraph-spacing.test.ts`). Behaviour that differs by schema gets a v1 and a v2 case (see `extensions/undo-selection.test.ts`).
 - Browser QA is manual in the demo. `scripts/parity-sweep.cjs` and `scripts/chrome-parity-probe.cjs` drive a real Chrome against the demo on port 5173 to compare v1 and v2.
@@ -91,7 +95,7 @@ Read `docs/FLAT_SCHEMA_V2.md` before touching block structure, keymaps, or anyth
 
 - Branch names and PR titles are Linear ticket ids (`TEC-1234`).
 - Prettier through eslint: single quotes, trailing commas, semicolons, 2-space indent.
-- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`, `DIST_BUNDLING.md`, `ZOOM.md`, `PAGES_MODE.md`). Read the relevant one before changing that area.
+- `docs/` holds the design specs and status notes (`FLAT_SCHEMA_V2.md`, `TABS_SPEC.md`, `PARAGRAPH_SPACING.md`, `FONTS.md`, `DDOCS_NEW_INTEGRATION.md`, `TAB_SCROLL_POSITION.md`, `FORMATTING_INHERITANCE.md`, `LIST_TOGGLE.md`, `DIST_BUNDLING.md`, `ZOOM.md`, `PAGES_MODE.md`, `TIPTAP_UPGRADE.md`). Read the relevant one before changing that area.
 
 ## Consumer repo: ddocs.new
 
