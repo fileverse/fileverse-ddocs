@@ -9,6 +9,8 @@ import { ConfirmDeleteModal } from './confirm-delete-modal';
 import { RenameTabModal } from './rename-tab-modal';
 import { TabEmojiPicker } from './tab-emoji-picker';
 import { Tab } from './utils/tab-utils';
+import { applyTabMove } from './apply-tab-move';
+import { getMoveIntoTargets } from './utils/tab-operations';
 import { deleteTabDialogCopy, useTabTreeView } from './use-tab-tree-view';
 
 // Width of the expand arrow plus its gap, when the doc has subtabs.
@@ -31,6 +33,7 @@ export interface DocumentMobileTabPanelProps {
   createSubtab?: (parentId: string) => void;
   duplicateTab: (tabId: string) => void;
   orderTab: DocumentOutlineProps['orderTab'];
+  reparentTab?: DocumentOutlineProps['reparentTab'];
   deleteTab?: (tabId: string) => void;
   tabCommentCounts: Record<string, number>;
   isPreviewMode: boolean;
@@ -56,6 +59,7 @@ export const DocumentMobileTabPanel = ({
   createSubtab,
   duplicateTab,
   orderTab,
+  reparentTab,
   deleteTab,
   tabCommentCounts,
   isPreviewMode,
@@ -76,6 +80,25 @@ export const DocumentMobileTabPanel = ({
   const canCreateSubtabs = Boolean(
     tabConfig?.enableSubtabs && createSubtab && !isPreviewMode,
   );
+  const canReparent = Boolean(
+    tabConfig?.enableSubtabs &&
+      reparentTab &&
+      !isPreviewMode &&
+      !isVersionHistoryMode,
+  );
+  const move = (tabId: string, targetId?: string) => {
+    if (canReparent && reparentTab)
+      applyTabMove(reparentTab, tabs, tree.expand, tabId, targetId);
+  };
+  const moveActionsFor = (tab: Tab | undefined) => {
+    if (!canReparent || !tab) return;
+    return {
+      getTargets: () => getMoveIntoTargets(tabs, tab.id),
+      onMoveInto: (targetId: string) => move(tab.id, targetId),
+      onMoveOut: tab.parentId ? () => move(tab.id) : undefined,
+    };
+  };
+  const activeMoveActions = moveActionsFor(activeTab);
   const addSubtabUnder = (tab: Tab) => {
     tree.expand(tab.id);
     createSubtab?.(tab.id);
@@ -168,6 +191,27 @@ export const DocumentMobileTabPanel = ({
     ],
     [
       {
+        id: 'move-into',
+        label: 'Move into',
+        icon: 'IndentIncrease' as const,
+        visible: Boolean(activeMoveActions),
+        submenu: activeMoveActions
+          ? {
+              getTabs: activeMoveActions.getTargets,
+              onSelect: activeMoveActions.onMoveInto,
+            }
+          : undefined,
+      },
+      {
+        id: 'move-out',
+        label: 'Move out',
+        icon: 'IndentDecrease' as const,
+        onSelect: activeMoveActions?.onMoveOut,
+        visible: Boolean(activeMoveActions?.onMoveOut),
+      },
+    ],
+    [
+      {
         id: 'delete',
         label: 'Delete',
         icon: 'Trash2' as const,
@@ -255,6 +299,7 @@ export const DocumentMobileTabPanel = ({
                   >
                     <TabItem
                       tabId={tab.id}
+                      moveActions={moveActionsFor(tab)}
                       alwaysShowMenu
                       onRename={() => setPendingRenameTab(tab)}
                       hideContentMenu={
@@ -437,6 +482,7 @@ export const DocumentMobileTabPanel = ({
             <TabContextMenu
               sections={menuSections}
               popoverSide="top"
+              useDropdown={Boolean(activeMoveActions)}
               popoverClassName="z-[1000]"
             />
           </div>

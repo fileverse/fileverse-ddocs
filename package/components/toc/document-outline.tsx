@@ -22,6 +22,7 @@ export const DocumentOutline = ({
   renameTab,
   duplicateTab,
   orderTab,
+  reparentTab,
   ydoc,
   tabCommentCounts,
   tabSectionContainer,
@@ -72,6 +73,7 @@ export const DocumentOutline = ({
       renameTab={renameTab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
+      reparentTab={reparentTab}
       deleteTab={deleteTab}
       ydoc={ydoc}
       tabCommentCounts={tabCommentCounts}
@@ -98,6 +100,7 @@ export const DocumentOutline = ({
       createSubtab={createSubtab}
       duplicateTab={duplicateTab}
       orderTab={orderTab}
+      reparentTab={reparentTab}
       deleteTab={deleteTab}
       tabCommentCounts={tabCommentCounts}
       isPreviewMode={isPreviewMode}

@@ -5,7 +5,11 @@ import {
   getTabsYdocNodes,
   PARENT_ROOT_KEY,
 } from '../tab-utils';
-import { createSubtabInDoc, getTabTree } from '../tab-operations';
+import {
+  createSubtabInDoc,
+  getTabTree,
+  reparentTabInDoc,
+} from '../tab-operations';
 import {
   deriveTabsFromEncodedState as v7Derive,
   mergeTabAwareYjsUpdates as v7Merge,
@@ -161,4 +165,24 @@ describe('an older app (7.0.0) on a doc with subtabs', () => {
     expect(outline(fresh)).toEqual(outline(old));
     expect(allStoredText(fresh)).toContain('old app typing');
   });
+});
+
+it('keeps a branch reachable when Move into races a 7.0 parent deletion', () => {
+  const origin = withSubtabs();
+  const fresh = copyDoc(origin, 49);
+  const old = copyDoc(origin, 50);
+  expect(reparentTabInDoc(fresh, 'q4', 'default').ok).toBe(true);
+  v7DeleteTab(old, 'default');
+
+  const moves = Y.encodeStateAsUpdate(fresh, Y.encodeStateVector(origin));
+  const deletion = Y.encodeStateAsUpdate(old, Y.encodeStateVector(origin));
+  for (const order of [
+    [moves, deletion],
+    [deletion, moves],
+  ]) {
+    const result = copyDoc(origin, 51);
+    for (const update of order) Y.applyUpdate(result, update);
+    expect(outline(result)).toEqual(['q4', '  jan', 'plan']);
+    expect(allStoredText(result)).toContain('january');
+  }
 });

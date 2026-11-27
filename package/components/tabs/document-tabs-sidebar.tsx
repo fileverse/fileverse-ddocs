@@ -16,8 +16,19 @@ import {
 } from '@dnd-kit/sortable';
 import { DocumentOutlineProps } from '../toc/types';
 import { MemorizedToC } from '../toc/memorized-toc';
-import { TabDragPreview, SortableTabItem } from './tab-item';
+import {
+  TabDragPreview,
+  SortableTabItem,
+  TabDropIntent,
+  TabMoveActions,
+} from './tab-item';
 import { Tab } from './utils/tab-utils';
+import {
+  getMoveIntoTargets,
+  getSubtreeIds,
+  getTabMoveError,
+} from './utils/tab-operations';
+import { applyTabMove } from './apply-tab-move';
 import { Editor } from '@tiptap/core';
 import * as Y from 'yjs';
 import { createPortal } from 'react-dom';
@@ -30,6 +41,13 @@ import {
 
 // Width of the expand arrow plus its gap, when the doc has subtabs.
 const EXPAND_COLUMN_PX = 24;
+const noSortingPreview = () => null;
+
+type TabDrop = { id: string; intent: TabDropIntent };
+
+const readTabDrop = (
+  collisions: ReturnType<CollisionDetection> | null,
+): TabDrop | null => collisions?.[0]?.data?.tabDrop ?? null;
 
 export interface DocumentTabsSidebarProps {
   tabs: Tab[];
@@ -51,6 +69,7 @@ export interface DocumentTabsSidebarProps {
     payload: { newName?: string; emoji?: string },
   ) => void;
   duplicateTab: (tabId: string) => void;
+  reparentTab?: DocumentOutlineProps['reparentTab'];
   orderTab: (destinationTabId: string, activeTabId: string) => void;
   ydoc: Y.Doc;
   tabCommentCounts: Record<string, number>;
@@ -93,6 +112,7 @@ export const TabSidebar = ({
   renameTab,
   duplicateTab,
   orderTab,
+  reparentTab,
   tabCommentCounts,
   isVersionHistoryMode,
   tabConfig,
@@ -122,6 +142,7 @@ export const TabSidebar = ({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [tabDrop, setTabDrop] = useState<TabDrop | null>(null);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
     [tabs, activeTabId],
@@ -191,11 +212,44 @@ export const TabSidebar = ({
     tabConfig?.enableSubtabs && createSubtab && !isPreviewMode,
   );
 
-  // A tab can only be dropped among its siblings: other rows are not targets.
+  const canReparent = Boolean(
+    tabConfig?.enableSubtabs &&
+      reparentTab &&
+      !isPreviewMode &&
+      !isVersionHistoryMode,
+  );
+  const move = (
+    tabId: string,
+    ...destination: [targetId?: string, placement?: 'before' | 'after']
+  ) => {
+    if (canReparent && reparentTab)
+      applyTabMove(reparentTab, tabs, tree.expand, tabId, ...destination);
+  };
+
+  // Keep the existing collision behaviour when subtabs are disabled.
   const parentIdById = useMemo(
     () => new Map(tabs.map((tab) => [tab.id, tab.parentId ?? null])),
     [tabs],
   );
+  const invalidTarget = Boolean(
+    tabDrop &&
+      activeDragId &&
+      (tabDrop.intent === 'into' ||
+        parentIdById.get(activeDragId) !== parentIdById.get(tabDrop.id)) &&
+      getTabMoveError(tabs, activeDragId, tabDrop.id, tabDrop.intent),
+  );
+  const dropTarget = tabDrop
+    ? tabs.find(({ id }) => id === tabDrop.id)
+    : undefined;
+  const dropIndent = dropTarget ? tree.indentOf(dropTarget) : 0;
+  let indicatorId = tabDrop?.id;
+  if (tabDrop?.intent === 'after' && !invalidTarget && activeDragId) {
+    const moving = new Set(getSubtreeIds(tree.visibleTabs, activeDragId));
+    const visibleBranch = getSubtreeIds(tree.visibleTabs, tabDrop.id).filter(
+      (id) => !moving.has(id),
+    );
+    indicatorId = visibleBranch[visibleBranch.length - 1] ?? indicatorId;
+  }
   const siblingOnlyCollision: CollisionDetection = useCallback(
     (args) => {
       const groupParent = parentIdById.get(String(args.active.id)) ?? null;
@@ -210,6 +264,49 @@ export const TabSidebar = ({
     [parentIdById],
   );
 
+  const detectTabDrop: CollisionDetection = useCallback(
+    (args) => {
+      if (!canReparent || !args.pointerCoordinates)
+        return siblingOnlyCollision(args);
+      const { x, y } = args.pointerCoordinates;
+      const activeId = String(args.active.id);
+      let nearest:
+        | { id: string; intent: TabDropIntent; distance: number }
+        | undefined;
+
+      for (const row of args.droppableContainers) {
+        const id = row.data.current?.tabRowId;
+        const rect = args.droppableRects.get(row.id);
+        if (typeof id !== 'string' || !rect || x < rect.left || x > rect.right)
+          continue;
+        const edge = rect.height / 4;
+        if (y >= rect.top + edge && y <= rect.bottom - edge) {
+          // Report even an ineligible nesting target so a drop never
+          // accidentally turns into a reorder.
+          return [{ id, data: { tabDrop: { id, intent: 'into' } } }];
+        }
+        if (id === activeId) continue;
+        const before = Math.abs(y - rect.top);
+        const after = Math.abs(y - rect.bottom);
+        const distance = Math.min(before, after);
+        if (distance <= edge && (!nearest || distance < nearest.distance)) {
+          nearest = {
+            id,
+            intent: before <= after ? 'before' : 'after',
+            distance,
+          };
+        }
+      }
+      return nearest ? [{ id: nearest.id, data: { tabDrop: nearest } }] : [];
+    },
+    [canReparent, siblingOnlyCollision],
+  );
+
+  const clearDrag = () => {
+    setActiveDragId(null);
+    setTabDrop(null);
+  };
+
   // One sortable group per parent; a tab's subtabs render inside its row so
   // they move with it while dragging.
   const renderGroup = (parentId: string | null): React.ReactNode => {
@@ -218,7 +315,7 @@ export const TabSidebar = ({
       <SortableContext
         disabled={isPreviewMode || isVersionHistoryMode}
         items={siblings.map((tab) => tab.id)}
-        strategy={verticalListSortingStrategy}
+        strategy={canReparent ? noSortingPreview : verticalListSortingStrategy}
       >
         {siblings.map((tab) => {
           const previousSibling = tree.previousSiblingOf(tab);
@@ -228,6 +325,26 @@ export const TabSidebar = ({
             <DdocTab
               key={tab.id}
               tab={tab}
+              enableRowDrop={canReparent}
+              dropIntent={
+                tabDrop && indicatorId === tab.id
+                  ? invalidTarget
+                    ? 'invalid'
+                    : tabDrop.intent
+                  : undefined
+              }
+              dropIndent={dropIndent}
+              moveActions={
+                canReparent
+                  ? {
+                      getTargets: () => getMoveIntoTargets(tabs, tab.id),
+                      onMoveInto: (targetId) => move(tab.id, targetId),
+                      onMoveOut: tab.parentId
+                        ? () => move(tab.id, undefined)
+                        : undefined,
+                    }
+                  : undefined
+              }
               canMoveUp={Boolean(previousSibling)}
               canMoveDown={Boolean(nextSibling)}
               canDelete={tree.canDelete(tab)}
@@ -281,15 +398,44 @@ export const TabSidebar = ({
     <>
       <DndContext
         sensors={sensors}
-        collisionDetection={siblingOnlyCollision}
+        collisionDetection={detectTabDrop}
         onDragStart={(e) => setActiveDragId(e.active.id as string)}
-        onDragEnd={(e) => {
-          const { active, over } = e;
-          setActiveDragId(null);
-          if (over && active.id !== over.id) {
-            const activeId = active.id as string;
-            const overId = over.id as string;
-            orderTab(overId, activeId);
+        onDragMove={({ collisions }) => {
+          const next = readTabDrop(collisions);
+          setTabDrop((prev) =>
+            prev?.id === next?.id && prev?.intent === next?.intent
+              ? prev
+              : next,
+          );
+        }}
+        onDragCancel={clearDrag}
+        onDragEnd={({ active, over, collisions }) => {
+          clearDrag();
+          const activeId = String(active.id);
+          const drop = readTabDrop(collisions);
+          if (drop?.intent === 'into') {
+            if (drop.id !== activeId) move(activeId, drop.id);
+            return;
+          }
+          if (drop) {
+            if (parentIdById.get(activeId) !== parentIdById.get(drop.id)) {
+              move(activeId, drop.id, drop.intent);
+              return;
+            }
+            const siblings = tree.childrenOf(
+              parentIdById.get(activeId) ?? null,
+            );
+            const from = siblings.findIndex((tab) => tab.id === activeId);
+            const target = siblings.findIndex((tab) => tab.id === drop.id);
+            if (from === -1 || target === -1) return;
+            const slot = target + Number(drop.intent === 'after');
+            const destination = siblings[slot - Number(from < slot)];
+            if (destination && destination.id !== activeId)
+              orderTab(destination.id, activeId);
+          } else if (over && active.id !== over.id) {
+            // Disabled subtabs (and any sensor without a pointer) use the
+            // original sibling-reorder collision path.
+            orderTab(String(over.id), activeId);
           }
         }}
       >
@@ -427,6 +573,10 @@ export const TabSidebar = ({
 
 export const DdocTab = ({
   tab,
+  enableRowDrop,
+  dropIntent,
+  dropIndent,
+  moveActions,
   canMoveUp,
   canMoveDown,
   canDelete,
@@ -456,6 +606,10 @@ export const DdocTab = ({
   isConnected,
 }: {
   tab: Tab;
+  enableRowDrop?: boolean;
+  dropIntent?: TabDropIntent | 'invalid';
+  dropIndent?: number;
+  moveActions?: TabMoveActions;
   canMoveUp: boolean;
   canMoveDown: boolean;
   canDelete: boolean;
@@ -496,6 +650,10 @@ export const DdocTab = ({
         key={tab.id}
         id={tab.id}
         tabId={tab.id}
+        enableRowDrop={enableRowDrop}
+        dropIntent={dropIntent}
+        dropIndent={dropIndent}
+        moveActions={moveActions}
         name={tab.name}
         emoji={tab.emoji || ''}
         onNameChange={(nextName: string, nextEmoji?: string) =>

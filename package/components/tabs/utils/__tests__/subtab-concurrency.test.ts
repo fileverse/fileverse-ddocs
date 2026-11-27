@@ -7,6 +7,7 @@ import {
   duplicateTabInDoc,
   getTabTree,
   moveTabInDoc,
+  reparentTabInDoc,
   restoreDeletedTabsInDoc,
 } from '../tab-operations';
 import {
@@ -208,5 +209,54 @@ describe('two people at once', () => {
     syncAll(a, b);
     expectSameTree(a, b);
     expect(ids(a)).toEqual(expect.arrayContaining(['plan', 'q4']));
+  });
+});
+
+describe('concurrent reparenting', () => {
+  it('keeps both tabs reachable when both moves form a loop', () => {
+    const [a, b] = people(2);
+    expect(reparentTabInDoc(a, 'notes', 'plan').ok).toBe(true);
+    expect(reparentTabInDoc(b, 'plan', 'notes').ok).toBe(true);
+    syncAll(a, b);
+    expectSameTree(a, b);
+    expect(ids(a).sort()).toEqual(ids(start()).sort());
+  });
+
+  it('converges when the same tab is moved into different branches', () => {
+    const [a, b] = people(2);
+    expect(reparentTabInDoc(a, 'notes', 'i').ok).toBe(true);
+    expect(reparentTabInDoc(b, 'notes', 'plan').ok).toBe(true);
+    syncAll(a, b);
+    expectSameTree(a, b);
+    expect(ids(a).sort()).toEqual(ids(start()).sort());
+  });
+
+  it('keeps the moved branch reachable when its new parent is deleted', () => {
+    const [a, b] = people(2);
+    expect(reparentTabInDoc(a, 'i', 'plan').ok).toBe(true);
+    deleteTabInDoc(b, 'plan', '', false);
+    syncAll(a, b);
+    expectSameTree(a, b);
+    expect(getTabTree(a).find((tab) => tab.id === 'i')?.parentId).toBeNull();
+    expect(getTabTree(a).find((tab) => tab.id === 'r1')?.parentId).toBe('i');
+    expect(ids(a)).not.toContain('q4');
+    expectSameTree(a, copyDoc(a, 42));
+  });
+
+  it('keeps the tree within three levels after independent moves deepen a branch', () => {
+    const [c, d] = people(2);
+    for (const doc of [c, d]) {
+      const nodes = getTabsYdocNodes(doc);
+      nodes.nameById.set('end', 'End');
+      nodes.order.push(['end']);
+    }
+    // Use a common seed for the new root.
+    syncAll(c, d);
+    expect(reparentTabInDoc(c, 'notes', 'q4').ok).toBe(true);
+    expect(reparentTabInDoc(d, 'plan', 'end').ok).toBe(true);
+    syncAll(c, d);
+    expectSameTree(c, d);
+    expect(getTabTree(c).every((tab) => (tab.depth ?? 1) <= 3)).toBe(true);
+    expect(ids(c).sort()).toEqual([...ids(start()), 'end'].sort());
   });
 });

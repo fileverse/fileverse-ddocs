@@ -431,6 +431,7 @@ const DdocEditor = forwardRef(
       renameTab,
       duplicateTab,
       orderTab,
+      reparentTab,
       deleteTab,
       commentAnchorsRef,
       draftAnchorsRef,
@@ -1208,6 +1209,7 @@ const DdocEditor = forwardRef(
                     renameTab={renameTab}
                     duplicateTab={duplicateTab}
                     orderTab={orderTab}
+                    reparentTab={isPreviewMode ? undefined : reparentTab}
                     deleteTab={deleteTab}
                     ydoc={ydoc}
                     tabCommentCounts={tabCommentCounts}
@@ -1974,6 +1976,9 @@ const DdocEditor = forwardRef(
                               renameTab={renameTab}
                               duplicateTab={duplicateTab}
                               orderTab={orderTab}
+                              reparentTab={
+                                isPreviewMode ? undefined : reparentTab
+                              }
                               deleteTab={deleteTab}
                               ydoc={ydoc}
                               tabCommentCounts={tabCommentCounts}
