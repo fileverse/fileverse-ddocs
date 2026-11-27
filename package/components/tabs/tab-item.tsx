@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ComponentProps,
+  CSSProperties,
   HTMLAttributes,
   MouseEvent,
   ReactNode,
@@ -11,6 +12,14 @@ import {
 import cn from 'classnames';
 import {
   LucideIcon,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuSeparator,
   Popover,
   PopoverClose,
   PopoverContent,
@@ -18,11 +27,26 @@ import {
   TextField,
   Tooltip,
 } from '@fileverse/ui';
+import { useDroppable } from '@dnd-kit/core';
+import { Tab } from './utils/tab-utils';
+import { TAB_INDENT_PX } from './use-tab-tree-view';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { TabEmojiPicker } from './tab-emoji-picker';
 
+export type TabDropIntent = 'into' | 'before' | 'after';
+
+export interface TabMoveActions {
+  getTargets?: () => Tab[];
+  onMoveInto?: (targetId: string) => void;
+  onMoveOut?: () => void;
+}
+
 export interface TabItemProps {
+  moveActions?: TabMoveActions;
+  rowRef?: (element: HTMLDivElement | null) => void;
+  dropIntent?: TabDropIntent | 'invalid';
+  dropIndent?: number;
   tabId: string;
   name: string;
   emoji: string;
@@ -64,6 +88,7 @@ interface SortableTabItemProps
   id: string;
   // Rendered inside the dragged element, so a tab's subtabs move with it.
   children?: ReactNode;
+  enableRowDrop?: boolean;
 }
 
 interface TabContextMenuItem {
@@ -77,12 +102,15 @@ interface TabContextMenuItem {
   iconStroke?: string;
   tooltipText?: string;
   disabled?: boolean;
+  submenu?: { getTabs: () => Tab[]; onSelect: (id: string) => void };
 }
 
 interface TabContextMenuProps {
   sections: TabContextMenuItem[][];
   popoverSide?: 'top' | 'bottom';
   popoverClassName?: string;
+  onOpenChange?: (open: boolean) => void;
+  useDropdown?: boolean;
 }
 
 const menuItemClassName =
@@ -90,6 +118,7 @@ const menuItemClassName =
 
 export const SortableTabItem = ({
   children,
+  enableRowDrop,
   ...props
 }: SortableTabItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -106,6 +135,12 @@ export const SortableTabItem = ({
     // A plain `false` would override the list's own `disabled` (viewers,
     // version history), so pass nothing unless renaming.
     disabled: isEditing || undefined,
+  });
+
+  const { setNodeRef: setRowRef } = useDroppable({
+    id: `tab-row:${props.id}`,
+    disabled: !enableRowDrop,
+    data: { tabRowId: props.id },
   });
 
   // Filter tabIndex keeping it makes the tab list a focus fallback when the editor blurs.
@@ -125,6 +160,7 @@ export const SortableTabItem = ({
         isEditing={isEditing}
         setIsEditing={setIsEditing}
         {...props}
+        rowRef={enableRowDrop ? setRowRef : undefined}
         dragHandleProps={{
           ...dragHandleAttributes,
           ...listeners,
@@ -138,6 +174,10 @@ export const SortableTabItem = ({
 export const TabItem = ({
   isEditing,
   setIsEditing,
+  moveActions,
+  rowRef,
+  dropIntent,
+  dropIndent = 0,
   tabId,
   name,
   emoji,
@@ -169,6 +209,7 @@ export const TabItem = ({
   onToggleExpand,
 }: TabItemProps) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [openEmojiPickerTrigger, setOpenEmojiPickerTrigger] = useState(0);
   const [title, setTitle] = useState(name);
   const originalTitleRef = useRef(title);
@@ -218,6 +259,8 @@ export const TabItem = ({
     setIsEditing?.(false);
   };
 
+  const shouldShowContextMenu =
+    alwaysShowMenu || isActive || isHovered || menuOpen;
   const editMenuSections: TabContextMenuItem[][] = [
     [
       {
@@ -280,6 +323,26 @@ export const TabItem = ({
         onSelect: () => onMoveDown?.(),
         visible: canMoveDown,
       },
+      {
+        id: 'move-into',
+        label: 'Move into',
+        icon: 'IndentIncrease',
+        visible: Boolean(moveActions?.getTargets && moveActions.onMoveInto),
+        submenu:
+          moveActions?.getTargets && moveActions.onMoveInto
+            ? {
+                getTabs: moveActions.getTargets,
+                onSelect: moveActions.onMoveInto,
+              }
+            : undefined,
+      },
+      {
+        id: 'move-out',
+        label: 'Move out',
+        icon: 'IndentDecrease',
+        visible: Boolean(moveActions?.onMoveOut),
+        onSelect: moveActions?.onMoveOut,
+      },
     ],
     [
       {
@@ -313,10 +376,15 @@ export const TabItem = ({
   ];
 
   const menuSections = isPreviewMode ? previewModeMenu : editMenuSections;
-  const shouldShowContextMenu = alwaysShowMenu || isActive || isHovered;
-
   return (
     <div
+      ref={rowRef}
+      data-drop-intent={dropIntent}
+      style={
+        dropIntent === 'before' || dropIntent === 'after'
+          ? ({ '--tab-drop-indent': `${dropIndent}px` } as CSSProperties)
+          : undefined
+      }
       data-testid={`tab-item-${tabId}`}
       data-active={isActive}
       onMouseEnter={() => setIsHovered(true)}
@@ -329,10 +397,16 @@ export const TabItem = ({
       {...dragHandleProps}
       className={cn(
         'flex items-center active:cursor-grabbing relative justify-between h-[40px] px-[12px] py-[8px] rounded-[4px]',
-        isActive && 'color-bg-default-hover',
+        (isActive || dropIntent === 'into') && 'color-bg-default-hover',
         // Desktop rows (the phone list always shows the menu): a touch
         // screen would keep the hover colour after a tap.
-        !alwaysShowMenu && 'hover:color-bg-default-hover',
+        !alwaysShowMenu &&
+          dropIntent !== 'invalid' &&
+          'hover:color-bg-default-hover',
+        (dropIntent === 'before' || dropIntent === 'after') &&
+          'after:absolute after:start-[var(--tab-drop-indent)] after:end-0 after:h-0.5 after:bg-[hsl(var(--color-border-focused))] after:pointer-events-none',
+        dropIntent === 'before' && 'after:top-[-2px]',
+        dropIntent === 'after' && 'after:bottom-[-2px]',
       )}
     >
       <div
@@ -437,6 +511,8 @@ export const TabItem = ({
               {shouldShowContextMenu && (
                 <TabContextMenu
                   sections={menuSections}
+                  onOpenChange={setMenuOpen}
+                  useDropdown={Boolean(moveActions?.getTargets)}
                   popoverClassName={menuPopoverClassName}
                 />
               )}
@@ -537,13 +613,123 @@ export const TabContextMenu = ({
   sections,
   popoverSide = 'bottom',
   popoverClassName,
+  onOpenChange,
+  useDropdown,
 }: TabContextMenuProps) => {
+  const [open, setOpen] = useState(false);
   const visibleSections = sections
-    .map((section) => section.filter((item) => item.visible !== false))
+    .map((section) =>
+      section
+        .filter((item) => item.visible !== false)
+        .map((item) => ({
+          item,
+          destinations: open ? item.submenu?.getTabs() : undefined,
+        }))
+        .filter(
+          ({ item, destinations }) => !item.submenu || destinations?.length,
+        ),
+    )
     .filter((section) => section.length > 0);
 
+  if (useDropdown) {
+    return (
+      <DropdownMenu
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          onOpenChange?.(nextOpen);
+        }}
+        modal={false}
+      >
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Tab options"
+            data-testid="tab-context-menu-trigger"
+            className="h-6 w-6 rounded hover:color-bg-secondary-hover flex items-center justify-center"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <LucideIcon name="EllipsisVertical" className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          side={popoverSide}
+          sideOffset={4}
+          className={cn('w-[160px] space-xsm', popoverClassName)}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {visibleSections.map((section, index) => (
+            <div key={section[0].item.id}>
+              {index > 0 && <DropdownMenuSeparator />}
+              {section.map(({ item, destinations }) => {
+                const { submenu } = item;
+                const label = (
+                  <>
+                    <LucideIcon
+                      name={item.icon}
+                      stroke={item.iconStroke}
+                      className="h-4 w-4"
+                    />
+                    <span className={item.textClassName}>{item.label}</span>
+                  </>
+                );
+                if (submenu && destinations) {
+                  const destinationItems = destinations.map((tab) => (
+                    <DropdownMenuItem
+                      key={tab.id}
+                      style={{
+                        paddingInlineStart:
+                          8 + ((tab.depth ?? 1) - 1) * TAB_INDENT_PX,
+                      }}
+                      onSelect={() => submenu.onSelect(tab.id)}
+                    >
+                      <span className="truncate">{tab.name}</span>
+                    </DropdownMenuItem>
+                  ));
+                  return (
+                    <DropdownMenuSub key={item.id}>
+                      <DropdownMenuSubTrigger
+                        data-testid={`tab-menu-${item.id}`}
+                        className={menuItemClassName}
+                      >
+                        {label}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent
+                        sideOffset={12}
+                        collisionPadding={4}
+                        className={cn(
+                          'w-max min-w-[min(9rem,var(--radix-dropdown-menu-content-available-width))] max-w-[min(16rem,var(--radix-dropdown-menu-content-available-width))] max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] !overflow-y-auto',
+                          popoverClassName,
+                        )}
+                      >
+                        {destinationItems}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  );
+                }
+                return (
+                  <DropdownMenuItem
+                    key={item.id}
+                    data-testid={`tab-menu-${item.id}`}
+                    title={item.tooltipText}
+                    disabled={item.disabled}
+                    className={menuItemClassName}
+                    onSelect={item.onSelect}
+                  >
+                    {label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </div>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   return (
-    <Popover>
+    <Popover onOpenChange={onOpenChange}>
       <PopoverTrigger onClick={(e) => e.stopPropagation()}>
         <div
           data-testid="tab-context-menu-trigger"
@@ -565,7 +751,7 @@ export const TabContextMenu = ({
             {sectionIndex > 0 && (
               <hr className="border-t space-x-xsm color-border-default my-[4px] w-full" />
             )}
-            {section.map((item) => (
+            {section.map(({ item }) => (
               <TabContextMenuAction key={item.id} item={item} />
             ))}
           </div>

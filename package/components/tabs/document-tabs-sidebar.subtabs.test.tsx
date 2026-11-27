@@ -225,6 +225,94 @@ describe('dragging a tab', () => {
     expect(screen.queryByTestId('tab-drag-preview')).not.toBeNull();
   });
 
+  const mockRowRects = () =>
+    vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const id = this.dataset.testid;
+        const index = tree.findIndex((tab) => id === `tab-item-${tab.id}`);
+        return new DOMRect(0, Math.max(0, index) * 50, 200, 40);
+      });
+
+  it('does not highlight an invalid drop target', () => {
+    const reparentTab = vi.fn(() => ({
+      ok: false as const,
+      reason: 'third-level' as const,
+    }));
+    renderSidebar({ reparentTab });
+    const rects = mockRowRects();
+    try {
+      const source = screen.getByTestId('tab-item-plan');
+      const target = screen.getByTestId('tab-item-r1');
+      fireEvent.pointerDown(source, { button: 0, clientX: 30, clientY: 220 });
+      fireEvent.pointerMove(document, { clientX: 30, clientY: 210 });
+      fireEvent.pointerMove(document, { clientX: 30, clientY: 120 });
+      expect(target.getAttribute('data-drop-intent')).toBe('invalid');
+      expect(target.classList.contains('color-bg-default-hover')).toBe(false);
+      expect(target.classList.contains('hover:color-bg-default-hover')).toBe(
+        false,
+      );
+      fireEvent.pointerUp(document, { clientX: 30, clientY: 120 });
+      expect(reparentTab).toHaveBeenCalledWith('plan', 'r1');
+    } finally {
+      rects.mockRestore();
+    }
+  });
+
+  it.each([
+    ['before', 101],
+    ['after', 139],
+  ])(
+    'shows an insertion line and moves to another group when dropped %s a row',
+    (placement, y) => {
+      const reparentTab = vi.fn(() => ({ ok: true as const, parentId: 'i' }));
+      const { orderTab } = renderSidebar({ reparentTab });
+      const rects = mockRowRects();
+      try {
+        const source = screen.getByTestId('tab-item-plan');
+        const target = screen.getByTestId('tab-item-r1');
+        fireEvent.pointerDown(source, { button: 0, clientX: 30, clientY: 220 });
+        fireEvent.pointerMove(document, { clientX: 30, clientY: 210 });
+        fireEvent.pointerMove(document, { clientX: 30, clientY: y });
+        expect(target.getAttribute('data-drop-intent')).toBe(placement);
+        fireEvent.pointerUp(document, { clientX: 30, clientY: y });
+        expect(reparentTab).toHaveBeenCalledWith('plan', 'r1', placement);
+        expect(orderTab).not.toHaveBeenCalled();
+      } finally {
+        rects.mockRestore();
+      }
+    },
+  );
+
+  it('places the line after the last visible descendant at the target parent’s level', () => {
+    const reparentTab = vi.fn(() => ({ ok: true as const, parentId: null }));
+    renderSidebar({ reparentTab });
+    const rects = mockRowRects();
+    try {
+      const source = screen.getByTestId('tab-item-plan');
+      fireEvent.pointerDown(source, { button: 0, clientX: 30, clientY: 220 });
+      fireEvent.pointerMove(document, { clientX: 30, clientY: 210 });
+      fireEvent.pointerMove(document, { clientX: 30, clientY: 39 });
+      expect(
+        screen.getByTestId('tab-item-r').getAttribute('data-drop-intent'),
+      ).toBeNull();
+      const lastChild = screen.getByTestId('tab-item-r2');
+      expect(lastChild.getAttribute('data-drop-intent')).toBe('after');
+      expect(lastChild.style.getPropertyValue('--tab-drop-indent')).toBe('0px');
+
+      fireEvent.pointerMove(document, { clientX: 30, clientY: 51 });
+      const firstChild = screen.getByTestId('tab-item-i');
+      expect(firstChild.getAttribute('data-drop-intent')).toBe('before');
+      expect(firstChild.style.getPropertyValue('--tab-drop-indent')).toBe(
+        '16px',
+      );
+      fireEvent.pointerUp(document, { clientX: 30, clientY: 51 });
+      expect(reparentTab).toHaveBeenCalledWith('plan', 'i', 'before');
+    } finally {
+      rects.mockRestore();
+    }
+  });
+
   it.each([
     ['a viewer', { isPreviewMode: true }],
     ['version history', { isVersionHistoryMode: true }],
@@ -243,5 +331,35 @@ describe('row hover', () => {
         'hover:color-bg-default-hover',
       ),
     );
+  });
+});
+
+describe('Move into and Move out menu', () => {
+  it('opens eligible destinations with the keyboard without switching tabs', () => {
+    const reparentTab = vi.fn(() => ({ ok: true as const, parentId: 'i' }));
+    const { setActiveTabId } = renderSidebar({ reparentTab });
+    const trigger = within(screen.getByTestId('tab-item-plan')).getByRole(
+      'button',
+      { name: 'Tab options' },
+    );
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    const submenu = screen.getByTestId('tab-menu-move-into');
+    fireEvent.keyDown(submenu, { key: 'ArrowRight' });
+    expect(screen.queryByRole('menuitem', { name: 'Round 1' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Interviews' })).not.toBeNull();
+    expect(reparentTab).not.toHaveBeenCalled();
+    expect(setActiveTabId).not.toHaveBeenCalled();
+  });
+
+  it('offers Move out by itself when there is no other destination', () => {
+    const reparentTab = vi.fn(() => ({ ok: true as const, parentId: null }));
+    renderSidebar({ reparentTab, tabs: tree.slice(0, -1), activeTabId: 'i' });
+    const trigger = within(screen.getByTestId('tab-item-i')).getByRole(
+      'button',
+      { name: 'Tab options' },
+    );
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(screen.queryByTestId('tab-menu-move-into')).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Move out' })).not.toBeNull();
   });
 });

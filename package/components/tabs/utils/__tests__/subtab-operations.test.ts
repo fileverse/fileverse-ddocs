@@ -8,6 +8,8 @@ import {
   duplicateTabInDoc,
   getTabTree,
   moveTabInDoc,
+  reparentTabInDoc,
+  getMoveIntoTargets,
   restoreDeletedTabsInDoc,
 } from '../tab-operations';
 import { allStoredText, makeDoc, writeText } from './subtab-test-helpers';
@@ -291,5 +293,188 @@ describe('a subtab whose parent has not arrived yet', () => {
     // It looks top-level, so it can get a subtab; once its parent arrives it
     // may sit one level deeper than three. It is still shown (rule T5).
     expect(createSubtabInDoc(doc, 'notes', 'n1', false)).toBe('n1');
+  });
+});
+
+describe('Move into and Move out', () => {
+  it('moves a top-level tab into a subtab as its last child', () => {
+    const doc = start();
+    const nodes = getTabsYdocNodes(doc);
+    nodes.tabState.set('activeTabId', 'notes');
+    writeText(doc, 'notes', 'Notes text');
+    expect(reparentTabInDoc(doc, 'notes', 'i')).toEqual({
+      ok: true,
+      parentId: 'i',
+    });
+    expect(outline(doc)).toEqual([
+      'r',
+      '  i',
+      '    r1',
+      '    r2',
+      '    notes',
+      '  s',
+      'plan',
+    ]);
+    expect(nodes.tabState.get('activeTabId')).toBe('notes');
+    expect(allStoredText(doc)).toContain('Notes text');
+  });
+
+  it('moves a subtab with its entire branch into a different top-level tab', () => {
+    const doc = start();
+    expect(reparentTabInDoc(doc, 'i', 'plan').ok).toBe(true);
+    expect(outline(doc)).toEqual([
+      'r',
+      '  s',
+      'plan',
+      '  i',
+      '    r1',
+      '    r2',
+      'notes',
+    ]);
+  });
+
+  it('moves out one level, after the former parent and its remaining children', () => {
+    const doc = start();
+    expect(reparentTabInDoc(doc, 'r1').ok).toBe(true);
+    expect(outline(doc)).toEqual([
+      'r',
+      '  i',
+      '    r2',
+      '  r1',
+      '  s',
+      'plan',
+      'notes',
+    ]);
+    expect(reparentTabInDoc(doc, 'i').ok).toBe(true);
+    expect(outline(doc)).toEqual([
+      'r',
+      '  r1',
+      '  s',
+      'i',
+      '  r2',
+      'plan',
+      'notes',
+    ]);
+    expect(reparentTabInDoc(doc, 'i').ok).toBe(false);
+  });
+
+  it('moves a subtab into a subtab in a different branch when it fits', () => {
+    const doc = start();
+    createSubtabInDoc(doc, 'plan', 'destination', false);
+    writeText(doc, 's', 'Survey text');
+
+    expect(
+      getMoveIntoTargets(getTabTree(doc), 's').map((tab) => tab.id),
+    ).toContain('destination');
+    expect(reparentTabInDoc(doc, 's', 'destination')).toEqual({
+      ok: true,
+      parentId: 'destination',
+    });
+    expect(getTabTree(doc).find((tab) => tab.id === 's')).toMatchObject({
+      parentId: 'destination',
+      depth: 3,
+    });
+    expect(allStoredText(doc)).toContain('Survey text');
+
+    expect(reparentTabInDoc(doc, 's', 'i').ok).toBe(true);
+    expect(getTabTree(doc).find((tab) => tab.id === 's')).toMatchObject({
+      parentId: 'i',
+      depth: 3,
+    });
+  });
+
+  it('uses the same destination rules in the menu and the mutation', () => {
+    const doc = start();
+    const targets = (id: string) =>
+      getMoveIntoTargets(getTabTree(doc), id).map((tab) => tab.id);
+    expect(targets('i')).toEqual(['plan', 'notes']);
+    expect(targets('notes')).toEqual(['r', 'i', 's', 'plan']);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(reparentTabInDoc(doc, 'notes', 'r1')).toEqual({
+      ok: false,
+      reason: 'third-level',
+    });
+    expect(reparentTabInDoc(doc, 'i', 's')).toEqual({
+      ok: false,
+      reason: 'branch-too-deep',
+    });
+    expect(reparentTabInDoc(doc, 'r', 'plan')).toEqual({
+      ok: false,
+      reason: 'branch-too-deep',
+    });
+    for (const [source, target] of [
+      ['notes', 'notes'],
+      ['s', 'r'],
+      ['r', 'i'],
+      ['notes', 'gone'],
+    ]) {
+      expect(reparentTabInDoc(doc, source, target).ok).toBe(false);
+    }
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('drops a subtab before or after a subtab in another branch', () => {
+    const doc = start();
+    createSubtabInDoc(doc, 'plan', 'a', false);
+    createSubtabInDoc(doc, 'plan', 'b', false);
+    expect(reparentTabInDoc(doc, 's', 'b', 'before').ok).toBe(true);
+    expect(outline(doc)).toEqual([
+      'r',
+      '  i',
+      '    r1',
+      '    r2',
+      'plan',
+      '  a',
+      '  s',
+      '  b',
+      'notes',
+    ]);
+    expect(reparentTabInDoc(doc, 'i', 'b', 'after').ok).toBe(true);
+    expect(outline(doc)).toEqual([
+      'r',
+      'plan',
+      '  a',
+      '  s',
+      '  b',
+      '  i',
+      '    r1',
+      '    r2',
+      'notes',
+    ]);
+    expect(reparentTabInDoc(doc, 'i', 'notes', 'before').ok).toBe(true);
+    expect(outline(doc).slice(-4)).toEqual(['i', '  r1', '  r2', 'notes']);
+  });
+
+  it('refuses an adjacent drop that would exceed the depth limit', () => {
+    const doc = start();
+    createSubtabInDoc(doc, 'plan', 'two', false);
+    createSubtabInDoc(doc, 'two', 'three', false);
+    expect(reparentTabInDoc(doc, 'i', 'three', 'before')).toEqual({
+      ok: false,
+      reason: 'branch-too-deep',
+    });
+    expect(outline(doc)).toEqual([
+      'r',
+      '  i',
+      '    r1',
+      '    r2',
+      '  s',
+      'plan',
+      '  two',
+      '    three',
+      'notes',
+    ]);
+  });
+
+  it('adds nesting to a previously flat doc using existing roots', () => {
+    const doc = makeDoc();
+    const nodes = getTabsYdocNodes(doc);
+    nodes.order.push(['a', 'b', 'c']);
+    for (const id of ['a', 'b', 'c']) nodes.nameById.set(id, id);
+    expect(reparentTabInDoc(doc, 'a', 'b').ok).toBe(true);
+    expect(outline(doc)).toEqual(['b', '  a', 'c']);
+    expect(reparentTabInDoc(doc, 'a').ok).toBe(true);
+    expect(nodes.parentById.size).toBe(0);
+    expect(outline(doc)).toEqual(['b', 'a', 'c']);
   });
 });

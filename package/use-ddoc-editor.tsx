@@ -336,5 +336,6 @@ export const useDdocEditor = ({
     renameTab: tabManager.renameTab,
     duplicateTab: tabManager.duplicateTab,
     orderTab: tabManager.orderTab,
+    reparentTab: tabManager.reparentTab,
   };
 };

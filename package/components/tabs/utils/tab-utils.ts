@@ -18,7 +18,7 @@ export interface TabsYdocNodes {
   emojiById: Y.Map<string | null>;
   tabState: Y.Map<unknown>;
   deletedById: Y.Map<boolean>;
-  // Subtab id -> parent id. Written once when the subtab is created.
+  // Subtab id -> parent id, plus move markers for recovery after a merge.
   parentById: Y.Map<string>;
 }
 
@@ -58,6 +58,9 @@ export const STATE_ROOT_KEY = 'tabs_state';
 export const DELETED_ROOT_KEY = 'tabs_delete_registry';
 export const ACTIVE_TAB_STATE_KEY = 'activeTabId';
 export const PARENT_ROOT_KEY = 'tabs_parent_registry';
+// Keep explicit moves distinguishable from original subtabs when a parent
+// is deleted on a peer that has not received the move yet.
+export const movedParentKey = (tabId: string) => `move:${tabId}`;
 // A level-3 subtab cannot have subtabs.
 export const MAX_TAB_DEPTH = 3;
 
@@ -638,7 +641,7 @@ export function getTabMetadata(
  * T3 siblings keep the order of their first appearance in tabs_order;
  * T4 a tab whose parent is unknown, or whose parent chain loops, is shown at
  *    the top level, so bad or half-synced data never hides a tab;
- * T5 depth is reported as found; the sidebar caps the indent.
+ * T5 legacy depth is reported as found; merged moves cannot exceed the cap.
  */
 export function getTabListFromNodes(
   tabNodes: Pick<TabsYdocNodes, 'order' | 'nameById' | 'emojiById'> &
@@ -671,8 +674,12 @@ function buildTabTree(
   const isUnderDeletedTab = (tabId: string) => {
     const seen = new Set([tabId]);
     let parentId = parentOf(tabId);
+    let childId = tabId;
     while (parentId && !seen.has(parentId)) {
-      if (deletedIds.has(parentId)) return true;
+      if (deletedIds.has(parentId)) {
+        return parentById.get(movedParentKey(childId)) !== parentId;
+      }
+      childId = parentId;
       seen.add(parentId);
       parentId = parentOf(parentId);
     }
@@ -690,12 +697,26 @@ function buildTabTree(
     const parentId = parentOf(tabId);
     if (!parentId || !visibleIds.has(parentId)) return null;
     const seen = new Set<string>();
+    let childId = tabId;
+    let containsMove = false;
     let ancestorId: string | null = parentId;
     while (ancestorId && visibleIds.has(ancestorId) && !seen.has(ancestorId)) {
       if (ancestorId === tabId) return null;
+      if (parentById.get(movedParentKey(childId)) === ancestorId) {
+        containsMove = true;
+      }
       seen.add(ancestorId);
+      childId = ancestorId;
       ancestorId = parentOf(ancestorId);
     }
+    // Independently valid moves can deepen one branch once merged. Promote
+    // the overflow branch deterministically; keep legacy trees unchanged.
+    if (
+      containsMove &&
+      seen.size >= MAX_TAB_DEPTH &&
+      seen.size % MAX_TAB_DEPTH === 0
+    )
+      return null;
     return parentId;
   };
 

@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import {
   DEFAULT_TAB_ID,
   MAX_TAB_DEPTH,
+  movedParentKey,
   Tab,
   cloneFragmentContent,
   getActiveTabIdFromNodes,
@@ -73,13 +74,14 @@ export const insertSiblingTabsInDoc = (
   newTabIds: string[],
 ) => {
   const tabNodes = getTabsYdocNodes(doc);
-  const parentId = tabNodes.parentById.get(tabId);
+  const tree = getTabListFromNodes(tabNodes);
+  const parentId = tree.find((tab) => tab.id === tabId)?.parentId;
   doc.transact(() => {
-    if (parentId === undefined) {
+    if (!parentId) {
       tabNodes.order.push(newTabIds);
       return;
     }
-    const block = getSubtreeIds(getTabListFromNodes(tabNodes), tabId);
+    const block = getSubtreeIds(tree, tabId);
     newTabIds.forEach((id) => tabNodes.parentById.set(id, parentId));
     tabNodes.order.insert(indexAfterBlock(tabNodes.order, block), newTabIds);
   });
@@ -159,6 +161,107 @@ export const moveTabInDoc = (
   return true;
 };
 
+export type TabMoveError =
+  | 'unavailable'
+  | 'invalid-destination'
+  | 'third-level'
+  | 'branch-too-deep';
+export type TabMoveResult =
+  | { ok: true; parentId: string | null }
+  | { ok: false; reason: TabMoveError };
+
+export type TabMovePlacement = 'before' | 'after' | 'into';
+
+const checkTabMove = (branch: Tab[], tab: Tab) => {
+  const branchIds = new Set(branch.map(({ id }) => id));
+  const height = Math.max(...branch.map(depthOf)) - depthOf(tab) + 1;
+
+  return (
+    target: Tab,
+    placement: TabMovePlacement,
+  ): TabMoveError | undefined => {
+    const nesting = placement === 'into';
+    if (nesting && depthOf(target) >= MAX_TAB_DEPTH) return 'third-level';
+    if ((nesting && target.id === tab.parentId) || branchIds.has(target.id))
+      return 'invalid-destination';
+    const parentDepth = depthOf(target) - Number(!nesting);
+    if (parentDepth + height > MAX_TAB_DEPTH) return 'branch-too-deep';
+  };
+};
+
+const getBranch = (tabs: Tab[], tabId: string) => {
+  const start = tabs.findIndex(({ id }) => id === tabId);
+  return start < 0
+    ? []
+    : tabs.slice(start, start + getSubtreeIds(tabs, tabId).length);
+};
+
+export const getMoveIntoTargets = (tabs: Tab[], tabId: string): Tab[] => {
+  const branch = getBranch(tabs, tabId);
+  const tab = branch[0];
+  if (!tab) return [];
+  const check = checkTabMove(branch, tab);
+  return tabs.filter((target) => !check(target, 'into'));
+};
+
+export const getTabMoveError = (
+  tabs: Tab[],
+  tabId: string,
+  targetId: string,
+  placement: TabMovePlacement,
+): TabMoveError | undefined => {
+  const branch = getBranch(tabs, tabId);
+  const target = tabs.find(({ id }) => id === targetId);
+  if (!branch[0] || !target) return 'unavailable';
+  return checkTabMove(branch, branch[0])(target, placement);
+};
+
+export const reparentTabInDoc = (
+  doc: Y.Doc,
+  tabId: string,
+  targetId?: string, // Omitted for Move out.
+  placement: TabMovePlacement = 'into',
+): TabMoveResult => {
+  const nodes = getTabsYdocNodes(doc);
+  const tabs = getTabListFromNodes(nodes);
+  const branch = getBranch(tabs, tabId);
+  const tab = branch[0];
+  const target = tabs.find(({ id }) => id === (targetId ?? tab?.parentId));
+  if (!tab || !target) return { ok: false, reason: 'unavailable' };
+  if (targetId !== undefined) {
+    const reason = checkTabMove(branch, tab)(target, placement);
+    if (reason) return { ok: false, reason };
+  }
+
+  const parentId =
+    targetId !== undefined && placement === 'into'
+      ? target.id
+      : (target.parentId ?? null);
+  const ids = new Set(branch.map(({ id }) => id));
+  const after = getSubtreeIds(tabs, target.id).filter((id) => !ids.has(id));
+  doc.transact(() => {
+    if (parentId) {
+      nodes.parentById.set(tabId, parentId);
+      nodes.parentById.set(movedParentKey(tabId), parentId);
+    } else {
+      nodes.parentById.delete(tabId);
+      nodes.parentById.delete(movedParentKey(tabId));
+    }
+
+    // Concurrent reorder can leave more than one order entry for an ID.
+    const order = nodes.order.toArray();
+    for (let i = order.length - 1; i >= 0; i--) {
+      if (ids.has(order[i])) nodes.order.delete(i, 1);
+    }
+    const index =
+      placement === 'before'
+        ? nodes.order.toArray().indexOf(target.id)
+        : indexAfterBlock(nodes.order, after);
+    nodes.order.insert(index, [...ids]);
+  });
+  return { ok: true, parentId };
+};
+
 export const duplicateTabInDoc = (
   doc: Y.Doc,
   tabId: string,
@@ -191,7 +294,7 @@ export const duplicateTabInDoc = (
   const block = getSubtreeIds(tabs, tabId);
   if (block.length === 0) return undefined;
   const newIdByOldId = new Map(block.map((id) => [id, createId()]));
-  const rootParentId = tabNodes.parentById.get(tabId);
+  const rootParentId = tabs.find((tab) => tab.id === tabId)?.parentId;
   const newRootId = newIdByOldId.get(tabId)!;
 
   doc.transact(() => {

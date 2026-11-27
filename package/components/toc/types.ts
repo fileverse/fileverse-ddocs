@@ -1,6 +1,10 @@
 import { Editor } from '@tiptap/react';
 import React, { Dispatch, SetStateAction } from 'react';
 import { Tab } from '../tabs/utils/tab-utils';
+import type {
+  TabMovePlacement,
+  TabMoveResult,
+} from '../tabs/utils/tab-operations';
 import * as Y from 'yjs';
 
 export interface ToCItemType {
@@ -54,6 +58,11 @@ export interface DocumentOutlineProps {
     payload: { newName?: string; emoji?: string },
   ) => void;
   duplicateTab: (tabId: string) => void;
+  reparentTab?: (
+    tabId: string,
+    targetId?: string,
+    placement?: TabMovePlacement,
+  ) => TabMoveResult;
   orderTab: (destinationTabId: string, activeTabId: string) => void;
   ydoc: Y.Doc;
   tabCommentCounts: Record<string, number>;

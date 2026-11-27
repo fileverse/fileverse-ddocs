@@ -81,12 +81,17 @@ const renderPanel = (
 const rowNames = () =>
   screen.getAllByTestId(/^tab-name-/).map((element) => element.textContent);
 
-const openMenu = (tabId: string) =>
-  fireEvent.click(
-    within(screen.getByTestId(`tab-item-${tabId}`)).getByTestId(
-      'tab-context-menu-trigger',
-    ),
-  );
+const openMenu = (tabId?: string) => {
+  const scope = tabId
+    ? within(screen.getByTestId(`tab-item-${tabId}`))
+    : screen;
+  const trigger = scope.getByTestId('tab-context-menu-trigger');
+  if (trigger.getAttribute('aria-haspopup') === 'menu') {
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+  } else {
+    fireEvent.click(trigger);
+  }
+};
 
 describe('mobile tab panel with subtabs', () => {
   it('lists the tree in reading order, indented, with arrows', () => {
@@ -182,4 +187,49 @@ describe('mobile tab panel with subtabs', () => {
     openMenu('sub');
     expect(screen.getByTestId('tab-menu-delete-tab')).toBeTruthy();
   });
+});
+
+it('moves an existing subtab from the row dropdown without opening a dialog', () => {
+  const reparentTab = vi.fn(() => ({ ok: true as const, parentId: 'plan' }));
+  const { setActiveTabId } = renderPanel({ reparentTab });
+  openMenu('i');
+  const menu = screen.getByRole('menu');
+  const moveInto = within(menu).getByRole('menuitem', { name: 'Move into' });
+  expect(moveInto.getAttribute('aria-expanded')).toBe('false');
+  expect(within(menu).queryByRole('menuitem', { name: 'Plan' })).toBeNull();
+  fireEvent.click(moveInto);
+  expect(moveInto.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  const submenu = screen.getByRole('menu', { name: 'Move into' });
+  expect(within(menu).queryByRole('menuitem', { name: 'Plan' })).toBeNull();
+  expect(
+    within(submenu).queryByRole('menuitem', { name: 'Round 1' }),
+  ).toBeNull();
+  fireEvent.click(within(submenu).getByRole('menuitem', { name: 'Plan' }));
+  expect(reparentTab).toHaveBeenCalledWith('i', 'plan');
+  expect(setActiveTabId).not.toHaveBeenCalled();
+  expect(screen.queryByRole('menu')).toBeNull();
+
+  openMenu('i');
+  expect(
+    screen
+      .getByRole('menuitem', { name: 'Move into' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+});
+
+it('moves the active tab into a valid subtab from the bottom-bar dropdown', () => {
+  const reparentTab = vi.fn(() => ({ ok: true as const, parentId: 'i' }));
+  renderPanel({ reparentTab }, { openList: false });
+  openMenu();
+  const menu = screen.getByRole('menu');
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Move into' }));
+  const submenu = screen.getByRole('menu', { name: 'Move into' });
+  expect(
+    within(submenu).queryByRole('menuitem', { name: 'Round 1' }),
+  ).toBeNull();
+  fireEvent.click(
+    within(submenu).getByRole('menuitem', { name: 'Interviews' }),
+  );
+  expect(reparentTab).toHaveBeenCalledWith('plan', 'i');
 });

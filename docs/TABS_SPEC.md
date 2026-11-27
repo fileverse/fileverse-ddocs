@@ -25,7 +25,7 @@ Y.Doc
 ├── Y.Map('tabs_emoji_registry')       tab id -> emoji | null
 ├── Y.Map('tabs_state')                'activeTabId' (owner only, written with the 'self' origin)
 ├── Y.Map('tabs_delete_registry')      tab id -> true for deleted tabs
-├── Y.Map('tabs_parent_registry')      subtab id -> parent id (written once, at creation)
+├── Y.Map('tabs_parent_registry')      subtab id -> parent id
 ├── Y.Map('ddocMeta')                  'schemaVersion'
 ├── Y.XmlFragment('default')           text of the first tab
 └── Y.XmlFragment('<tabId>')           text of every other tab, keyed by tab id
@@ -37,8 +37,8 @@ A doc without subtabs never has `tabs_parent_registry` written, so it is byte-fo
 
 - **Tab id = fragment key.** The first tab is `'default'`, TipTap's own fragment name.
 - **Soft delete, never erase.** Deleting a tab removes its name, emoji and order entry and marks it deleted. Its fragment, and its parent entry, stay in the doc. Ctrl+Z within 10 seconds restores it.
-- **A parent never changes.** A subtab gets its parent once, when it is created. Moves only reorder siblings. This rules out loops and keeps depth fixed under concurrent edits.
-- **Up to three levels.** A level-3 subtab cannot have subtabs (`MAX_TAB_DEPTH`).
+- **Moves keep tab IDs and their fragments.** Reordering within a group changes only order. Dropping between rows in a different group places the moved branch beside the target as a sibling. Move into and Move out change the moved tab’s parent and move its whole branch in the order list. Move out puts it immediately after its former parent’s remaining branch.
+- **Up to three levels.** Any tab or subtab can move under another eligible tab if its whole branch fits within three levels (`MAX_TAB_DEPTH`). A level-3 subtab cannot have subtabs.
 - **Expand/collapse is not in the doc.** It is local view state.
 
 ### Reading the tree (`getTabListFromNodes`)
@@ -48,10 +48,10 @@ Every screen, export and check reads one list, in reading order (a parent, then 
 | Rule | Meaning |
 |------|---------|
 | T1 | A tab is live if it is in `tabs_order` with a name. |
-| T2 | A tab under a deleted tab is hidden. Its text stays in the doc. A deleted tab that is back in `tabs_order` with a name counts as live. If hiding would leave no tab at all, nothing is hidden. |
+| T2 | A tab under a deleted tab is hidden. Its text stays in the doc. A deleted tab that is back in `tabs_order` with a name counts as live. If hiding would leave no tab at all, nothing is hidden. A live branch explicitly moved into a parent that was deleted is shown at the top level. |
 | T3 | Siblings keep the order of their first appearance in `tabs_order`. |
 | T4 | A tab whose parent is unknown (not synced yet, or bad data), or whose parent chain loops, is shown at the top level. Unknown data never hides a tab. |
-| T5 | Depth is reported as found; the sidebar caps the indent and exports cap the heading level at 3. |
+| T5 | Legacy depth is reported as found; the sidebar and exports cap presentation at level 3. If merged moves exceed the cap, the overflow branch appears at the top level. |
 
 ### Writing (`tab-operations.ts`)
 
@@ -61,14 +61,15 @@ Each action is one Yjs transaction. On a doc without subtabs, each takes exactly
 |--------|--------|
 | Add tab | Name `Tab N`, emoji, id appended to `tabs_order`. |
 | Add subtab | Name `Subtab N` (N = siblings + 1), emoji, parent entry, id right after the parent's last subtab. |
-| Move | The tab and its subtabs move as one block in `tabs_order`, only past a sibling. |
+| Reorder | The tab and its subtabs move as one block in `tabs_order`, only past a sibling. |
+| Move into / out | Write or remove the parent, then place the same IDs at the destination. The parent registry also stores one `move:<tabId>` entry for a moved parent edge, so a move that crosses a deletion can stay visible without changing normal branch deletion. |
 | Duplicate | New ids for the whole group, text copied, parents remapped, copies right after the original group. Only the top copy gets " (Copy)". |
 | Delete | For the tab and every tab under it: name and emoji removed, deleted mark added, id out of `tabs_order`. Text and parent entries kept. The last top-level tab cannot be deleted. |
 | Undo delete | The whole group back at its old positions. |
 
 ### Older apps
 
-An app on 7.0.x does not read `tabs_parent_registry`. It shows subtabs as plain tabs in reading order, and its clean-up pass never touches the new root. If it deletes a parent, new apps hide the subtabs too (T2). Nothing it does erases text. Tests: `utils/__tests__/subtab-old-client.test.ts`, against a frozen copy of the 7.0 code in `utils/__tests__/v7/`.
+An app on 7.0.x does not read `tabs_parent_registry`. It shows subtabs as plain tabs in reading order, and its clean-up pass never touches the new root. If it deletes a parent, new apps hide the original subtabs too (T2). An explicitly moved branch that the older app left alive is still reachable. Nothing it does erases text. Tests: `utils/__tests__/subtab-old-client.test.ts`, against a frozen copy of the 7.0 code in `utils/__tests__/v7/`.
 
 ### Backward Compatibility (Migration)
 

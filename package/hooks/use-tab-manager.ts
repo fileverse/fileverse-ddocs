@@ -19,6 +19,8 @@ import {
   DeletedTabSnapshot,
   duplicateTabInDoc,
   moveTabInDoc,
+  reparentTabInDoc,
+  type TabMovePlacement,
   restoreDeletedTabsInDoc,
 } from '../components/tabs/utils/tab-operations';
 import { generateRandomBytes } from '@fileverse/crypto/utils';
@@ -585,6 +587,15 @@ export const useTabManager = ({
     [ydoc, flushPendingUpdate],
   );
 
+  const reparentTab = useCallback(
+    (tabId: string, targetId?: string, placement?: TabMovePlacement) => {
+      const result = reparentTabInDoc(ydoc, tabId, targetId, placement);
+      if (result.ok) flushPendingUpdate?.();
+      return result;
+    },
+    [ydoc, flushPendingUpdate],
+  );
+
   return {
     tabs,
     hasTabState,
@@ -597,5 +608,6 @@ export const useTabManager = ({
     renameTab,
     duplicateTab,
     orderTab,
+    reparentTab,
   };
 };
