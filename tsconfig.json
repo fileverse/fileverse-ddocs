@@ -25,6 +25,7 @@
     "./index.ts",
     "./headless-editor-utils.ts",
     "./persistence.ts",
+    "./swarm.ts",
     "package/**/*",
     "demo/src/vite-env.d.ts",
     "demo/src/crypto"

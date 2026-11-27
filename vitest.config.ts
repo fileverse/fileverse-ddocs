@@ -22,7 +22,10 @@ export default defineConfig({
     server: {
       deps: {
         // ships .module.css imports node can't load directly
-        inline: ['react-tweet'],
+        // usehooks-ts: the demo installs its own copy, which would load the
+        // demo's React beside this repo's when a test renders the demo app;
+        // inlined, it goes through the React alias above.
+        inline: ['react-tweet', 'usehooks-ts'],
       },
     },
   },

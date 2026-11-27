@@ -13,10 +13,164 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Demo - Ddoc Editor - Fileverse</title>
+  <style>
+    /* Boot screen: replaced by React on mount. Served from Swarm the app
+       bundle arrives chunk by chunk over the network, which on a cold node
+       or a slow link takes a while — show that something is happening
+       instead of a blank page. */
+    #boot {
+      font: 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #6b655d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 6rem 1.5rem;
+      text-align: center;
+    }
+    #boot svg { color: #dd6b00; animation: boot-pulse 1.8s ease-in-out infinite; }
+    #boot .elapsed { font-variant-numeric: tabular-nums; font-size: 12px; }
+    #boot .slow { max-width: 32rem; font-size: 12px; }
+    #boot .failed p { margin: 0 0 0.5rem; }
+    #boot .slow p { margin: 0.5rem 0 0; }
+    #boot button {
+      font: inherit;
+      padding: 0.4rem 0.9rem;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      background: none;
+      color: inherit;
+      cursor: pointer;
+    }
+    @keyframes boot-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }
+    @media (prefers-reduced-motion: reduce) { #boot svg { animation: none } }
+    @media (prefers-color-scheme: dark) { #boot { color: #a39b8f } }
+  </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div id="boot">
+      <svg viewBox="0 0 1115 1115" width="34" height="34" fill="currentColor" aria-hidden="true">
+        <path d="M0 665.01V965l260 150 260-150.01V664.96L260 515 0 665.01zM855 515 595 665v299.99L855 1115l260-150.01V664.95L855 515zM817.32 300.27l-129.91-75.25-.13-149.98L557.5 0 297.68 150.01V450L557.5 600l259.82-150V300.27z"/>
+        <path d="m817.32 300.27 129.91-75.3V75L817.52 0 687.28 75.04l130.24 74.83-.2 150.4z"/>
+      </svg>
+      <div>Loading the editor…</div>
+      <div class="elapsed" id="boot-elapsed"></div>
+      <div class="slow" id="boot-slow" hidden>
+        First load fetches several MB of app code. Served from Swarm, a node
+        that has not cached these chunks retrieves them from the network —
+        slow links make this take a few minutes. Later loads are fast.
+      </div>
+      <div class="slow" id="boot-retrying" hidden>
+        Part of the app code could not be fetched. Served from Swarm, the
+        node is often still connecting to peers. Retrying —
+        <span id="boot-attempt"></span>…
+        <p><button type="button" id="boot-reload-now">Reload now</button></p>
+      </div>
+      <div class="slow failed" id="boot-failed" hidden>
+        <p><strong>The app code could not be downloaded.</strong></p>
+        <p>
+          Served from Swarm, this usually means the node has not reached its
+          peers yet: a node answers requests as soon as it starts but can
+          serve nothing until it is connected, and browsers do not retry
+          scripts by themselves. Served from anywhere else, check that the
+          server is running. Several automatic retries have already been
+          attempted.
+        </p>
+        <button type="button" id="boot-reload">Reload</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      // Waiting is normal here; waiting forever is not. If a script fails
+      // to load — which a just-started Swarm node can cause by delivering a
+      // large file incomplete — nothing else on the page will ever say so,
+      // and the boot screen would spin until the tab is closed.
+      var BOOT_DEADLINE_SECONDS = 45;
+      // A node that has just started answers HTTP before it has peers and
+      // fails requests for a while — ~5s from cold, longer when handshakes
+      // are slow. One retry is not enough, and the reload navigation itself
+      // can HANG at such a node (it applies no deadline of its own), which
+      // used to strand the visitor on a frozen "Retrying…" screen. So:
+      // several retries with a widening gap, a watchdog in case the reload
+      // navigation never completes, and a button as the manual way out.
+      var MAX_RETRIES = 4;
+      var RETRY_DELAYS_MS = [3000, 6000, 12000, 24000];
+      var RELOAD_WATCHDOG_MS = 10000;
+      var RETRY_KEY = 'ddoc-boot-retries';
+      var started = Date.now();
+      var elapsed = document.getElementById('boot-elapsed');
+      var slow = document.getElementById('boot-slow');
+      var retrying = document.getElementById('boot-retrying');
+      var attempt = document.getElementById('boot-attempt');
+      var failed = document.getElementById('boot-failed');
+      var timer = null;
+      var retryScheduled = false;
+
+      function retriesSoFar() {
+        try { return parseInt(sessionStorage.getItem(RETRY_KEY), 10) || 0; }
+        catch (e) { return MAX_RETRIES; }  // cannot track retries: do not loop
+      }
+      function setRetries(n) {
+        try { sessionStorage.setItem(RETRY_KEY, String(n)); } catch (e) { /* ignore */ }
+      }
+
+      function manualReload() {
+        setRetries(0);
+        window.location.reload();
+      }
+      document.getElementById('boot-reload').addEventListener('click', manualReload);
+      document.getElementById('boot-reload-now').addEventListener('click', manualReload);
+
+      function reportFailure() {
+        if (!document.getElementById('boot')) return;
+        if (retryScheduled) return;
+        slow.hidden = true;
+        var done = retriesSoFar();
+        if (done >= MAX_RETRIES) {
+          retrying.hidden = true;
+          failed.hidden = false;
+          return;
+        }
+        retryScheduled = true;
+        setRetries(done + 1);
+        attempt.textContent = 'attempt ' + (done + 1) + ' of ' + MAX_RETRIES;
+        failed.hidden = true;
+        retrying.hidden = false;
+        setTimeout(function () {
+          window.location.reload();
+          // If the reload navigation hangs at a node that never times out,
+          // this page stays alive: treat that as a failed attempt and go
+          // again — a fresh navigation replaces the stuck one.
+          setTimeout(function () {
+            retryScheduled = false;
+            reportFailure();
+          }, RELOAD_WATCHDOG_MS);
+        }, RETRY_DELAYS_MS[done] || 24000);
+      }
+
+      // A module that 404s, or arrives truncated and fails to parse, raises
+      // an error event on the window rather than anywhere visible.
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target.tagName === 'SCRIPT') reportFailure();
+      }, true);
+
+      timer = setInterval(function () {
+        if (!document.getElementById('boot')) {
+          // The app mounted: this visit succeeded, let a future cold visit
+          // start with a full retry budget again.
+          try { sessionStorage.removeItem(RETRY_KEY); } catch (e) { /* ignore */ }
+          return clearInterval(timer);
+        }
+        var s = Math.floor((Date.now() - started) / 1000);
+        elapsed.textContent = s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + ('0' + (s % 60)).slice(-2) + 's';
+        if (s > 8 && retrying.hidden && failed.hidden) slow.hidden = false;
+        if (s >= BOOT_DEADLINE_SECONDS) reportFailure();
+      }, 500);
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

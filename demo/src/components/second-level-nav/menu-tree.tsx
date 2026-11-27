@@ -107,6 +107,16 @@ export const demoMenuTree: MenuBarTree = [
       },
       { id: 'file.sep2', kind: 'separator' },
       {
+        id: 'file.versionHistory',
+        kind: 'action',
+        label: 'Version history (Swarm)',
+        icon: 'History',
+        action: 'file.versionHistory',
+        // Restore appends a new version — a document-management operation.
+        visibleWhen: ownerOnly,
+      },
+      { id: 'file.sep3', kind: 'separator' },
+      {
         id: 'file.print',
         kind: 'action',
         label: 'Print',

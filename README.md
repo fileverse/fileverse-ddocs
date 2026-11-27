@@ -378,8 +378,10 @@ const fonts: FontDescriptor[] = [
 | `setWordCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Deprecated, use `onStatsChange`. Updates word count |
 | `setPageCount`      | `React.Dispatch<SetStateAction<number>>`                                 | Deprecated, use `onStatsChange`. Updates approx. export page count |
 | `ensResolutionUrl`  | `string`                                                                 | URL for ENS name resolution               |
-| `ipfsImageUploadFn` | ` (file: File) => Promise<IpfsImageUploadResponse>`                      | function for secure image uploads         |
-| `ipfsImageFetchFn`  | ` (_data: IpfsImageFetchPayload) => Promise<{ url: string;file: File;}>` | function for fetch secure image from IPFS |
+| `imageUploadFn`     | ` (file: File) => Promise<StorageImageUploadResponse>`                   | Storage-agnostic function for secure image uploads |
+| `imageFetchFn`      | ` (_data: StorageImageFetchPayload) => Promise<{ url: string;file: File;}>` | Storage-agnostic function that fetches and decrypts an image |
+| `ipfsImageUploadFn` | ` (file: File) => Promise<IpfsImageUploadResponse>`                      | Deprecated, use `imageUploadFn`. Function for secure image uploads |
+| `ipfsImageFetchFn`  | ` (_data: IpfsImageFetchPayload) => Promise<{ url: string;file: File;}>` | Deprecated, use `imageFetchFn`. Function for fetch secure image from IPFS |
 | `onError`           | `(error: string) => void`                                                | General error handler                     |
 | `onInlineComment`   | `() => void`                                                             | Callback for inline comments              |
 | `onMarkdownExport`  | `() => void`                                                             | Callback for markdown export              |
@@ -387,6 +389,41 @@ const fonts: FontDescriptor[] = [
 | `onPdfExport`       | `() => void`                                                             | Callback for pdf export                   |
 | `onSlidesShare`     | `() => void`                                                             | Callback for slides sharing               |
 | `onComment`         | `() => void`                                                             | General comment callback                  |
+
+## Ethereum Swarm storage (optional)
+
+`@fileverse-dev/ddoc/swarm` is a separate entry with no editor or React imports, so hosts that do not import it are unaffected. It keeps images and documents on [Ethereum Swarm](https://www.ethswarm.org/), encrypted in the browser, through a Bee node's HTTP API or a browser that exposes `window.swarm`.
+
+```tsx
+import { DdocEditor } from '@fileverse-dev/ddoc';
+import {
+  createSwarmImageUploadFn,
+  createSwarmImageFetchFn,
+  createSwarmDocumentStorage,
+  generateDocumentKey,
+} from '@fileverse-dev/ddoc/swarm';
+
+const swarm = { beeUrl: 'http://localhost:1633', postageBatchId };
+
+// Images go through the storage-agnostic image props.
+<DdocEditor
+  imageUploadFn={createSwarmImageUploadFn(swarm)}
+  imageFetchFn={createSwarmImageFetchFn(swarm)}
+/>;
+
+// Documents: every save is a new version on the document's Swarm feed.
+const storage = createSwarmDocumentStorage({
+  ...swarm,
+  namespace: 'ddoc',
+  ownerPrivateKey, // signs the feed; whoever holds it can write the document
+  documentKey: generateDocumentKey(), // AES key; needed to read it back
+});
+await storage.saveDocument(ddocId, encodedState); // e.g. what `onChange` gives you
+const latest = await storage.loadDocument(ddocId); // null if never saved
+const versions = await storage.listDocumentVersions(ddocId);
+```
+
+Uploading needs a postage batch on the node; reading does not. The entry also has postage helpers (`listStamps`, `checkStampHealth`, `buyStamp`, `topUpStamp`, `diluteStamp`) and `diagnoseSwarm`, which says why storage is unavailable and what fixes it. The demo wires all of this up; see `demo/README.md`.
 
 ## Steps to run this example locally
 

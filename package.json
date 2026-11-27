@@ -22,6 +22,10 @@
       "import": "./dist/persistence.es.js",
       "types": "./dist/persistence.d.ts"
     },
+    "./swarm": {
+      "import": "./dist/swarm.es.js",
+      "types": "./dist/swarm.d.ts"
+    },
     "./styles": "./dist/style.css",
     "./types": "./dist/package/types.d.ts",
     "./tailwind": "./tailwind.preset.cjs"
