@@ -31,6 +31,7 @@ import {
   ySyncPluginKey,
   yUndoPluginKey,
   absolutePositionToRelativePosition,
+  isStructuralTransaction,
   relativePositionToAbsolutePosition,
 } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
@@ -191,20 +192,38 @@ function getSuggestionAddPointOverrides(
   return tabPoints instanceof Y.Map ? tabPoints : null;
 }
 
+// Saved after an undo or redo, under its own key: redo cannot restore an
+// override entry that a newer write replaced.
+const undoOverrideKey = (id: string) => `${id}#undo`;
+
+/** The first saved override that resolves here, with its position. */
+function findSuggestionAddPointOverride(
+  anchor: Pick<CommentAnchor, 'id'>,
+  state: EditorState,
+): { position: Y.RelativePosition; point: number } | null {
+  const overrides = getSuggestionAddPointOverrides(state);
+  for (const key of [anchor.id, undoOverrideKey(anchor.id)]) {
+    const encoded = overrides?.get(key);
+    if (!(encoded instanceof Uint8Array)) continue;
+    try {
+      const position = Y.decodeRelativePosition(encoded);
+      const point = resolveCommentAnchorPointInState(
+        { anchorFrom: position },
+        state,
+      );
+      if (point !== null) return { position, point };
+    } catch {
+      // An unreadable entry falls through to the next one.
+    }
+  }
+  return null;
+}
+
 function resolveSuggestionAddPointOverride(
   anchor: Pick<CommentAnchor, 'id'>,
   state: EditorState,
 ): number | null {
-  const encoded = getSuggestionAddPointOverrides(state)?.get(anchor.id);
-  if (!(encoded instanceof Uint8Array)) return null;
-  try {
-    return resolveCommentAnchorPointInState(
-      { anchorFrom: Y.decodeRelativePosition(encoded) },
-      state,
-    );
-  } catch {
-    return null;
-  }
+  return findSuggestionAddPointOverride(anchor, state)?.point ?? null;
 }
 
 /** Undefined when the parent break has no persisted position. */
@@ -1175,14 +1194,45 @@ function mapAddPoints(adds: MovedAddPoint[], tr: Transaction): MovedAddPoint[] {
       point,
       anchor.anchorFrom.assoc === 1 ? 1 : -1,
     );
-    return result.deleted ? [] : [{ anchor, point: result.pos }];
+    // `setBlockType` reports the content start as deleted though it survives.
+    return result.deletedAcross ? [] : [{ anchor, point: result.pos }];
   });
 }
 
+function writeAddPointOverrides(
+  state: EditorState,
+  adds: MovedAddPoint[],
+  origin: unknown,
+  keyFor: (id: string) => string = (id) => id,
+) {
+  const syncState = ySyncPluginKey.getState(state);
+  if (adds.length === 0 || !syncState?.binding) return;
+  syncState.doc.transact((ytr) => {
+    ytr.meta.set('addToHistory', syncState.addToHistory !== false);
+    const overrides = getSuggestionAddPointOverrides(state, true);
+    if (!overrides) return;
+    yUndoPluginKey.getState(state)?.undoManager?.addToScope(overrides);
+    for (const { anchor, point } of adds) {
+      const relative = createCommentAnchorPointInState(
+        state,
+        point,
+        anchor.anchorFrom.assoc === 1 ? 1 : -1,
+      );
+      if (relative) {
+        overrides.set(
+          keyFor(anchor.id),
+          Y.encodeRelativePosition(relative.anchorFrom),
+        );
+      }
+    }
+  }, origin);
+}
+
 /**
- * A retype (heading, quote, list) keeps the text but y-tiptap recreates its
- * Yjs items, so a pending Add's stored point dies with them (null since
- * y-tiptap 3.3.0). Save the mapped point as the Add's override instead.
+ * A restructure (heading, quote, list, join) keeps the text but y-tiptap
+ * recreates its Yjs items, so a pending Add's stored point dies with them
+ * (null since y-tiptap 3.3.0). Save the mapped point as the Add's override,
+ * in the restructure's undo step.
  */
 function persistMovedAddPoints(
   state: EditorState,
@@ -1193,24 +1243,41 @@ function persistMovedAddPoints(
     ({ anchor, point }) =>
       resolveSuggestionAddPointInState(anchor, state, anchors) !== point,
   );
+  writeAddPointOverrides(state, moved, ySyncPluginKey);
+}
+
+/** Resolvable from what a peer or a reload has, not only via undo links. */
+function resolvesOnTheWire(position: Y.RelativePosition, doc: Y.Doc) {
+  const absolute = Y.createAbsolutePositionFromRelativePosition(
+    position,
+    doc,
+    false,
+  );
+  return absolute !== null && !absolute.type._item?.deleted;
+}
+
+/**
+ * Undo and redo recreate the block again, and the Add then resolves only
+ * through this session's undo links. Re-save it outside the undo history,
+ * so the redo stack survives.
+ */
+function persistUndoneAddPoints(state: EditorState, anchors: CommentAnchor[]) {
   const syncState = ySyncPluginKey.getState(state);
-  if (moved.length === 0 || !syncState?.binding) return;
-  syncState.doc.transact(() => {
-    const overrides = getSuggestionAddPointOverrides(state, true);
-    if (!overrides) return;
-    // Same undo step as the retype: Cmd-Z restores the original anchor.
-    yUndoPluginKey.getState(state)?.undoManager?.addToScope(overrides);
-    for (const { anchor, point } of moved) {
-      const relative = createCommentAnchorPointInState(
-        state,
-        point,
-        anchor.anchorFrom.assoc === 1 ? 1 : -1,
-      );
-      if (relative) {
-        overrides.set(anchor.id, Y.encodeRelativePosition(relative.anchorFrom));
-      }
-    }
-  }, ySyncPluginKey);
+  if (!syncState?.binding) return;
+  const stale = anchors.filter(isPendingStandaloneAdd).flatMap((anchor) => {
+    const point = resolveSuggestionAddPointInState(anchor, state, anchors);
+    if (point === null) return [];
+    const used =
+      findSuggestionAddPointOverride(anchor, state)?.position ??
+      anchor.anchorFrom;
+    return resolvesOnTheWire(used, syncState.doc) ? [] : [{ anchor, point }];
+  });
+  writeAddPointOverrides(
+    state,
+    stale,
+    commentDecorationPluginKey,
+    undoOverrideKey,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1236,7 +1303,8 @@ export const CommentDecorationExtension =
     addProseMirrorPlugins() {
       const { getAnchors, getActiveCommentId } = this.options;
       // Yjs matches the view's state until y-tiptap's view update, so Add
-      // points are read before a local retype and saved after it.
+      // points are read before a local restructure and saved after it. Our
+      // view update runs after y-tiptap's (Collaboration has priority 1000).
       let viewState: EditorState | null = null;
       let movedAdds: { doc: PMNode; adds: MovedAddPoint[] } | null = null;
       const trackMovedAdds = (
@@ -1244,7 +1312,12 @@ export const CommentDecorationExtension =
         oldState: EditorState,
         newState: EditorState,
       ) => {
-        if (!tr.docChanged || tr.getMeta(ySyncPluginKey)?.isChangeOrigin)
+        // Accepting a suggestion saves its own overrides.
+        if (
+          !tr.docChanged ||
+          tr.getMeta(ySyncPluginKey)?.isChangeOrigin ||
+          tr.getMeta(suggestionTrackingPluginKey)
+        )
           return;
         if (movedAdds?.doc === oldState.doc) {
           movedAdds = {
@@ -1255,7 +1328,10 @@ export const CommentDecorationExtension =
         }
         if (
           oldState !== viewState ||
-          !tr.steps.some((step) => step instanceof ReplaceAroundStep)
+          !(
+            tr.steps.some((step) => step instanceof ReplaceAroundStep) ||
+            isStructuralTransaction(tr, oldState.doc)
+          )
         )
           return;
         const anchors = getAnchors();
@@ -1372,6 +1448,14 @@ export const CommentDecorationExtension =
             };
             overrides?.observeDeep(onOverridesChanged);
             viewState = editorView.state;
+            const undoManager = yUndoPluginKey.getState(
+              editorView.state,
+            )?.undoManager;
+            const onUndoOrRedo = () => {
+              if (!disposed)
+                persistUndoneAddPoints(editorView.state, getAnchors());
+            };
+            undoManager?.on('stack-item-popped', onUndoOrRedo);
             return {
               update(view) {
                 viewState = view.state;
@@ -1383,6 +1467,7 @@ export const CommentDecorationExtension =
               destroy() {
                 disposed = true;
                 overrides?.unobserveDeep(onOverridesChanged);
+                undoManager?.off('stack-item-popped', onUndoOrRedo);
               },
             };
           },
