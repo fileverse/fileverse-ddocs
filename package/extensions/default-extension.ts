@@ -61,7 +61,6 @@ import {
 } from '@tiptap/extensions';
 import { ResizableMedia } from './resizable-media';
 import { MediaCaption } from './resizable-media/media-caption';
-import LinkPreview from './link-preview/link-preview';
 import { Callout } from './callout/callout';
 import { FontSize } from './font-size';
 import { FontFamilyPersistence } from './font-family-persistence';
@@ -234,7 +233,6 @@ const ExtendedSubscript = Subscript.extend({
 export const defaultExtensions = ({
   ipfsImageFetchFn,
   onError,
-  metadataProxyUrl,
   onCopyHeadingLink,
   ipfsImageUploadFn,
   fetchV1ImageFn,
@@ -248,7 +246,6 @@ export const defaultExtensions = ({
   ) => Promise<{ url: string; file: File }>;
   onError: (error: string) => void;
   ipfsImageUploadFn?: (file: File) => Promise<IpfsImageUploadResponse>;
-  metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
   fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>;
   onTocUpdate?: (data: ToCItemType[], isCreate?: boolean) => void;
@@ -533,9 +530,6 @@ export const defaultExtensions = ({
     },
   }),
   SuperscriptSubscriptControls,
-  LinkPreview.configure({
-    metadataProxyUrl: metadataProxyUrl,
-  }),
   Callout,
   Emoji,
 ];
