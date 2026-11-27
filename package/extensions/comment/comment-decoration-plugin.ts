@@ -12,10 +12,19 @@ import {
   type ChangedRange,
   type Editor,
 } from '@tiptap/core';
-import { type EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
-import { canSplit, type Transform } from '@tiptap/pm/transform';
+import {
+  type EditorState,
+  Plugin,
+  PluginKey,
+  type Transaction,
+} from '@tiptap/pm/state';
+import {
+  canSplit,
+  ReplaceAroundStep,
+  type Transform,
+} from '@tiptap/pm/transform';
 import { TextSelection } from '@tiptap/pm/state';
-import { type ResolvedPos } from '@tiptap/pm/model';
+import { type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { getSplittedAttributes } from '@tiptap/core';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
@@ -153,6 +162,9 @@ export function resolveCommentAnchorPointInState(
 const ACCEPTED_BREAK_POINTS = 'acceptedSuggestionBreakPoints';
 const SUGGESTION_ADD_POINT_OVERRIDES = 'suggestionAddPointOverrides';
 
+// A tab's fragment keeps its root name, so scan `doc.share` once per fragment.
+const tabFieldByFragment = new WeakMap<object, string>();
+
 /** Each tab has its own Yjs fragment and its own pending Add overrides. */
 function getSuggestionAddPointOverrides(
   state: EditorState,
@@ -160,9 +172,13 @@ function getSuggestionAddPointOverrides(
 ): Y.Map<Uint8Array> | null {
   const syncState = ySyncPluginKey.getState(state);
   if (!syncState?.binding) return null;
-  const field = [...syncState.doc.share].find(([, sharedType]) =>
-    Object.is(sharedType, syncState.type),
-  )?.[0];
+  let field = tabFieldByFragment.get(syncState.type);
+  if (field === undefined) {
+    field = [...syncState.doc.share].find(([, sharedType]) =>
+      Object.is(sharedType, syncState.type),
+    )?.[0];
+    if (field) tabFieldByFragment.set(syncState.type, field);
+  }
   if (!field) return null;
   const root = syncState.doc.getMap(SUGGESTION_ADD_POINT_OVERRIDES) as Y.Map<
     Y.Map<Uint8Array>
@@ -1144,6 +1160,59 @@ function buildDecorations(
   return DecorationSet.create(state.doc, decorations);
 }
 
+type MovedAddPoint = { anchor: CommentAnchor; point: number };
+
+const isPendingStandaloneAdd = (anchor: CommentAnchor) =>
+  anchor.isSuggestion === true &&
+  anchor.suggestionType === 'add' &&
+  !anchor.resolved &&
+  !anchor.deleted &&
+  !anchor.followsSuggestionId;
+
+function mapAddPoints(adds: MovedAddPoint[], tr: Transaction): MovedAddPoint[] {
+  return adds.flatMap(({ anchor, point }) => {
+    const result = tr.mapping.mapResult(
+      point,
+      anchor.anchorFrom.assoc === 1 ? 1 : -1,
+    );
+    return result.deleted ? [] : [{ anchor, point: result.pos }];
+  });
+}
+
+/**
+ * A retype (heading, quote, list) keeps the text but y-tiptap recreates its
+ * Yjs items, so a pending Add's stored point dies with them (null since
+ * y-tiptap 3.3.0). Save the mapped point as the Add's override instead.
+ */
+function persistMovedAddPoints(
+  state: EditorState,
+  adds: MovedAddPoint[],
+  anchors: CommentAnchor[],
+) {
+  const moved = adds.filter(
+    ({ anchor, point }) =>
+      resolveSuggestionAddPointInState(anchor, state, anchors) !== point,
+  );
+  const syncState = ySyncPluginKey.getState(state);
+  if (moved.length === 0 || !syncState?.binding) return;
+  syncState.doc.transact(() => {
+    const overrides = getSuggestionAddPointOverrides(state, true);
+    if (!overrides) return;
+    // Same undo step as the retype: Cmd-Z restores the original anchor.
+    yUndoPluginKey.getState(state)?.undoManager?.addToScope(overrides);
+    for (const { anchor, point } of moved) {
+      const relative = createCommentAnchorPointInState(
+        state,
+        point,
+        anchor.anchorFrom.assoc === 1 ? 1 : -1,
+      );
+      if (relative) {
+        overrides.set(anchor.id, Y.encodeRelativePosition(relative.anchorFrom));
+      }
+    }
+  }, ySyncPluginKey);
+}
+
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
@@ -1166,6 +1235,45 @@ export const CommentDecorationExtension =
 
     addProseMirrorPlugins() {
       const { getAnchors, getActiveCommentId } = this.options;
+      // Yjs matches the view's state until y-tiptap's view update, so Add
+      // points are read before a local retype and saved after it.
+      let viewState: EditorState | null = null;
+      let movedAdds: { doc: PMNode; adds: MovedAddPoint[] } | null = null;
+      const trackMovedAdds = (
+        tr: Transaction,
+        oldState: EditorState,
+        newState: EditorState,
+      ) => {
+        if (!tr.docChanged || tr.getMeta(ySyncPluginKey)?.isChangeOrigin)
+          return;
+        if (movedAdds?.doc === oldState.doc) {
+          movedAdds = {
+            doc: newState.doc,
+            adds: mapAddPoints(movedAdds.adds, tr),
+          };
+          return;
+        }
+        if (
+          oldState !== viewState ||
+          !tr.steps.some((step) => step instanceof ReplaceAroundStep)
+        )
+          return;
+        const anchors = getAnchors();
+        const adds = anchors
+          .filter(isPendingStandaloneAdd)
+          .flatMap((anchor) => {
+            const point = resolveSuggestionAddPointInState(
+              anchor,
+              oldState,
+              anchors,
+            );
+            return point === null ? [] : [{ anchor, point }];
+          });
+        movedAdds =
+          adds.length > 0
+            ? { doc: newState.doc, adds: mapAddPoints(adds, tr) }
+            : null;
+      };
 
       return [
         new Plugin({
@@ -1183,7 +1291,8 @@ export const CommentDecorationExtension =
                 ),
               };
             },
-            apply(tr, pluginState, _oldState, newState) {
+            apply(tr, pluginState, oldState, newState) {
+              trackMovedAdds(tr, oldState, newState);
               // Rebuild decorations if:
               //   1. Explicit rebuild triggered (tr.getMeta(commentDecorationPluginKey))
               //   2. The doc changed *and* the Y.Doc already reflects that change
@@ -1262,7 +1371,15 @@ export const CommentDecorationExtension =
               });
             };
             overrides?.observeDeep(onOverridesChanged);
+            viewState = editorView.state;
             return {
+              update(view) {
+                viewState = view.state;
+                const pending = movedAdds;
+                if (!pending || pending.doc !== view.state.doc) return;
+                movedAdds = null;
+                persistMovedAddPoints(view.state, pending.adds, getAnchors());
+              },
               destroy() {
                 disposed = true;
                 overrides?.unobserveDeep(onOverridesChanged);
@@ -1302,7 +1419,15 @@ export function createCommentAnchorPointFromEditor(
   pos: number,
   assoc: -1 | 1 = -1,
 ): CommentAnchorRelativeRange | null {
-  const syncState = ySyncPluginKey.getState(editor.state);
+  return createCommentAnchorPointInState(editor.state, pos, assoc);
+}
+
+function createCommentAnchorPointInState(
+  state: EditorState,
+  pos: number,
+  assoc: -1 | 1,
+): CommentAnchorRelativeRange | null {
+  const syncState = ySyncPluginKey.getState(state);
   if (!syncState?.binding) return null;
   const { type, binding } = syncState;
   try {

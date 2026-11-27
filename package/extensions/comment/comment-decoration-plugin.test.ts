@@ -23,6 +23,7 @@ import {
   makeEditor,
   nativeDelete,
   startOf,
+  textblocks,
   track,
 } from '../caret-marks/test-helpers';
 import {
@@ -1816,6 +1817,67 @@ describe('accepted suggestions', () => {
       expect(
         editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n'),
       ).toContain('yyy');
+    });
+
+    it(`accepts a standalone Add after the owner retypes its paragraph (v${schemaVersion})`, () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>ABC old DEF</p><p>next</p>');
+      const add: CommentAnchor = {
+        id: 'retyped-add',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'DEF').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: 'yyy',
+      };
+      harness.anchors.push(add);
+      yUndoPluginKey.getState(editor.state)?.undoManager.stopCapturing();
+      editor.commands.setTextSelection(findRange(editor, 'ABC').from + 1);
+      expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+
+      expect(hasResolvableCommentAnchorInState(add, editor.state)).toBe(true);
+      expect(applyAcceptedSuggestion(editor, add, [add])).toBe(true);
+      expect(
+        editor.state.doc.textBetween(0, editor.state.doc.content.size, '|'),
+      ).toBe('ABC old DEFyyy|next');
+      expect(textblocks(editor)[0].node.type.name).toBe('heading');
+    });
+
+    it(`keeps a standalone Add acceptable through undo and redo of the retype (v${schemaVersion})`, () => {
+      const harness = makeCommentEditor(schemaVersion);
+      editor = harness.editor;
+      editor.commands.setContent('<p>ABC old DEF</p><p>next</p>');
+      const add: CommentAnchor = {
+        id: 'undone-retype-add',
+        ...createCommentAnchorPointFromEditor(
+          editor,
+          findRange(editor, 'DEF').to,
+        )!,
+        resolved: false,
+        deleted: false,
+        isSuggestion: true,
+        suggestionType: 'add',
+        suggestedContent: 'yyy',
+      };
+      harness.anchors.push(add);
+      yUndoPluginKey.getState(editor.state)?.undoManager.stopCapturing();
+      editor.commands.setTextSelection(findRange(editor, 'ABC').from + 1);
+      expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+      expect(editor.commands.undo()).toBe(true);
+      expect(textblocks(editor)[0].node.type.name).toBe('paragraph');
+      expect(resolveSuggestionAddPointInState(add, editor.state, [add])).toBe(
+        findRange(editor, 'DEF').to,
+      );
+      expect(editor.commands.redo()).toBe(true);
+      expect(textblocks(editor)[0].node.type.name).toBe('heading');
+      expect(resolveSuggestionAddPointInState(add, editor.state, [add])).toBe(
+        findRange(editor, 'DEF').to,
+      );
     });
 
     it(`keeps a following Add after a Replace at the document end in v${schemaVersion}`, () => {
