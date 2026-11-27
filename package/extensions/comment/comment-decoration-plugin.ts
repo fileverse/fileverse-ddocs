@@ -21,6 +21,8 @@ import {
 import {
   canSplit,
   ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
   type Transform,
 } from '@tiptap/pm/transform';
 import { TextSelection } from '@tiptap/pm/state';
@@ -31,7 +33,6 @@ import {
   ySyncPluginKey,
   yUndoPluginKey,
   absolutePositionToRelativePosition,
-  isStructuralTransaction,
   relativePositionToAbsolutePosition,
 } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
@@ -201,22 +202,35 @@ function findSuggestionAddPointOverride(
   anchor: Pick<CommentAnchor, 'id'>,
   state: EditorState,
 ): { position: Y.RelativePosition; point: number } | null {
+  const doc = ySyncPluginKey.getState(state)?.doc;
   const overrides = getSuggestionAddPointOverrides(state);
+  if (!doc || !overrides) return null;
+  let localOnly: { position: Y.RelativePosition; point: number } | null = null;
   for (const key of [anchor.id, undoOverrideKey(anchor.id)]) {
-    const encoded = overrides?.get(key);
+    const encoded = overrides.get(key);
     if (!(encoded instanceof Uint8Array)) continue;
     try {
       const position = Y.decodeRelativePosition(encoded);
+      // A block-start or empty-block point is anchored to its text type, and
+      // y-tiptap resolves a deleted one to a nearby gap rather than null.
+      const absolute = Y.createAbsolutePositionFromRelativePosition(
+        position,
+        doc,
+      );
+      if (!absolute || absolute.type._item?.deleted) continue;
       const point = resolveCommentAnchorPointInState(
         { anchorFrom: position },
         state,
       );
-      if (point !== null) return { position, point };
+      if (point === null) continue;
+      // Prefer what peers and a reload resolve too, so every client agrees.
+      if (resolvesOnTheWire(position, doc)) return { position, point };
+      localOnly ??= { position, point };
     } catch {
       // An unreadable entry falls through to the next one.
     }
   }
-  return null;
+  return localOnly;
 }
 
 function resolveSuggestionAddPointOverride(
@@ -1181,6 +1195,21 @@ function buildDecorations(
 
 type MovedAddPoint = { anchor: CommentAnchor; point: number };
 
+/** A step that moves or joins blocks, at any depth. Typing is not one. */
+function isStructuralStep(step: Step, doc: PMNode) {
+  if (step instanceof ReplaceAroundStep) return true;
+  if (!(step instanceof ReplaceStep)) return false;
+  const { slice } = step;
+  if (slice.openStart > 0 || slice.openEnd > 0) return true;
+  let hasBlock = false;
+  slice.content.forEach((node) => {
+    if (node.isBlock) hasBlock = true;
+  });
+  return (
+    hasBlock || doc.resolve(step.from).parent !== doc.resolve(step.to).parent
+  );
+}
+
 const isPendingStandaloneAdd = (anchor: CommentAnchor) =>
   anchor.isSuggestion === true &&
   anchor.suggestionType === 'add' &&
@@ -1207,9 +1236,17 @@ function writeAddPointOverrides(
 ) {
   const syncState = ySyncPluginKey.getState(state);
   if (adds.length === 0 || !syncState?.binding) return;
+  if (!getSuggestionAddPointOverrides(state)) {
+    // Created outside the history: undo captures only changes to a map
+    // already in its scope, so the first entry must not create the map.
+    syncState.doc.transact(
+      () => getSuggestionAddPointOverrides(state, true),
+      commentDecorationPluginKey,
+    );
+  }
   syncState.doc.transact((ytr) => {
     ytr.meta.set('addToHistory', syncState.addToHistory !== false);
-    const overrides = getSuggestionAddPointOverrides(state, true);
+    const overrides = getSuggestionAddPointOverrides(state);
     if (!overrides) return;
     yUndoPluginKey.getState(state)?.undoManager?.addToScope(overrides);
     for (const { anchor, point } of adds) {
@@ -1328,9 +1365,8 @@ export const CommentDecorationExtension =
         }
         if (
           oldState !== viewState ||
-          !(
-            tr.steps.some((step) => step instanceof ReplaceAroundStep) ||
-            isStructuralTransaction(tr, oldState.doc)
+          !tr.steps.some((step, index) =>
+            isStructuralStep(step, tr.docs[index]),
           )
         )
           return;

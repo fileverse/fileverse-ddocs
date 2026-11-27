@@ -485,6 +485,7 @@ describe('accepted suggestions', () => {
   afterEach(() => {
     editor?.destroy();
     editor = null;
+    destroyTracked();
   });
 
   it('keeps a pending Add in the moved suffix of a v1 dBlock', () => {
@@ -1855,6 +1856,11 @@ describe('accepted suggestions', () => {
     const withinFirstBlock = (target: Editor) => {
       target.commands.setTextSelection(findRange(target, 'ABC').from + 1);
     };
+    const atEndOf = (target: Editor, text: string) => {
+      target.commands.setTextSelection(findRange(target, text).to);
+    };
+    const insideEmptyBlock = (target: Editor) =>
+      textblocks(target).find(({ node }) => node.content.size === 0)!.pos + 1;
 
     it.each([
       {
@@ -1897,6 +1903,36 @@ describe('accepted suggestions', () => {
         },
         accepted: 'prevABC old DEFyyy',
       },
+      {
+        name: 'Backspace joining two paragraphs in a quote',
+        html: '<blockquote><p>prev</p><p>ABC old DEF</p></blockquote>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          atStartOf(target, 'ABC');
+          return pressKey(target, 'Backspace');
+        },
+        accepted: 'prevABC old DEFyyy|',
+      },
+      {
+        name: 'Delete joining two paragraphs in a list item',
+        html: '<ul><li><p>prev</p><p>ABC old DEF</p></li></ul>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        edit: (target: Editor) => {
+          atEndOf(target, 'prev');
+          return pressKey(target, 'Delete');
+        },
+        accepted: 'prevABC old DEFyyy|',
+      },
+      {
+        name: 'Heading 1 on an empty block',
+        html: '<p>ABC old DEF</p><p></p><p>next</p>',
+        point: insideEmptyBlock,
+        edit: (target: Editor) => {
+          target.commands.setTextSelection(insideEmptyBlock(target));
+          return target.commands.setNode('heading', { level: 1 });
+        },
+        accepted: 'ABC old DEF|yyy|next',
+      },
     ])(
       `accepts a standalone Add after $name (v${schemaVersion})`,
       ({ html, point, edit, accepted }) => {
@@ -1913,30 +1949,61 @@ describe('accepted suggestions', () => {
       },
     );
 
-    it(`keeps a standalone Add acceptable after undo and redo of a retype, on reload (v${schemaVersion})`, () => {
-      const harness = makeCommentEditor(schemaVersion);
-      editor = harness.editor;
-      editor.commands.setContent('<p>ABC old DEF</p><p>next</p>');
-      const add = pendingAddAt(harness, findRange(editor, 'DEF').to);
-      withinFirstBlock(editor);
-      expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+    it.each([
+      {
+        name: 'the end of a block',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'DEF').to,
+        select: withinFirstBlock,
+        accepted: 'ABC old DEFyyy|next',
+      },
+      {
+        name: 'the start of a block',
+        html: '<p>ABC old DEF</p><p>next</p>',
+        point: (target: Editor) => findRange(target, 'ABC').from,
+        select: withinFirstBlock,
+        accepted: 'yyyABC old DEF|next',
+      },
+      {
+        name: 'an empty block',
+        html: '<p>ABC old DEF</p><p></p><p>next</p>',
+        point: insideEmptyBlock,
+        select: (target: Editor) => {
+          target.commands.setTextSelection(insideEmptyBlock(target));
+        },
+        accepted: 'ABC old DEF|yyy|next',
+      },
+    ])(
+      `keeps an Add at $name in place through retype, undo, redo and undo, on reload (v${schemaVersion})`,
+      ({ html, point, select, accepted }) => {
+        const harness = makeCommentEditor(schemaVersion);
+        editor = harness.editor;
+        editor.commands.setContent(html);
+        const add = pendingAddAt(harness, point(editor));
+        const expectInPlace = () => {
+          expect(
+            resolveSuggestionAddPointInState(add, editor!.state, [add]),
+          ).toBe(point(editor!));
+          const copy = reloaded(harness.ydoc);
+          expect(resolveSuggestionAddPointInState(add, copy.state, [add])).toBe(
+            point(copy),
+          );
+          return copy;
+        };
 
-      expect(editor.commands.undo()).toBe(true);
-      expect(textblocks(editor)[0].node.type.name).toBe('paragraph');
-      let copy = reloaded(harness.ydoc);
-      expect(resolveSuggestionAddPointInState(add, copy.state, [add])).toBe(
-        findRange(copy, 'DEF').to,
-      );
-
-      expect(editor.commands.redo()).toBe(true);
-      expect(textblocks(editor)[0].node.type.name).toBe('heading');
-      copy = reloaded(harness.ydoc);
-      expect(resolveSuggestionAddPointInState(add, copy.state, [add])).toBe(
-        findRange(copy, 'DEF').to,
-      );
-      expect(applyAcceptedSuggestion(copy, add, [add])).toBe(true);
-      expect(flatText(copy)).toBe('ABC old DEFyyy|next');
-    });
+        select(editor);
+        expect(editor.commands.setNode('heading', { level: 1 })).toBe(true);
+        expectInPlace();
+        expect(editor.commands.undo()).toBe(true);
+        expectInPlace();
+        expect(editor.commands.redo()).toBe(true);
+        expectInPlace();
+        expect(editor.commands.undo()).toBe(true);
+        const copy = expectInPlace();
+        expect(applyAcceptedSuggestion(copy, add, [add])).toBe(true);
+        expect(flatText(copy)).toBe(accepted);
+      },
+    );
 
     it(`keeps a following Add after a Replace at the document end in v${schemaVersion}`, () => {
       const harness = makeCommentEditor(schemaVersion);
