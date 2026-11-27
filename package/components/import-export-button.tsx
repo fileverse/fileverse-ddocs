@@ -21,6 +21,7 @@ import { Editor } from '@tiptap/react';
 import { Tab } from './tabs/utils/tab-utils';
 import * as Y from 'yjs';
 import { useDdocExport } from '../hooks/use-ddoc-export';
+import { ExportErrorHandler } from '../utils/export-watchdog';
 
 const ImportExportButton = ({
   fileExportsOpen,
@@ -32,6 +33,7 @@ const ImportExportButton = ({
   ydoc,
   copyAo3Html,
   onRegisterExportTrigger,
+  onExportError,
 }: {
   fileExportsOpen: boolean;
   setFileExportsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -44,6 +46,7 @@ const ImportExportButton = ({
   onRegisterExportTrigger?:
     | ((trigger: ((format?: string, name?: string) => void) | null) => void)
     | undefined;
+  onExportError?: ExportErrorHandler;
 }) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState('pdf');
@@ -57,9 +60,10 @@ const ImportExportButton = ({
     ydoc,
     exportOptions,
     copyAo3Html,
+    onExportError,
   });
 
-  const { printHandler } = useEditorToolbar({ editor });
+  const { printHandler } = useEditorToolbar({ editor, onExportError });
 
   const tabSelectOptions = useMemo(
     () => [

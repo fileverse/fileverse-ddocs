@@ -1210,7 +1210,7 @@ export const mountContentPrintHost = (
 export const handleContentPrint = (
   content: string,
   options?: ContentPrintOptions,
-) => {
+): Promise<void> => {
   const host = mountContentPrintHost(content, options);
 
   const state: { fallback?: ReturnType<typeof setTimeout> } = {};
@@ -1224,7 +1224,18 @@ export const handleContentPrint = (
   state.fallback = setTimeout(cleanup, 60000);
 
   // Defer one frame so the injected node is committed before printing.
-  requestAnimationFrame(() => window.print());
+  return new Promise((resolve, reject) => {
+    requestAnimationFrame(() => {
+      try {
+        window.print();
+        resolve();
+      } catch (error) {
+        // In-app webviews can replace window.print with a missing native bridge.
+        cleanup();
+        reject(error);
+      }
+    });
+  });
 };
 
 const printHelper = (content: string) => {

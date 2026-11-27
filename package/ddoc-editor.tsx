@@ -188,6 +188,7 @@ const DdocEditor = forwardRef(
       onHtmlExport,
       onTxtExport,
       onOdtExport,
+      onExportError,
       onDocxImport,
       editorCanvasClassNames,
       sharedSlidesLink,
@@ -222,7 +223,6 @@ const DdocEditor = forwardRef(
       disableInlineComment,
       renderThemeToggle,
       renderToolbarLeading,
-      metadataProxyUrl,
       extensions,
       onCopyHeadingLink,
       tabConfig,
@@ -477,7 +477,6 @@ const DdocEditor = forwardRef(
       onInvalidContentError,
       ignoreCorruptedData,
       isPresentationMode,
-      metadataProxyUrl,
       extensions,
       onCopyHeadingLink,
       disableInlineComment,
@@ -672,7 +671,7 @@ const DdocEditor = forwardRef(
               printInputsRef.current.isPagesActive,
             ),
           });
-          handleContentPrint(html, options);
+          await handleContentPrint(html, options);
         },
         terminateSession,
         updateSessionTitle: (args: {
@@ -1038,6 +1037,7 @@ const DdocEditor = forwardRef(
               onHtmlExport={onHtmlExport}
               onTxtExport={onTxtExport}
               onOdtExport={onOdtExport}
+              onExportError={onExportError}
               onDocxImport={onDocxImport}
               ipfsImageFetchFn={ipfsImageFetchFn}
               fetchV1ImageFn={fetchV1ImageFn}
@@ -1120,6 +1120,7 @@ const DdocEditor = forwardRef(
                 onHtmlExport={onHtmlExport}
                 onTxtExport={onTxtExport}
                 onOdtExport={onOdtExport}
+                onExportError={onExportError}
                 ipfsImageFetchFn={ipfsImageFetchFn}
                 onDocxImport={onDocxImport}
                 fetchV1ImageFn={fetchV1ImageFn}

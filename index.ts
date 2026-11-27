@@ -58,6 +58,7 @@ export {
 export type {
   CommentMutationMeta,
   DdocStats,
+  ExportErrorContext,
   SuggestionType,
 } from './package/types';
 export type {

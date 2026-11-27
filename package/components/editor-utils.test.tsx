@@ -9,12 +9,27 @@ import { useEditorToolbar, shortcutAction } from './editor-utils';
 import { IEditorTool } from '../hooks/use-visibility';
 import copy from 'copy-to-clipboard';
 import { toast } from '@fileverse/ui';
-import { printPagesTab } from '../extensions/pagination/print';
+import { buildPrintHtml, getPrintInputs } from '../extensions/pagination/print';
 import { handleContentPrint } from '../utils/handle-print';
+import { searchForSecureImageNodeAndEmbedImageContent } from '../extensions/mardown-paste-handler';
 
 vi.mock('../extensions/pagination/print', () => ({
-  printPagesTab: vi.fn().mockResolvedValue(false),
+  buildPrintHtml: vi.fn(),
+  getPrintInputs: vi.fn(),
+  resolvePrintPlacement: vi.fn(),
 }));
+vi.mock('../extensions/mardown-paste-handler', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../extensions/mardown-paste-handler')
+    >();
+  return {
+    ...actual,
+    searchForSecureImageNodeAndEmbedImageContent: vi.fn(
+      actual.searchForSecureImageNodeAndEmbedImageContent,
+    ),
+  };
+});
 const removeLoader = vi.fn();
 const showLoader = vi.fn(() => 'loader');
 vi.mock('../utils/inline-loader', async (importOriginal) => ({
@@ -254,10 +269,25 @@ describe('Copy HTML export', () => {
 
 describe('Print and PDF export in Pages mode', () => {
   let editor: Editor;
+  const pagesOptions = {
+    pageSetup: { mode: 'pages' as const, paper: 'a4' as const },
+  };
+  const pagesMode = () =>
+    vi.mocked(getPrintInputs).mockReturnValue({
+      pageSetup: pagesOptions.pageSetup,
+      isPagesActive: true,
+    } as unknown as ReturnType<typeof getPrintInputs>);
+
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.mocked(printPagesTab).mockReset().mockResolvedValue(false);
-    vi.mocked(handleContentPrint).mockReset();
+    vi.mocked(getPrintInputs).mockReset().mockReturnValue(undefined);
+    vi.mocked(buildPrintHtml)
+      .mockReset()
+      .mockResolvedValue({
+        html: 'pages-html',
+        options: pagesOptions,
+      } as Awaited<ReturnType<typeof buildPrintHtml>>);
+    vi.mocked(handleContentPrint).mockReset().mockResolvedValue(undefined);
     showLoader.mockClear();
     removeLoader.mockClear();
   });
@@ -266,16 +296,24 @@ describe('Print and PDF export in Pages mode', () => {
     vi.useRealTimers();
   });
 
-  const render = () => {
+  const render = (onExportError = vi.fn()) => {
     editor = makeEditor('<p>hello</p>');
-    return renderHook(() => useEditorToolbar({ editor, onError: vi.fn() }), {
-      wrapper: ({ children }) => (
-        <CommentStoreProvider editor={editor} initialComments={[]}>
-          {children}
-        </CommentStoreProvider>
-      ),
-    }).result;
+    return renderHook(
+      () => useEditorToolbar({ editor, onError: vi.fn(), onExportError }),
+      {
+        wrapper: ({ children }) => (
+          <CommentStoreProvider editor={editor} initialComments={[]}>
+            {children}
+          </CommentStoreProvider>
+        ),
+      },
+    ).result;
   };
+
+  const pdfOption = (result: ReturnType<typeof render>) =>
+    result.current.exportOptions.find(
+      (item) => item?.title === 'PDF document (.pdf)',
+    );
 
   const run = async (fn: () => void) => {
     await act(async () => {
@@ -284,57 +322,112 @@ describe('Print and PDF export in Pages mode', () => {
     });
   };
 
-  it('toolbar Print uses printPagesTab in Pages mode and skips the Pageless path', async () => {
-    vi.mocked(printPagesTab).mockResolvedValue(true);
+  it('toolbar Print prints the built Pages HTML in Pages mode', async () => {
+    pagesMode();
     const result = render();
     await run(() => result.current.printHandler());
-    expect(printPagesTab).toHaveBeenCalledWith(editor);
-    expect(handleContentPrint).not.toHaveBeenCalled();
+    expect(buildPrintHtml).toHaveBeenCalledTimes(1);
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(handleContentPrint).toHaveBeenCalledWith('pages-html', pagesOptions);
   });
 
   it('toolbar Print in Pageless calls handleContentPrint exactly as before', async () => {
     const result = render();
     await run(() => result.current.printHandler());
+    expect(buildPrintHtml).not.toHaveBeenCalled();
     expect(handleContentPrint).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(handleContentPrint).mock.calls[0]).toHaveLength(1);
     expect(vi.mocked(handleContentPrint).mock.calls[0][0]).toContain('hello');
+    expect(vi.mocked(handleContentPrint).mock.calls[0][1]).toBeUndefined();
   });
 
-  it('Export PDF in Pages mode uses printPagesTab and removes the loader', async () => {
-    vi.mocked(printPagesTab).mockResolvedValue(true);
+  it('Export PDF in Pages mode prints the Pages HTML and removes the loader', async () => {
+    pagesMode();
     const result = render();
-    const pdf = result.current.exportOptions.find(
-      (item) => item?.title === 'PDF document (.pdf)',
-    );
-    await run(() => pdf!.onClick());
-    expect(printPagesTab).toHaveBeenCalledWith(editor);
-    expect(handleContentPrint).not.toHaveBeenCalled();
+    await run(() => pdfOption(result)!.onClick());
+    expect(handleContentPrint).toHaveBeenCalledWith('pages-html', pagesOptions);
     expect(showLoader).toHaveBeenCalledTimes(1);
     expect(removeLoader).toHaveBeenCalledWith('loader');
   });
 
-  it('Export PDF falls back, logs and removes the loader when Pages print rejects', async () => {
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+  it('Export PDF removes an inline loader, which showLoader returns no element for', async () => {
+    showLoader.mockReturnValueOnce(undefined as unknown as string);
     const result = render();
-    const pdf = result.current.exportOptions.find(
-      (item) => item?.title === 'PDF document (.pdf)',
-    );
-    await run(() => pdf!.onClick());
-    expect(err).toHaveBeenCalled();
+    await run(() => pdfOption(result)!.onClick());
     expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(removeLoader).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export PDF falls back, logs, reports and removes the loader when the Pages build rejects', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    pagesMode();
+    const boom = new Error('boom');
+    vi.mocked(buildPrintHtml).mockRejectedValue(boom);
+    const onExportError = vi.fn();
+    const result = render(onExportError);
+    await run(() => pdfOption(result)!.onClick());
+    expect(err).toHaveBeenCalled();
+    expect(onExportError).toHaveBeenCalledWith(boom, {
+      format: 'pdf',
+      stage: 'pages-build',
+    });
+    expect(handleContentPrint).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(handleContentPrint).mock.calls[0][0]).toContain('hello');
     expect(removeLoader).toHaveBeenCalledWith('loader');
     err.mockRestore();
   });
 
-  it('toolbar Print falls back and logs when Pages print rejects', async () => {
+  it('toolbar Print falls back and logs when the Pages build rejects', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(printPagesTab).mockRejectedValue(new Error('boom'));
+    pagesMode();
+    vi.mocked(buildPrintHtml).mockRejectedValue(new Error('boom'));
     const result = render();
     await run(() => result.current.printHandler());
     expect(err).toHaveBeenCalled();
     expect(handleContentPrint).toHaveBeenCalledTimes(1);
     err.mockRestore();
+  });
+
+  it('Export PDF reports the embed stage and removes the loader when images fail', async () => {
+    const failure = new Error('fetch failed');
+    vi.mocked(
+      searchForSecureImageNodeAndEmbedImageContent,
+    ).mockRejectedValueOnce(failure);
+    const onExportError = vi.fn();
+    const result = render(onExportError);
+    await run(() => pdfOption(result)!.onClick());
+    expect(onExportError).toHaveBeenCalledWith(failure, {
+      format: 'pdf',
+      stage: 'embed-images',
+    });
+    expect(handleContentPrint).not.toHaveBeenCalled();
+    expect(removeLoader).toHaveBeenCalledWith('loader');
+  });
+
+  it('Export PDF reports a hang as a timeout at the stuck stage', async () => {
+    vi.mocked(searchForSecureImageNodeAndEmbedImageContent).mockReturnValueOnce(
+      new Promise(() => {}),
+    );
+    const onExportError = vi.fn();
+    const result = render(onExportError);
+    await run(() => pdfOption(result)!.onClick());
+    expect(onExportError).toHaveBeenCalledTimes(1);
+    const [error, context] = onExportError.mock.calls[0];
+    expect((error as Error).name).toBe('ExportTimeoutError');
+    expect(context).toEqual({ format: 'pdf', stage: 'timeout:embed-images' });
+  });
+
+  it('Export PDF reports a print failure without a timeout', async () => {
+    const noBridge = new TypeError('print bridge missing');
+    vi.mocked(handleContentPrint).mockRejectedValue(noBridge);
+    const onExportError = vi.fn();
+    const result = render(onExportError);
+    await run(() => pdfOption(result)!.onClick());
+    expect(onExportError).toHaveBeenCalledTimes(1);
+    expect(onExportError).toHaveBeenCalledWith(noBridge, {
+      format: 'pdf',
+      stage: 'print',
+    });
+    expect(removeLoader).toHaveBeenCalledWith('loader');
   });
 });
 

@@ -17,6 +17,7 @@ import {
   IpfsImageUploadResponse,
 } from '../types';
 import { ImportExportButton } from './import-export-button';
+import { ExportErrorHandler } from '../utils/export-watchdog';
 import { Tab } from './tabs/utils/tab-utils';
 import * as Y from 'yjs';
 import { ZoomLevelDropdown } from './editor-toolbar/zoom-level';
@@ -45,6 +46,7 @@ const TiptapToolBar = ({
   onHtmlExport,
   onTxtExport,
   onOdtExport,
+  onExportError,
   onDocxImport,
   ipfsImageFetchFn,
   fetchV1ImageFn,
@@ -73,6 +75,7 @@ const TiptapToolBar = ({
   onHtmlExport?: () => void;
   onTxtExport?: () => void;
   onOdtExport?: () => void;
+  onExportError?: ExportErrorHandler;
   onDocxImport?: () => void;
   fetchV1ImageFn?: (url: string) => Promise<ArrayBuffer | undefined>;
   ipfsImageFetchFn?: (
@@ -111,6 +114,7 @@ const TiptapToolBar = ({
     onHtmlExport,
     onTxtExport,
     onOdtExport,
+    onExportError,
     ipfsImageFetchFn,
     onDocxImport,
     fetchV1ImageFn,
@@ -193,6 +197,7 @@ const TiptapToolBar = ({
           ydoc={ydoc}
           copyAo3Html={copyAo3Html}
           onRegisterExportTrigger={onRegisterExportTrigger}
+          onExportError={onExportError}
         />
 
         <div className="w-[1px] h-4 vertical-divider mx-1"></div>

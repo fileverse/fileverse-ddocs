@@ -4,7 +4,6 @@ import { Editor } from '@tiptap/core';
 import Tippy from '@tippyjs/react';
 import './styles.css';
 import { useEditingContext } from '../../../hooks/use-editing-context';
-import cn from 'classnames';
 import { Button, Divider, LucideIcon } from '@fileverse/ui';
 
 interface CellButton {
@@ -157,7 +156,7 @@ export const TableCellNodeView: FC<NodeViewProps> = ({
     >
       <NodeViewContent as="div" />
 
-      {(isHovered || selected) && (
+      {!isPreviewMode && (isHovered || selected) && (
         <Tippy
           appendTo={document.body}
           trigger="click"
@@ -227,7 +226,7 @@ export const TableCellNodeView: FC<NodeViewProps> = ({
           <label
             ref={tableCellOptionsButtonRef}
             tabIndex={0}
-            className={cn('trigger-button', { hidden: isPreviewMode })}
+            className="trigger-button"
             contentEditable={false}
             onClick={handleTriggerClick}
             onMouseDown={(e) => {

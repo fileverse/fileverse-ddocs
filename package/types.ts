@@ -188,6 +188,12 @@ export type PageSetup = {
   paper: 'a4' | 'letter';
 };
 
+export type ExportErrorContext = {
+  format: string;
+  /** Last step reached before the failure, e.g. `embed-images`, `print`, `timeout`. */
+  stage: string;
+};
+
 export type DdocStats = {
   words: number;
   characters: number;
@@ -403,6 +409,7 @@ export interface DdocProps extends CommentAccountProps {
   onHtmlExport?: () => void;
   onTxtExport?: () => void;
   onOdtExport?: () => void;
+  onExportError?: (error: unknown, context: ExportErrorContext) => void;
   onDocxImport?: () => void;
   sharedSlidesLink?: string;
   documentName?: string;
@@ -416,7 +423,6 @@ export interface DdocProps extends CommentAccountProps {
    * divider between the two. Return null to render nothing.
    */
   renderToolbarLeading?: () => React.ReactNode;
-  metadataProxyUrl?: string;
   onCopyHeadingLink?: (link: string) => void;
   /** @deprecated No effect. The host footer sits outside the editor. */
   footerHeight?: string;

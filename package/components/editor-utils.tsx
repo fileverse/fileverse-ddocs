@@ -43,14 +43,22 @@ import {
 import { useEditorMediaQuery } from '../hooks/use-editor-media-query';
 import { colors, textColors } from '../utils/colors';
 import { validateImageExtension } from '../utils/check-image-type';
-import { handleContentPrint } from '../utils/handle-print';
-import { printPagesTab } from '../extensions/pagination/print';
+import { ContentPrintOptions, handleContentPrint } from '../utils/handle-print';
+import {
+  buildPrintHtml,
+  getPrintInputs,
+  resolvePrintPlacement,
+} from '../extensions/pagination/print';
 import { useCommentRefs } from '../stores/comment-store-provider';
 import { searchForSecureImageNodeAndEmbedImageContent } from '../extensions/mardown-paste-handler';
 import { renderMermaidBlocks } from '../extensions/code-block/render-mermaid-html';
 import { listAtSelection } from '../extensions/list-toggle';
 import { inlineLoader } from '../utils/inline-loader';
 import { IpfsImageFetchPayload, IpfsImageUploadResponse } from '../types';
+import {
+  ExportErrorHandler,
+  startExportWatchdog,
+} from '../utils/export-watchdog';
 import { getTemporaryEditor } from '../utils/helpers';
 import { extractTitleFromContent } from '../utils/extract-title-from-content';
 import { getContrastColor } from '../utils/color-utils';
@@ -62,7 +70,7 @@ import copy from 'copy-to-clipboard';
 export interface IEditorToolElement {
   icon: any;
   title: string;
-  onClick: (name?: string) => void;
+  onClick: (name?: string) => void | Promise<void>;
   isActive: boolean;
   group?: string;
   isNew?: boolean;
@@ -199,6 +207,7 @@ export const useEditorToolbar = ({
   onHtmlExport,
   onTxtExport,
   onOdtExport,
+  onExportError,
   ipfsImageFetchFn,
   onDocxImport,
   fetchV1ImageFn,
@@ -215,6 +224,7 @@ export const useEditorToolbar = ({
   onHtmlExport?: () => void;
   onTxtExport?: () => void;
   onOdtExport?: () => void;
+  onExportError?: ExportErrorHandler;
   ipfsImageFetchFn?: (
     _data: IpfsImageFetchPayload,
   ) => Promise<{ url: string; file: File }>;
@@ -709,51 +719,77 @@ export const useEditorToolbar = ({
     [onError],
   );
 
+  const printAsPdf = async (format: string, withLoader: boolean) => {
+    if (!editor) return;
+    const loaderUi = withLoader
+      ? inlineLoader(editor, 'Exporting PDF file ...')
+      : null;
+    const loader = loaderUi?.showLoader();
+    let stage = 'pages-build';
+    const stopWatchdog = startExportWatchdog(
+      format,
+      () => stage,
+      onExportError,
+    );
+    try {
+      let printable: { html: string; options?: ContentPrintOptions } | null =
+        null;
+      const inputs = getPrintInputs(editor);
+      if (inputs?.pageSetup?.mode === 'pages') {
+        try {
+          printable = await buildPrintHtml({
+            editor,
+            ...inputs,
+            placement: resolvePrintPlacement(editor, inputs.isPagesActive),
+          });
+        } catch (error) {
+          console.error('Pages print failed, using the plain path', error);
+          onExportError?.(error, { format, stage });
+        }
+      }
+      if (!printable) {
+        stage = 'embed-images';
+        const docWithEmbedImageContent =
+          await searchForSecureImageNodeAndEmbedImageContent(
+            editor.state.doc,
+            ipfsImageFetchFn,
+            fetchV1ImageFn,
+            true,
+          );
+        stage = 'render-html';
+        const temporalEditor = getTemporaryEditor(
+          editor,
+          docWithEmbedImageContent.toJSON(),
+        );
+        try {
+          const rawHtml = temporalEditor.getHTML();
+          stage = 'render-mermaid';
+          printable = { html: await renderMermaidBlocks(rawHtml) };
+        } finally {
+          temporalEditor.destroy();
+        }
+      }
+      stage = 'print';
+      // rAF pauses in a hidden tab, so a parked print is not a hang.
+      stopWatchdog();
+      await handleContentPrint(printable.html, printable.options);
+    } catch (error) {
+      if (!onExportError) throw error;
+      onExportError(error, { format, stage });
+    } finally {
+      stopWatchdog();
+      loaderUi?.removeLoader(loader);
+    }
+  };
+
   const exportOptions: Array<IEditorToolElement | null> = [
     {
       icon: 'FileExport',
       title: 'PDF document (.pdf)',
       onClick: () => {
         if (editor) {
-          const closeAndPrint = async () => {
-            const { showLoader, removeLoader } = inlineLoader(
-              editor,
-              'Exporting PDF file ...',
-            );
-
-            const loader = showLoader();
-            let printed = false;
-            try {
-              printed = await printPagesTab(editor);
-            } catch (error) {
-              console.error('Pages print failed, using the plain path', error);
-            }
-            if (printed) {
-              removeLoader(loader);
-              return;
-            }
-            const originalDoc = editor.state.doc;
-            const docWithEmbedImageContent =
-              await searchForSecureImageNodeAndEmbedImageContent(
-                originalDoc,
-                ipfsImageFetchFn,
-                fetchV1ImageFn,
-                true,
-              );
-
-            const temporalEditor = getTemporaryEditor(
-              editor,
-              docWithEmbedImageContent.toJSON(),
-            );
-
-            const rawHtml = temporalEditor.getHTML();
-            const inlineHtml = await renderMermaidBlocks(rawHtml);
-            handleContentPrint(inlineHtml);
-            removeLoader(loader);
-            temporalEditor.destroy();
-          };
           setFileExportsOpen(false);
-          setTimeout(closeAndPrint, 200);
+          setTimeout(() => printAsPdf('pdf', true), 200);
           onPdfExport?.();
         }
       },
@@ -910,33 +946,8 @@ export const useEditorToolbar = ({
 
   const printHandler = () => {
     if (editor) {
-      const closeAndPrint = async () => {
-        try {
-          if (await printPagesTab(editor)) return;
-        } catch (error) {
-          console.error('Pages print failed, using the plain path', error);
-        }
-        const originalDoc = editor.state.doc;
-        const docWithEmbedImageContent =
-          await searchForSecureImageNodeAndEmbedImageContent(
-            originalDoc,
-            ipfsImageFetchFn,
-            fetchV1ImageFn,
-            true,
-          );
-
-        const temporalEditor = getTemporaryEditor(
-          editor,
-          docWithEmbedImageContent.toJSON(),
-        );
-
-        const rawHtml = temporalEditor.getHTML();
-        const inlineHtml = await renderMermaidBlocks(rawHtml);
-        handleContentPrint(inlineHtml);
-        temporalEditor.destroy();
-      };
       setFileExportsOpen(false);
-      setTimeout(closeAndPrint, 200);
+      setTimeout(() => printAsPdf('print', false), 200);
       onPdfExport?.();
     }
   };
